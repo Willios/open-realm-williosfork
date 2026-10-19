@@ -24,7 +24,14 @@ Do not route background music through `svc_sound`, `S_PlaySoundFile`, unit chann
 
 ## Build Modes
 
-The default build keeps FFmpeg optional. Music commands and state still exist without FFmpeg, but no compressed music decoder is available and playback remains silent.
+The default build keeps FFmpeg optional. Without FFmpeg or the opt-in `BZ_MUSIC_MP3`
+backend, music commands and state still exist but compressed playback remains silent.
+Android enables `BZ_MUSIC_MP3`: the vendored minimp3 decoder retains compressed VFS bytes,
+decodes one frame at a time and resamples stereo PCM into the existing 44.1-kHz music ring.
+It supports mono/stereo MP3, seek by decoding/discarding from the start, pause, fades and
+playlist EOF handling. Other compressed formats still require FFmpeg. It does not enable
+the FFmpeg movie backend. `make test-music-mp3` checks stereo output, seek, pause, EOF and
+invalid/missing input using a generated fixture.
 
 The Linux GitHub release must explicitly build with `FFMPEG=1`. The v0.0.10-alpha release workflow invoked
 `make BUILD=release EOS=1 ... build` without that flag, so its `CL_MusicOpenTrack` was the stub that always returns false.
