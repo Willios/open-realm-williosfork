@@ -367,13 +367,46 @@ typedef struct {
 
 static openrealm_frame_state_t frame_state;
 
+/* Stage wall time includes driver waits; loop calls are not necessarily rendered frames. */
+static void Com_ProfileFrame(bool enabled, Uint64 start, Uint64 online_end, Uint64 server_end, Uint64 client_end) {
+    static struct {
+        bool active;
+        Uint64 start, frequency, online, server, client, server_max;
+        uint32_t loops;
+    } sample;
+    if (!enabled) {
+        if (sample.active) memset(&sample, 0, sizeof(sample));
+        return;
+    }
+    if (!sample.active) {
+        sample.active = true; sample.start = start; sample.frequency = SDL_GetPerformanceFrequency();
+    }
+    if (!sample.frequency) return;
+    sample.loops++;
+    sample.online += online_end - start;
+    sample.server += server_end - online_end;
+    sample.client += client_end - server_end;
+    sample.server_max = MAX(sample.server_max, server_end - online_end);
+    Uint64 elapsed = client_end - sample.start;
+    if (elapsed < sample.frequency) return;
+    double ms = 1000.0 / sample.frequency;
+    fprintf(stderr, "[COM_FRAME] loops=%u elapsed_ms=%.3f online_ms=%.3f server_ms=%.3f server_max_ms=%.3f client_ms=%.3f\n",
+        sample.loops, elapsed * ms, sample.online * ms, sample.server * ms, sample.server_max * ms, sample.client * ms);
+    sample.start = client_end; sample.loops = 0;
+    sample.online = sample.server = sample.client = sample.server_max = 0;
+}
+
 static void OpenRealm_Frame(void *argument) {
     openrealm_frame_state_t *state = (openrealm_frame_state_t *)argument;
     uint32_t current_time = SDL_GetTicks();
     uint32_t elapsed = current_time - state->previous_time;
+    bool profile = Cvar_Integer("com_profile", 0) != 0;
+    Uint64 start = profile ? SDL_GetPerformanceCounter() : 0;
     Online_Frame(elapsed);
+    Uint64 online_end = profile ? SDL_GetPerformanceCounter() : 0;
     if (SV_NeedsFrame())
         SV_Frame(Cvar_Integer("com_fast_forward", 0) ? FRAMETIME : elapsed);
+    Uint64 server_end = profile ? SDL_GetPerformanceCounter() : 0;
     if (!state->dedicated) {
         CL_Frame(elapsed);
     } else {
@@ -386,6 +419,7 @@ static void OpenRealm_Frame(void *argument) {
         }
 #endif
     }
+    Com_ProfileFrame(profile, start, online_end, server_end, profile ? SDL_GetPerformanceCounter() : 0);
     state->previous_time = current_time;
     state->frame_count++;
     if (Cvar_Integer("com_frame_limit", 0) > 0 &&

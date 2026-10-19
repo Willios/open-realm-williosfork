@@ -73,6 +73,7 @@ typedef enum render_phase_e {
 #include "../common/common.h"
 #include "../client/tr_public.h"
 #include "r_alpha.h"
+#include "r_profile.h"
 
 extern refImport_t ri;
 
@@ -395,6 +396,9 @@ spriteProg_t *R_SpriteShader(SHADERTYPE type);
 
 // r_main.c
 void R_BindDefaultFramebuffer(void);
+bool R_BeginScaledView(viewDef_t const *view);
+void R_EndScaledView(viewDef_t const *view);
+void R_ShutdownRenderScale(void);
 #ifdef USE_SHADOWMAPS
 void R_RenderShadowMap(void);
 #endif
