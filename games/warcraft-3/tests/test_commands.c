@@ -758,3 +758,17 @@ TEST(commands, sv_rate_is_registered_unlimited_by_default) {
     T_NOT_NULL(Cvar_Get("sv_rate", "", 0)->description);
     Cvar_EndConfig();
 }
+
+/* Profiling is an explicit console control, with an inverse and no persistence into ordinary play. */
+TEST(commands, renderer_profile_is_registered_and_not_archived) {
+    setup_command_tests();
+    Cvar_Init();
+    T_STREQ(Cvar_String("r_profile", NULL), "0");
+    Cmd_ExecuteString("r_profile 2");
+    T_STREQ(Cvar_String("r_profile", NULL), "2");
+    T_NOT_NULL(Cvar_Get("r_profile", "", 0)->description);
+    T_ASSERT(!(Cvar_Flags("r_profile") & CVAR_ARCHIVE));
+    Cmd_ExecuteString("r_profile 0");
+    T_STREQ(Cvar_String("r_profile", NULL), "0");
+    Cvar_EndConfig();
+}

@@ -173,6 +173,8 @@ ROC/TFT (including ESC), WoW character creation, and SC2 TRaynor01 runs complete
 both source formats uploading directly; engine screenshots retained correct colors and WC3 gameplay camera/HUD cleanup.
 SC2 still reported missing DDS assets and an unloadable-texture warning, so its launch is a smoke check, not full asset QA.
 
+For Android SDK/emulator setup and remaining mobile bring-up work, see [Android bring-up](android.md).
+
 ## API Floor
 
 The supported renderer floors are desktop OpenGL 3.1 and OpenGL ES 3.0. GLES3 shaders are generated from the same GLSL 1.40 bodies with a `#version 300 es` header and precision declarations.
@@ -201,6 +203,10 @@ The build selects the alpha-key fragment shader at C compile time:
 MSAA is fixed at build time because the sample count is part of SDL context creation. There is no `r_msaa` cvar. Startup logs requested and active samples; `GL_SAMPLE_BUFFERS` is authoritative.
 
 ## Video Modes
+
+Android uses the WC3 resolution popup for `r_render_scale` (100/75/67 percent), keeping
+the drawable, UI and input native while reducing large 3D views. Desktop keeps its
+existing fixed/native mode list. See [Android](android.md) for framebuffer and MSAA limits.
 
 `vid_mode` is a resolution-table index, not a window-style enum. The authoritative table is `common/video_modes.h` and is shared by client startup and the Warcraft III options menu. Mode 0 is 640x480 and is the safe default for the RG40XX display. Invalid indices resolve to mode 0 and the options menu applies changes through `vid_apply`. The Steam Deck's 1280x800 mode is appended to the table rather than inserted among the 1280-wide modes so archived numeric `vid_mode` values keep their existing meaning.
 

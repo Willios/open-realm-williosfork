@@ -1029,6 +1029,15 @@ TEST(net, loopback_na_ip_no_crash_without_socket) {
     T_EQ(NET_GetPacket(NS_SERVER, &from, &msg), 0);
 }
 
+TEST(client_loading, ready_label_uses_authored_alternate_and_resets) {
+    uiFrame_t frame = { .stat = UI_STAT_LOADING_STATUS_TEXT, .text = "Loading", .tooltip = "Continue" };
+    bool old_waiting = cl.loading_waiting;
+    cl.loading_waiting = false; T_STREQ(SCR_GetStringValue(&frame), "Loading");
+    cl.loading_waiting = true; T_STREQ(SCR_GetStringValue(&frame), "Continue");
+    frame.tooltip = NULL; T_STREQ(SCR_GetStringValue(&frame), "Loading");
+    cl.loading_waiting = old_waiting;
+}
+
 TEST(net, net_config_opens_and_closes_udp_sockets) {
     test_client_stubs_set_cvar("game_port", "28030");
     NET_Init();

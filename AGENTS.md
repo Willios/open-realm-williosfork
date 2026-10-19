@@ -197,6 +197,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 | Release/debug builds, MSAA, GL/GLES backends, GLSL version (`GLSL=120/140/150`), shader dialect tokens, bone palette, video modes | [docs/build-and-renderer-platforms.md](docs/build-and-renderer-platforms.md) |
 | Flatpak/Steam Deck packaging, portal-selected Warcraft data, XDG writable state, Steam shortcut integration | [docs/flatpak-steam-deck.md](docs/flatpak-steam-deck.md) |
 | iPad packaging without Xcode project, Makefile-driven SDL2/GLES3 build, bundle/sign/deploy, Documents data import | [packaging/ipad/README.md](packaging/ipad/README.md) |
+| Android SDK/emulator, GLES3 shader probe, full WC3 APK, MPQ importer and on-device startup tests | [docs/android.md](docs/android.md) |
 | Shared model shader lighting and packed grass uniform contracts | [docs/architecture/model-shader.md](docs/architecture/model-shader.md) |
 | Renderer backend: thin pipelines, root struct, GL state cache, MSAA/alpha-key, `r_stats` | [docs/renderer-backend.md](docs/renderer-backend.md) |
 | `CS_SKY`, WC3 `SetSkyModel`, camera-relative sky models, sequence-0 animation, cross-game producer gaps | [docs/architecture/skybox-and-cs-sky.md](docs/architecture/skybox-and-cs-sky.md) |

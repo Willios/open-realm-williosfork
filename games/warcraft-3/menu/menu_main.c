@@ -56,6 +56,7 @@ static void UI_MenuRealmSelect_f(void);
 static void UI_MenuOptionsGameplay_f(void);
 static void UI_MenuOptionsSound_f(void);
 static void UI_MenuOptionsApply_f(void);
+static void UI_MenuRenderScale_f(void);
 static void UI_MenuSinglePlayerCampaign_f(void);
 static void UI_MenuGameSetupStart_f(void);
 static void UI_MenuCampaignHuman_f(void);
@@ -111,6 +112,7 @@ static const menucommand_t menu_commands[] = {
     { "menu_single_player_campaign_night_elf", UI_MenuCampaignNightElf_f },
     { "menu_single_player_campaign_tutorial", UI_MenuCampaignTutorial_f },
     { "menu_video_mode", UI_MenuVideoMode_f },
+    { "menu_render_scale", UI_MenuRenderScale_f },
     { "menu_single_player_campaign_select", UI_MenuCampaignSelect_f },
     { "menu_single_player_mission_select", UI_MenuMissionSelect_f },
     { "menu_single_player_difficulty", UI_MenuDifficulty_f },
@@ -624,6 +626,14 @@ static void UI_MenuVideoMode(uint32_t value) {
 }
 
 static void UI_MenuVideoMode_f(void) { UI_MenuIndex(UI_MenuVideoMode); }
+static void UI_MenuRenderScale(uint32_t value) {
+    static unsigned const scales[] = {100, 75, 67};
+    char command[64];
+    if (value >= sizeof(scales) / sizeof(scales[0])) return;
+    snprintf(command, sizeof(command), "seta r_render_scale %u\n", scales[value]);
+    mi.Cmd_ExecuteText(command);
+}
+static void UI_MenuRenderScale_f(void) { UI_MenuIndex(UI_MenuRenderScale); }
 static void UI_MenuCampaignSelect_f(void) { UI_MenuIndex(SinglePlayerMenu_LaunchCampaignIndex); }
 static void UI_MenuMissionSelect_f(void) { UI_MenuIndex(SinglePlayerMenu_LaunchMissionIndex); }
 static void UI_MenuDifficulty_f(void) { UI_MenuIndex(SinglePlayerMenu_SetDifficulty); }

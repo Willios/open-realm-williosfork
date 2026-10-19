@@ -1899,6 +1899,11 @@ TEST(menu_fdf, options_video_mode_command_selects_fixed_or_native_mode) {
     test_command_imports();
     mi.Cmd_ExecuteText = test_cmd_execute_text;
 
+    Cmd_ExecuteString("menu_render_scale 1");
+    T_STREQ(captured_command, "seta r_render_scale 75\n");
+    Cmd_ExecuteString("menu_render_scale 42");
+    T_STREQ(captured_command, "seta r_render_scale 75\n");
+
     captured_command[0] = '\0';
     Cmd_ExecuteString("menu_video_mode 5");
     T_STREQ(captured_command, "seta vid_native 0\nseta vid_mode 5\n");

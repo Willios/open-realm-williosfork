@@ -125,6 +125,8 @@ vec3_t lightAngles = {-40,0,60};
 void CL_RestartRefresh(void) {
     world_loaded = false;
     begin_sent = false;
+    cl.loading_waiting = false;
+    cl.loading_ready_time = 0;
     cl.refresh_prepped = false;
 }
 
@@ -149,6 +151,16 @@ static void CL_SendBegin(void) {
     CL_CanvasWriteChrome();
     MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
     MSG_WriteString(&cls.netchan.message, "begin");
+}
+
+bool CL_ContinueLoading(uint32_t timestamp) {
+    if (!cl.loading_waiting || !cl.refresh_prepped || cls.state != ca_connected ||
+        !SDL_TICKS_PASSED(timestamp, cl.loading_ready_time)) return false;
+    cl.loading_waiting = false;
+    CL_SendBegin();
+    begin_sent = true;
+    fprintf(stderr, "Loading: acknowledged, entering mission\n");
+    return true;
 }
 
 static void Matrix4_fromViewAngles(vec3_t const *target, vec3_t const *angles, float distance, mat4_t *output) {
@@ -660,10 +672,6 @@ void CL_PrepRefresh(void) {
     }
     CL_LoadingStage(0.94f);
 
-    if (world_loaded && !begin_sent) {
-        CL_SendBegin();
-        begin_sent = true;
-    }
     CL_LoadingStage(0.98f);
 
     if (world_loaded && !cl.refresh_prepped) {
@@ -671,6 +679,18 @@ void CL_PrepRefresh(void) {
         cl.refresh_prepped = true;
     }
     if (cl.refresh_prepped) CL_LoadingStage(1.0f);
+    if (world_loaded && !begin_sent && !cl.loading_waiting) {
+        if (Cvar_Integer("cl_loading_wait", 0) && cls.state == ca_connected) {
+            cl.loading_waiting = true;
+            cl.loading_ready_time = SDL_GetTicks();
+            /* The plaque freezes ordinary refreshes; publish the ready label now. */
+            SCR_UpdateLoadingPlaque();
+            fprintf(stderr, "Loading: ready, waiting for acknowledgement\n");
+        } else {
+            CL_SendBegin();
+            begin_sent = true;
+        }
+    }
 }
 
 void V_RenderView(void) {
@@ -787,6 +807,26 @@ void V_Shutdown(void) {
 
 #ifdef BZ_TESTS
 #include "shared/test.h"
+TEST(client_loading, acknowledgement_rejects_stale_input_and_sends_begin_once) {
+    sizeBuf_t old_message = cls.netchan.message;
+    int old_state = cls.state;
+    bool old_waiting = cl.loading_waiting, old_prepped = cl.refresh_prepped, old_begin = begin_sent;
+    uint32_t old_ready = cl.loading_ready_time;
+    uint8_t bytes[128];
+    SZ_Init(&cls.netchan.message, bytes, sizeof(bytes));
+    cls.state = ca_connected;
+    cl.loading_waiting = true; cl.refresh_prepped = true; cl.loading_ready_time = 100;
+    T_ASSERT(!CL_ContinueLoading(99)); T_EQ(cls.netchan.message.cursize, 0);
+    T_ASSERT(CL_ContinueLoading(100)); T_ASSERT(!cl.loading_waiting); T_ASSERT(begin_sent);
+    uint32_t count = cls.netchan.message.cursize;
+    T_ASSERT(count > 0);
+    T_ASSERT(!CL_ContinueLoading(101)); T_EQ(cls.netchan.message.cursize, count);
+    cl.loading_waiting = true; cl.refresh_prepped = false;
+    T_ASSERT(!CL_ContinueLoading(102));
+    cl.loading_waiting = old_waiting; cl.refresh_prepped = old_prepped;
+    cl.loading_ready_time = old_ready; begin_sent = old_begin;
+    cls.state = old_state; cls.netchan.message = old_message;
+}
 
 static size2_t v_test_window(void) { return (size2_t){ 1024, 768 }; }
 static bool v_test_terrain(void) { return true; }

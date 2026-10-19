@@ -318,3 +318,18 @@ list-devices:
 
 # Browser foundation is isolated from native module linking and platform flags.
 include port/web/build.mk
+
+# Standalone production-shader probe; this is not an Android game build.
+.PHONY: android-probe android-probe-run
+android-probe:
+	python3 tools/android/build_probe.py
+android-probe-run:
+	python3 tools/android/build_probe.py --serial $(or $(ANDROID_SERIAL),emulator-5554)
+
+.PHONY: android-warcraft3 android-warcraft3-run android-warcraft3-credits
+android-warcraft3:
+	python3 tools/android/build_probe.py --game
+android-warcraft3-run:
+	python3 tools/android/build_probe.py --game --serial $(or $(ANDROID_SERIAL),emulator-5554)
+android-warcraft3-credits:
+	python3 tools/android/build_probe.py --credits

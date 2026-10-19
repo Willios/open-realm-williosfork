@@ -647,10 +647,18 @@ void CL_Input(void) {
     SDL_MouseMotionEvent hover_motion = { 0 };
     bool hover_update_pending = false;
     bool movie_input = CL_MovieActive();
+    bool loading_input = cl.loading_waiting;
 
     mouse.event = UI_EVENT_NONE;
     mouse.wheel = 0;
     while(SDL_PollEvent(&event)) {
+        if (loading_input) {
+            if (event.type == SDL_FINGERDOWN || event.type == SDL_MOUSEBUTTONDOWN ||
+                (event.type == SDL_KEYDOWN && !event.key.repeat))
+                CL_ContinueLoading(event.common.timestamp);
+            /* Consume the acknowledgement and its queued input, never issue a world order. */
+            if (event.type != SDL_WINDOWEVENT && event.type != SDL_QUIT) continue;
+        }
         if (movie_input) {
             switch (event.type) {
                 case SDL_KEYDOWN:

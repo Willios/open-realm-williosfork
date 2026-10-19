@@ -4,6 +4,9 @@
 #include "server_api.h"
 
 #include <SDL2/SDL.h>
+#ifdef __ANDROID__
+#include <SDL2/SDL_system.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #ifdef __EMSCRIPTEN__
@@ -24,6 +27,8 @@
 #define BZ_PLATFORM "Windows"
 #elif defined(__EMSCRIPTEN__)
 #define BZ_PLATFORM "Emscripten"
+#elif defined(__ANDROID__)
+#define BZ_PLATFORM "Android"
 #elif defined(__linux__)
 #define BZ_PLATFORM "Linux"
 #elif defined(__OpenBSD__)
@@ -243,6 +248,13 @@ static bool Sys_iOSHasWarcraftArchive(cstring_t dirname) {
  * flat portable (share/ beside the exe), the FHS build tree (share/ beside
  * bin/), and the in-tree CWD fallback. */
 static void Sys_ResolveShareDirectory(void) {
+#ifdef __ANDROID__
+    /* APK assets are installed into this app-owned tree before SDL starts the engine. */
+    PATHSTR android_share;
+    snprintf(android_share, sizeof(android_share), "%s/share", SDL_AndroidGetInternalStoragePath());
+    FS_SetShareDirectory(android_share);
+    return;
+#endif
 #ifdef __EMSCRIPTEN__
     FS_SetShareDirectory("/share");
     return;
@@ -263,6 +275,12 @@ static void Sys_ResolveShareDirectory(void) {
 /* Resolve writable per-user game data: XDG_DATA_HOME (or ~/.local/share)
  * on Unix, APPDATA on Windows. Only adopted if creatable and writable. */
 static void Sys_ResolveHomeDirectory(void) {
+#ifdef __ANDROID__
+    PATHSTR android_home;
+    snprintf(android_home, sizeof(android_home), "%s/user", SDL_AndroidGetInternalStoragePath());
+    FS_SetHomeDirectory(android_home);
+    return;
+#endif
 #ifdef __EMSCRIPTEN__
     FS_SetHomeDirectory("/openrealm/user");
     return;
@@ -309,7 +327,7 @@ static unsigned short Sys_GamePort(void) {
 }
 
 void Sys_Quit(void) {
-    exit(0);
+    Sys_Exit(0);
 }
 
 /* Read a line from stdin for dedicated server console input.
@@ -429,6 +447,17 @@ static void OpenRealm_Frame(void *argument) {
 
 int main(int argc, string_t argv[]) {
     bool data = 0;
+#ifdef __ANDROID__
+    /* Native stdio is otherwise invisible after SDLActivity starts its thread; retain startup failures in app storage. */
+    PATHSTR android_log;
+    snprintf(android_log, sizeof(android_log), "%s/engine.log", SDL_AndroidGetInternalStoragePath());
+    if (!freopen(android_log, "w", stderr)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot open engine log: %s", android_log);
+        return 1;
+    }
+    dup2(fileno(stderr), STDOUT_FILENO);
+    setvbuf(stderr, NULL, _IONBF, 0);
+#endif
 #ifdef _WIN32
     PATHSTR discovered_data_dir = { 0 };
 #endif
