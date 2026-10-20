@@ -171,7 +171,7 @@ TEST(wc3_spell, get_corpse_approaches_and_loads_nearby_corpse) {
     clent->client->menu.ability_code = BZ_EXH_AMEL;
     G_SelectEntity(clent->client, fix.wagon);
     item = S_AbilityItem(BZ_EXH_AMEL);
-    call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    call = MAKE(abilityCall_t, .item = &item, .entity = clent);
 
     T_ASSERT(S_AbilityMessage(fix.wagon, A_COMMAND, &call));
     T_ASSERT(fix.wagon->goalentity == corpse);
@@ -256,7 +256,7 @@ TEST(wc3_spell, cannibalize_approaches_moving_corpse_holder_not_hidden_corpse_or
 
     clent->client = &game.clients[0]; clent->client->ps.number = 0; G_SelectEntity(clent->client, caster);
     item = S_AbilityItem(MAKEFOURCC('A','c','a','n'));
-    call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    call = MAKE(abilityCall_t, .item = &item, .entity = clent);
     T_ASSERT(S_AbilityMessage(caster, A_COMMAND, &call));
     T_ASSERT(caster->goalentity == fix.wagon);
     T_STREQ(caster->currentmove->animation, "walk");
@@ -298,7 +298,7 @@ TEST(wc3_spell, cannibalize_approach_cancels_when_corpse_disappears) {
     caster->think = monster_think; unit_stand(caster); gi.LinkEntity(caster);
     clent->client = &game.clients[0]; clent->client->ps.number = 0; G_SelectEntity(clent->client, caster);
     item = S_AbilityItem(MAKEFOURCC('A','c','a','n'));
-    call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    call = MAKE(abilityCall_t, .item = &item, .entity = clent);
     T_ASSERT(S_AbilityMessage(caster, A_COMMAND, &call));
     FILTER_EDICTS(ent, ent->inuse && ent->owner == caster && ent->goalentity == corpse && ent->think) { thinker = ent; break; }
     T_NOT_NULL(thinker);

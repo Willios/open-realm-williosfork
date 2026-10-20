@@ -332,10 +332,10 @@ static bool G_BuildCommandButtonState(edict_t *ent, cstring_t code, bool researc
      * state while its persistent no-chase policy is active, including after
      * combat returns the unit to idle. */
     if (!research && ability && ability->proc == CAbilityStop) {
-        button->engaged = !ent->movement.holding_position && ent->currentmove &&
+        button->engaged = !ent->orders->holding_position && ent->currentmove &&
                           ent->currentmove->think == ai_stand;
     } else if (!research && ability && ability->proc == CAbilityHoldPosition) {
-        button->engaged = ent->movement.holding_position ? 1 : 0;
+        button->engaged = ent->orders->holding_position ? 1 : 0;
     }
     if (ability_code) {
         button->manacost = S_SpellNumber(ability_code, ABILITY_NUMBER_COST, level);

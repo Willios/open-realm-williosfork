@@ -156,7 +156,7 @@ static bool submerge_execute(edict_t *unit, uint32_t code) {
         unit->s.renderfx |= RF_HIDDEN;
     }
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     move_reset_progress(unit);
     unit_stand(unit);
     gi.LinkEntity(unit);
@@ -174,7 +174,7 @@ static intptr_t submerge_ability(edict_t *ent, abilityMsg_t msg, abilityCall_t c
         gameClient_t *client;
         uint32_t subgroup_class;
         bool executed = false, invalid_water = false;
-        if (!ent || !call || !call->client || !(client = call->client->client) || !code) return false;
+        if (!ent || !call || !call->entity || !(client = call->entity->client) || !code) return false;
         subgroup_class = ent->class_id;
         FOR_CONTROLLABLE_SELECTED_UNITS(client, unit) {
             uint32_t unit_code;
@@ -185,8 +185,8 @@ static intptr_t submerge_ability(edict_t *ent, abilityMsg_t msg, abilityCall_t c
             }
             if (S_CastNoTargetSpell(unit, unit_code)) executed = true;
         }
-        if (!executed && invalid_water) G_ShowCommandErrorKey(call->client, "Cantsubmergethere", NULL);
-        if (executed) Get_Commands_f(call->client);
+        if (!executed && invalid_water) G_ShowCommandErrorKey(call->entity, "Cantsubmergethere", NULL);
+        if (executed) Get_Commands_f(call->entity);
         return executed;
     }
     case A_ORDER:

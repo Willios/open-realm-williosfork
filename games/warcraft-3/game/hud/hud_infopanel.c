@@ -978,8 +978,7 @@ void UI_SeedInfoPanelCache(edict_t *ent, edict_t * *selected, uint32_t count) {
     if (!ent->client) return;
     if (count == 1 && !UI_UsesBuildingQueuePanel(ent->client, selected[0])) {
         ent->client->infopanel.entity = selected[0]->s.number;
-        ent->client->infopanel.hp = (int32_t)(selected[0]->health.value + 0.5f);
-        ent->client->infopanel.mana = (int32_t)(selected[0]->mana.value + 0.5f);
+        ent->client->infopanel.count = 0;
         ent->client->infopanel.xp = (int32_t)selected[0]->hero.xp;
     } else {
         ent->client->infopanel.entity = 0;
@@ -987,8 +986,7 @@ void UI_SeedInfoPanelCache(edict_t *ent, edict_t * *selected, uint32_t count) {
          * non-single selection-count cache so async removals (death/fog/hide)
          * can invalidate a still-multiselect info panel without changing the
          * serialized GAMECLIENT layout. -1 distinguishes the build queue. */
-        ent->client->infopanel.hp = count == 1 ? -1 : (int32_t)count;
-        ent->client->infopanel.mana = 0;
+        ent->client->infopanel.count = count == 1 ? -1 : (int32_t)count;
         ent->client->infopanel.xp = 0;
     }
 }
@@ -1359,8 +1357,8 @@ void G_InvalidateUnitInfoPanel(edict_t *unit) {
             /* -1 means the queue layer was already serialized. Preserve the
              * existing cache representation, but make that queue panel dirty
              * so an upgrade/construction state change is sent next frame. */
-            if (client->infopanel.hp == -1) {
-                client->infopanel.hp = 0;
+            if (client->infopanel.count == -1) {
+                client->infopanel.count = 0;
             } else if (client->infopanel.entity == unit->s.number) {
                 /* UINT32_MAX is outside the entity-number range. Reuse the
                  * entity cache key to invalidate only a currently displayed
@@ -1461,7 +1459,7 @@ void G_RefreshInfoPanel(edict_t *ent) {
     UpdateSelectedLiveStats(ent->client, count ? G_GetMainSelectedUnit(ent->client) : NULL);
     if (count != 1) {
         if (ent->client->infopanel.entity == 0 &&
-            ent->client->infopanel.hp == (int32_t)count) {
+            ent->client->infopanel.count == (int32_t)count) {
             return;
         }
         UI_SendInfoPanel(ent, selected, count);
@@ -1478,7 +1476,7 @@ void G_RefreshInfoPanel(edict_t *ent) {
          * Rebuild them while Unsummon owns the building so a paused training
          * queue remains visually paused instead of continuing on the client. */
         if (G_BuildingIsUnsummoning(selected[0]) ||
-            ent->client->infopanel.entity != 0 || ent->client->infopanel.hp != -1) {
+            ent->client->infopanel.entity != 0 || ent->client->infopanel.count != -1) {
             UI_SendInfoPanel(ent, selected, count);
         }
         return;

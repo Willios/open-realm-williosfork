@@ -94,7 +94,7 @@ static void unsummon_cancel_approach(edict_t *worker) {
 }
 
 static void ai_unsummon_walk(edict_t *worker);
-static umove_t unsummon_move_walk = { "walk", ai_unsummon_walk, NULL, CAbilityUnsummon };
+static umove_t unsummon_move_walk = { "walk", ai_unsummon_walk, NULL, CAbilityUnsummon, .travel = true };
 static umove_t unsummon_move_channel = { "stand channel", ai_idle, NULL, CAbilityUnsummon };
 
 /* Owned living structure only; S_SpellAllowsTarget ignores structure/player tokens. */
@@ -237,8 +237,8 @@ static void ai_unsummon_walk(edict_t *worker) {
         return;
     }
     blocked = move_is_blocked(worker, distance, step);
-    if (blocked || worker->movement.flow_unreachable ||
-        (worker->movement.flow_goal_reached && !unsummon_in_range(worker, building))) {
+    if (blocked || worker->movement->flow_unreachable ||
+        (worker->movement->flow_goal_reached && !unsummon_in_range(worker, building))) {
         S_SpellCancelChannel(worker);
         return;
     }

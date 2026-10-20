@@ -657,7 +657,7 @@ static void G_PickupItemThink(edict_t *unit) {
     unit_moveindirection(unit);
 }
 
-static umove_t item_move_pickup = { "walk", G_PickupItemThink, NULL, CAbilityInventory };
+static umove_t item_move_pickup = { "walk", G_PickupItemThink, NULL, CAbilityInventory, .travel = true };
 
 bool G_OrderPickupItem(edict_t *unit, edict_t *item) {
     if (!G_InventoryCanGetItems(unit) || !G_CanPickupItem(unit, item) ||
@@ -779,13 +779,13 @@ bool G_ReattachItemAtScripted(edict_t *unit, edict_t *item, uint32_t slot) {
 static void G_StopDropItemOrder(edict_t *unit) {
     if (!unit) return;
     unit->goalentity = NULL;
-    unit->item_drop = NULL;
+    if (unit->orders) unit->orders->item_drop = NULL;
     if (unit->stand) unit->stand(unit);
     else unit_stand(unit);
 }
 
 static void G_DropItemThink(edict_t *unit) {
-    edict_t *item = unit ? unit->item_drop : NULL;
+    edict_t *item = unit && unit->orders ? unit->orders->item_drop : NULL;
     edict_t *destination = unit ? unit->goalentity : NULL;
     float distance;
     float move_distance;
@@ -819,7 +819,7 @@ static void G_DropItemThink(edict_t *unit) {
 }
 
 static umove_t item_move_drop = {
-    .animation = "walk", .think = G_DropItemThink, .endfunc = NULL, .proc = CAbilityInventory
+    .animation = "walk", .think = G_DropItemThink, .endfunc = NULL, .proc = CAbilityInventory, .travel = true
 };
 
 /* Use the authored GiveItemRange for unit-target handoff (separate from
@@ -846,7 +846,7 @@ static bool G_CanGiveItemTarget(edict_t *source, edict_t *item, edict_t *recipie
 }
 
 static void G_GiveItemThink(edict_t *source) {
-    edict_t *item = source ? source->item_drop : NULL;
+    edict_t *item = source && source->orders ? source->orders->item_drop : NULL;
     edict_t *recipient = source ? source->goalentity : NULL;
     float distance, move_distance;
 
@@ -880,7 +880,7 @@ static void G_GiveItemThink(edict_t *source) {
 }
 
 static umove_t item_move_give = {
-    .animation = "walk", .think = G_GiveItemThink, .endfunc = NULL, .proc = CAbilityInventory
+    .animation = "walk", .think = G_GiveItemThink, .endfunc = NULL, .proc = CAbilityInventory, .travel = true
 };
 
 bool G_OrderGiveItemTarget(edict_t *source, edict_t *item, edict_t *recipient) {
@@ -894,14 +894,14 @@ bool G_OrderGiveItemTarget(edict_t *source, edict_t *item, edict_t *recipient) {
             source->goalentity = NULL;
             return false;
         }
-        source->item_drop = item;
+        source->orders->item_drop = item;
         G_GiveItemThink(source);
         return true;
     }
     move_reset_progress(source);
     unit_setmove(source, &item_move_give);
     /* unit_setmove clears a pending item_drop when replacing an old order. */
-    source->item_drop = item;
+    source->orders->item_drop = item;
     unit_setanimation(source, "stand");
     return true;
 }
@@ -919,7 +919,7 @@ bool G_OrderDropItemAt(edict_t *unit, edict_t *item, vec2_t const *position) {
     if (!unit->goalentity) return false;
     move_reset_progress(unit);
     unit_setmove(unit, &item_move_drop);
-    unit->item_drop = item;
+    unit->orders->item_drop = item;
     unit_setanimation(unit, "stand");
     return true;
 }
@@ -1016,7 +1016,7 @@ void G_UseItem(edict_t *unit, uint32_t slot) {
     PARSE_LIST(abilities, ability_name, parse_segment) {
         ability_t const *ability = FindAbilityForCommand(ability_name);
         abilityitem_t ability_item = MAKE(abilityitem_t, .code = FS_SLKKey(ability_name), .ability = ability);
-        abilityCall_t call = MAKE(abilityCall_t, .item = &ability_item, .client = clent);
+        abilityCall_t call = MAKE(abilityCall_t, .item = &ability_item, .entity = clent);
         bool succeeded = false;
 
         if (!ability) continue;

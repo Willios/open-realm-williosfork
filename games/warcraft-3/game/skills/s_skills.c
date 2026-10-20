@@ -945,7 +945,7 @@ bool S_UnitAbilityMoveArrive(edict_t *ent) {
 }
 
 abilityOrderResult_t S_UnitIssuedTargetOrder(edict_t *issuer, cstring_t order, edict_t *target) {
-    abilityCall_t call = MAKE(abilityCall_t, .issued_target_order = { target, order });
+    abilityCall_t call = MAKE(abilityCall_t, .entity = target, .order = order);
     if (!issuer || !order || !target || !target->inuse) return ABILITY_ORDER_UNHANDLED;
     return (abilityOrderResult_t)unit_dispatch_authored_abilities(
         issuer, A_ISSUED_TARGET_ORDER, &call, true, false, false);
@@ -990,7 +990,7 @@ static bool unit_target_ability_try(edict_t *target, edict_t *issuer, cstring_t 
     if (!G_UnitAbilityLevel(target, code)) return false;
     item = S_AbilityItem(code);
     if (!item.ability) return false;
-    call = MAKE(abilityCall_t, .item = &item, .target_order = { issuer, order });
+    call = MAKE(abilityCall_t, .item = &item, .entity = issuer, .order = order);
     return S_AbilityMessage(target, A_TARGET_ORDER, &call) != 0;
 }
 
@@ -1039,7 +1039,7 @@ bool S_UnitProjectileHit(edict_t *projectile) {
         code = FS_SLKKey(ability->classname);
         if (!G_UnitAbilityLevel(target, code)) continue;
         item = MAKE(abilityitem_t, .code = code, .ability = ability);
-        call = MAKE(abilityCall_t, .item = &item, .projectile = projectile);
+        call = MAKE(abilityCall_t, .item = &item, .entity = projectile);
         if (S_AbilityMessage(target, A_PROJECTILE_HIT, &call)) return true;
     }
     return false;
@@ -1226,7 +1226,7 @@ void S_AbilityCommand(edict_t *clent, ability_t const *ability) {
 
     if (!S_AbilityHasCommand(ability)) return;
     item = MAKE(abilityitem_t, .code = clent->client->menu.ability_code, .ability = ability);
-    call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    call = MAKE(abilityCall_t, .item = &item, .entity = clent);
     S_AbilityMessage(G_GetMainSelectedUnit(clent->client), A_COMMAND, &call);
 }
 
@@ -1240,7 +1240,7 @@ void InitAbilities(void) {
         uint32_t n;
         abilityitem_t item = MAKE(abilityitem_t, .code = strlen(entry->classname) == 4 ? FS_SLKKey(entry->classname) : 0,
                                   .ability = entry);
-        abilityCall_t call = MAKE(abilityCall_t, .item = &item, .classname = entry->classname);
+        abilityCall_t call = MAKE(abilityCall_t, .item = &item);
         if (!entry->proc) gi.error("InitAbilities: %s has no procedure", entry->classname);
         entry->proc(NULL, A_INIT, &call);
         if (entry->flags & AB_INNATE) innate_items[num_innate++] = item;

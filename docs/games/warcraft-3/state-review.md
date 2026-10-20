@@ -1,72 +1,143 @@
-# Warcraft III game-state review
+# Warcraft III entity and player state
 
-## Attack cooldown
+## Optional travel and retained intent
 
-`skills/s_attack.c` owns `attack_cooldown_end_time`, a simulation-millisecond deadline.
-The former `attack_cooldown_active` and seconds-valued `attack_cooldown_remaining`
-were derived mirrors. History (`487e1abfd`) already made the deadline authoritative
-so replacement Move orders could not freeze weapon cooldown. Consumers now calculate
-remaining seconds only when installing recovery waits. `wait` still serves the
-move-local damage-point/recovery clock; `attack_backswing_end_time` is a separate
-gate after a committed hit, not a duplicate weapon deadline.
+`edict_t.movement` is a `movement_t *`. Its presence means a travel operation
+owns routing scratch. `G_UnitIsMoving()` exposes that same check. A paused unit,
+a unit turning before its next step, or a unit waiting for a route can still have
+an active travel operation; physical displacement is measured from position samples.
+Queries never allocate a record or return a shared writable zero object.
 
-Save version 101 removes the mirrors. Older saves are rejected, with no migration.
-`wc3_combat.canceled_windup_cooldown_advances_after_attack_order_is_replaced` checks a
-replaced windup, reissue one millisecond before expiry, and the next swing at expiry.
-Existing combat tests cover chase, animation completion, backswing and save/load;
-`wc3_save.rejects_prior_save_versions` covers version rejection.
-
-## Retained state and boundaries
-
-| Question | Finding and decision |
+| Record | Owner and lifetime |
 |---|---|
-| Is `client_s.jass` test-only? | No. `g_spawn.c` initializes it; JASS player natives mutate it, `m_unit.c` reads XP handicap, `hud_allies.c` reads names, and `g_save.c` restores player state. It belongs to the game-owned player record. |
-| Can camera fields collapse into one interpolation? | Scalar setup interpolation, timed pan, continuous pan rate, target/orient controllers and camera noise have independent contracts. `g_main.c` and JASS camera natives consume them. `pan_start` is the captured origin and `pan_destination` the endpoint. Wrappers alone would add indirection without reducing state. |
-| Can movement storage be absent whenever a unit stands? | No. Guard anchors, retained Follow/Patrol, queued orders and critter idle schedules outlive active translation. Optional allocation is possible by behavior ownership, following the existing pooled-state architecture, but needs allocation/release/save coverage for every consumer. Standing is not a valid allocation predicate. No pool conversion is included here. |
-| Can animation names become timers? | A timer answers when, not which model sequence to select. `animation_request` retains a logical name for property-driven reselection; `queued_animation` retains the next script-requested clip. Names must survive JASS caller storage and model resolution. Interning would require explicit lifetime and save identity; it is a separate representation change. |
-| Why SC2API under Warcraft III? | It is the optional Warcraft game adapter for agents speaking the SC2API Raw protocol. Its race/unit/order translation depends on WC3 state, not the StarCraft II simulation. Moving it into that game would invert ownership. |
-| Are all JASS events implemented? | No. The event enum preserves JASS ABI numbers, including events with no current producer. Lack of a producer does not make an ABI constant removable. |
-| Are ability messages duplicates? | Query/notification, issuer/target, item add/remove and status refresh/remove have different phase and return-value contracts. Their per-message comments describe these differences; merging by similar payload shape would erase semantics. |
+| `movement_t *movement` | Active travel: progress watermark, blocked decisions, heading, formation speed, displacement, resumable route and worker avoidance. `G_BeginMovement` attaches it; stationary `unit_setmove`, Stop, arrival and death release it. Steering entry points can begin travel for interaction approaches. |
+| `unitOrders_t *orders` | A live unit's retained command intent: Follow/Patrol/Attack-Move waypoints, guard anchors, cargo/drop interaction identity, resource-return target, Wisp egress, Shift-order FIFO and pending item drop/give context. Unit spawn initializes it; it survives stationary phases and combat detours. Entity teardown releases it. Effects/destinations do not need it merely to participate in routing. |
+| `routeCache_t *route` | Destination-owned flow cache, shared group destination and waypoint incarnation. Allocated when a destination participates in routing. It does not indicate that the destination is moving. Reusing a waypoint increments its serial and clears its field/shared destination. |
+| `wander_t *wander` | Awan-owned idle deadline, random state and private waypoint identity. Initialized through ability lifecycle/idle dispatch; disable/death/removal releases the waypoint and record. It persists during the idle interval between trips. |
 
-## Ability procedure payload proposal
+`umove_t.travel` explicitly declares a travel-capable behavior; animation names do
+not determine ownership. All walk/approach behaviors declare it, including item
+pickup/drop/give. A Follow order inside its stopping distance releases movement
+scratch while retaining its target, then begins travel again when the target moves.
+`unit_facegoal` turns stationary attacks and repair work without allocating a route.
+Immobile steering attempts do not create travel state.
 
-Keep the single `abilityProc_t` dispatcher. Its `abilityCall_t` payload already uses
-an anonymous union: `client`, `projectile`, `attacker` and `move_target` overlap in
-storage. Giving that slot a generic name would shorten the declaration but remove
-useful role information without saving memory. The target-order pair also carries
-an order string. WC3 order names such as `smart` and `attack` are not four-byte
-rawcodes. `classname` is the registry class name passed by `InitAbilities`;
-`item->code` carries the concrete ability rawcode.
+The audit also covered fields outside the old embedded movement struct:
 
-A Win32-style pair of untyped parameters would require casts for function pointers,
-entity pointers, strings, floats and composite payloads. The recommended direction
-is to keep named typed union members and document the message-to-member contract.
-A future naming change can use one entity slot plus one typed order payload, but
-should be agreed separately and migrated across producers and consumers together.
-This review does not change the ability-call ABI.
+- `wander_*` moved into `wander_t`.
+- `heatmap2*` and `waypoint_generation` moved into `routeCache_t`.
+- The per-edict `order_queue` moved into `orders->queue`; pending `item_drop`
+  moved into `orders`, and spell-approach inventory origin moved into its already
+  owned `channel_t` record with explicit entity fixups.
+- The overloaded `secondarygoal` split into `orders->resource_goal` for worker
+  resource-return identity and `route->shared_goal` for group destination sharing.
+- `old_origin` remains an event sample: region/proximity events must detect
+  teleports as well as ordinary steps.
+- `goalentity` remains the current behavior target shared by attacks, spells,
+  missiles and travel. `movetype` and `unitinfo.MoveSpeed` describe unit physics
+  and configuration even while standing. `velocity` is used by missiles and spell
+  thinkers, not as the unit travel-state flag.
 
-## Documentation discipline
+On the local arm64 build, `sizeof(edict_t)` changed from 5,800 to 4,296 bytes (1,504 bytes smaller).
+This is an edict-layout measurement, not a claim about total resident RAM: the
+existing typed-pool implementation also reserves backing storage for optional roles.
 
-`AGENTS.md` now requires purpose, ownership and consumer comments for enums and
-structs. This change adds focused comments at the reviewed declarations rather than
-mechanically labelling every existing type without investigating its contract.
+## Attack timing
 
-See also [pooled state](pooled-entity-state.md), [ability implementation](ability-implementation.md),
-[animation properties](unit-animation-properties.md), [save/load](save-load.md), and
-[SC2API adapter](sc2api-agent-interface.md).
+Weapon cooldown retains only `attack_cooldown_end_time` in simulation milliseconds.
+Active state and remaining seconds are derived when queried, including after a
+replacement order. The former active flag and remaining-time mirror are gone.
+`attack_backswing_end_time` is a different post-hit gate, and `wait` is the
+move-local animation/damage/recovery clock; neither duplicates the weapon deadline.
+No-op per-frame mirror-refresh calls were removed.
 
-## Validation environment
+## Player records and camera
 
-The local Homebrew `sdl2-compat` 2.32.72 crashed in `SDL_PushEvent_REAL` when
-`client_input.menu_sdl_input_is_exclusive_with_world_presentation` pushed its
-`SDL_TEXTINPUT` fixture. The unchanged test passed with upstream SDL2 2.32.10
-built separately under `/tmp`; no client/test workaround is part of this change.
-The runtime override used for validation is:
+`client_s` contains named records for script-owned player state, camera, info-panel
+cache, resource-bar cache, shortcuts, active messages and retained message history.
+`playerScript_t` is live runtime state: spawn initializes it, JASS natives mutate it,
+XP reads handicap, and HUD/save paths consume names and overrides. It is not test state.
+
+Camera pan fields are grouped as `camera.pan.{active,time,start,destination,rate}`.
+The captured start and timed endpoint differ from continuous strafe/forward velocity.
+Scalar setup interpolation, target/orient controllers and noise have independent
+contracts; the game samples their results into player state. The obsolete cached
+portrait mana value was removed; the old overloaded HP cache is now explicitly a
+selection `count`, while live health/mana use player-state bindings.
+
+## Animation strings
+
+Per-edict fixed request/queue/property arrays were replaced with interned immutable
+strings. `G_InternAnimationName` copies script/stack text and shares identical content;
+repeated Walk requests do not allocate per unit or frame. The 80-byte request limit
+was removed. Normalized property tags still use the parser's bounded temporary
+serialization buffer. `G_FreeAnimationNames` releases storage at game shutdown,
+independently of model-cache refresh, because logical names can outlive model metadata.
+
+A timer cannot identify which animation family to select. Retaining logical names
+is necessary for deferred model resolution, property-driven reselection and queued
+JASS destructable clips; interning removes the repeated inline storage.
+
+## Ability procedure payload
+
+The single `abilityProc_t` dispatcher remains. `ent` is its receiver and the common
+`call->entity` identifies the related actor for commands, damage, projectile impacts,
+Move starts and targeted orders. Immediate and targeted orders share `call->order`;
+queue messages use `entity` for the producer and `queue_item` for the queued result.
+`source_item` and its spawn incarnation remain separate because an asynchronous
+inventory origin can coexist with another related entity.
+
+The redundant init-only `classname` payload was removed: `S_AbilityClass(call)`
+reads the registry key from `call->item->ability`. Concrete ability rawcodes remain
+in `item->code`. Order names such as `smart`/`attack` and internal command keys such
+as `CmdBuild` are not FOURCCs. Typed function/status/target payloads retain their
+contracts without converting function pointers or floats through untyped integers.
+
+Every `abilityMsg_t` has production references. Similar payloads do not make
+query/notification, issuer/target, add/remove or refresh/remove phases duplicates.
+JASS `EVENTTYPE` values remain numerically stable, including currently unsupported
+subscriptions. `G_ExecuteEvent` explicitly retains empty cases such as
+`EVENT_GAME_VICTORY`; removing enum rows would break the script ABI rather than
+implement those events. Struct/enum declarations now document purpose and consumers,
+and `AGENTS.md` requires those comments for future declarations.
+
+## Save and network contracts
+
+Save version 102 rejects prior layouts. Movement, orders, route and wander records
+use the existing entity-owned typed-pool serialization. Entity references have
+explicit fixups; route jobs, resumable steering and destination flow generations
+are process-local caches cleared on load. Guard intent and waypoint incarnations
+survive. Animation strings follow each raw edict as text and are interned on read;
+process addresses are cleared from the raw record.
+
+No entity/player network fields or wire layouts changed. The SC2API Raw endpoint
+remains the optional Warcraft-owned adapter: it translates agent protocol values
+into WC3 state/orders and does not belong to the StarCraft II game module.
+
+## Verification
+
+- `wc3_unit.movement_storage_is_optional`: optional pointer storage contract.
+- `wc3_order_lifecycle.optional_movement_stop_pause_arrival_and_reuse`: real orders,
+  scheduler pause/arrival, Stop, death, release and a fresh trip.
+- `wc3_order_lifecycle.stationary_follow_retains_intent_without_travel_scratch`:
+  waiting Follow releases scratch and resumes when the target moves.
+- `wc3_unit.animation_names_are_shared_owned_and_not_truncated`: script/stack lifetime,
+  shared identity and requests longer than the former 80-byte limit.
+- `wc3_save.animation_strings_restore_after_intern_storage_is_released`: save/load
+  after discarding all process-owned animation strings.
+- `wc3_save.route_cache_rebuilds_after_load` and existing pool/save tests: destination
+  cache reset, entity fixups, absent roles, invalid references and old-save rejection.
+- Existing combat, movement, resource-worker, guard, cargo, waypoint and wander suites
+  cover the changed production consumers in classic and TFT modes.
+
+The local Homebrew `sdl2-compat` 2.32.72 crashes in an unchanged SDL text-input test.
+Validation uses separately built upstream SDL2 2.32.10 without changing dependencies:
 
 ```sh
 SDL_VIDEODRIVER=dummy SDL_DYNAMIC_API=/path/to/upstream/libSDL2-2.0.0.dylib make test
 ```
 
-`SDL_DYNAMIC_API` selects the temporary library without modifying the installed
-Homebrew package or repository dependency configuration. Network tests also need
-local UDP socket access outside the filesystem/network sandbox.
+Network tests also require local UDP access outside the test sandbox.
+See [pooled state](pooled-entity-state.md), [ability implementation](ability-implementation.md),
+[animation properties](unit-animation-properties.md), [save/load](save-load.md),
+[SC2API adapter](sc2api-agent-interface.md), and [camera sampling](../../architecture/client.md).

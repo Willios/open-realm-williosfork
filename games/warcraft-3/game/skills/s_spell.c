@@ -69,11 +69,11 @@ BZ_ABILITY_PROC(CAbilitySimpleSpell) {
     if (!call || !call->item || !call->item->ability) return false;
     switch (msg) {
     case A_COMMAND:
-        if (!call->client) return false;
-        spell_cmd(call->client);
+        if (!call->entity) return false;
+        spell_cmd(call->entity);
         return true;
     case A_TARGET_MODE_EXIT:
-        S_SpellCursorSplat(call->client, 0.0f);
+        S_SpellCursorSplat(call->entity, 0.0f);
         return true;
     case A_VALIDATE: return true;
     case A_MOVE_LEAVE:
@@ -877,7 +877,7 @@ void S_SpellTargetApproachThink(edict_t *thinker) {
     uint32_t code = thinker ? thinker->class_id : 0;
     ability_t const *spell = S_SpellAbilityForCode(code);
     abilityitem_t item = { .code = code, .ability = spell };
-    edict_t *source_item = thinker ? thinker->spell_item : NULL;
+    edict_t *source_item = thinker && thinker->channel ? thinker->channel->source_item : NULL;
     bool const point_target = spell && target == thinker &&
         (spell->target_type == SPELL_TARGET_POINT || spell->target_type == SPELL_TARGET_UNIT_OR_POINT);
     /* Ability-owned entity cursors retain the entity and incarnation while
@@ -888,7 +888,7 @@ void S_SpellTargetApproachThink(edict_t *thinker) {
     spellTarget_t st;
 
     if (!caster || M_IsDead(caster) || !target || !spell ||
-        !spell_item_source_valid(caster, source_item, thinker->spell_item_spawn_time) ||
+        !spell_item_source_valid(caster, source_item, thinker->channel->source_item_spawn_time) ||
         (!point_target && !entity_point_target && spell->target_type != SPELL_TARGET_UNIT &&
          spell->target_type != SPELL_TARGET_UNIT_OR_POINT)) {
         if (caster && caster->goalentity == thinker) {
@@ -935,7 +935,7 @@ void S_SpellTargetApproachThink(edict_t *thinker) {
         if (caster->goalentity == target) caster->goalentity = NULL;
         unit_stand(caster);
         spell_execute_point_target(clent, caster, code, level, spell, &target->s.origin2,
-                                   source_item, thinker->spell_item_spawn_time, thinker);
+                                   source_item, thinker->channel->source_item_spawn_time, thinker);
         G_FreeEdict(thinker);
         return;
     }
@@ -959,7 +959,7 @@ void S_SpellTargetApproachThink(edict_t *thinker) {
 
     spellUnitTargetParams_t params = {
         .caster = caster, .code = code, .level = level, .spell = spell, .target = target,
-        .source_item = source_item, .source_item_spawn_time = thinker->spell_item_spawn_time
+        .source_item = source_item, .source_item_spawn_time = thinker->channel->source_item_spawn_time
     };
     unit_stand(caster);
     spell_execute_unit_target(&params, thinker);
@@ -987,8 +987,8 @@ static bool spell_begin_target_approach(edict_t *caster, uint32_t code, edict_t 
     thinker->channel->owner_spawn_time = caster->spawn_time;
     thinker->channel->target_spawn_time = target ? target->spawn_time : 0;
     thinker->class_id = code;
-    thinker->spell_item = source_item;
-    thinker->spell_item_spawn_time = source_item_spawn_time;
+    thinker->channel->source_item = source_item;
+    thinker->channel->source_item_spawn_time = source_item_spawn_time;
     thinker->think = S_SpellTargetApproachThink;
     thinker->freetime = G_Time();
     /* Replace the old pending cast before installing a new Move order. A unit
@@ -1158,7 +1158,7 @@ bool S_SpellEntityTarget(edict_t *clent, edict_t *target) {
 
 static void spell_target_mode_exit(edict_t *clent) {
     abilityitem_t item = S_AbilityItem(S_SpellCurrentCode(clent, 0));
-    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .entity = clent);
     if (item.ability) S_AbilityMessage(G_GetMainSelectedUnit(clent->client), A_TARGET_MODE_EXIT, &call);
 }
 

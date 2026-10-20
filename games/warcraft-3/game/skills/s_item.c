@@ -157,7 +157,7 @@ static bool soul_trap_capture(edict_t *carrier, edict_t *target) {
     target->aiflags |= AI_SOUL_TRAPPED;
     S_SpellCancelChannel(target);
     G_ClearUnitOrderQueue(target);
-    target->goalentity = target->combatentity = target->secondarygoal = NULL;
+    target->goalentity = target->combatentity = target->orders->resource_goal = NULL;
     if (target->stand) target->stand(target);
     target->s.renderfx |= RF_HIDDEN;
     target->svflags |= SVF_NOCLIENT;
@@ -361,7 +361,7 @@ static bool AbilityItemInvis_ItemUse(edict_t *clent) {
 BZ_ABILITY_PROC(CAbilityItemInvis) {
     switch (msg) {
     case A_ITEM_USE:
-        return AbilityItemInvis_ItemUse(call && call->client ? call->client : ent);
+        return AbilityItemInvis_ItemUse(call && call->entity ? call->entity : ent);
     case A_STATUS_REMOVE:
         if (ent && call && call->status.slot &&
             !S_UnitHasTemporaryInvisibility(ent, call->status.slot))

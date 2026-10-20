@@ -1930,7 +1930,7 @@ CLIENTCOMMAND(Inventory) {
         PARSE_LIST(abilities, ability_name, parse_segment) {
             ability_t const *ability = FindAbilityForCommand(ability_name);
             abilityitem_t ability_item = MAKE(abilityitem_t, .code = FS_SLKKey(ability_name), .ability = ability);
-            abilityCall_t call = MAKE(abilityCall_t, .item = &ability_item, .client = clent);
+            abilityCall_t call = MAKE(abilityCall_t, .item = &ability_item, .entity = clent);
             bool succeeded = false;
 
             if (!ability) continue;

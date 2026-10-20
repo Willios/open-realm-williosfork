@@ -1917,7 +1917,7 @@ TEST(wc3_game, multiselect_info_panel_refreshes_when_membership_shrinks) {
     gi.unicast = selection_test_unicast;
     UI_SendInfoPanel(player, units, 3);
     T_EQ(client->infopanel.entity, 0);
-    T_EQ(client->infopanel.hp, 3);
+    T_EQ(client->infopanel.count, 3);
 
     G_DeselectEntity(client, units[1]);
     multiselect_capture_count = 0;
@@ -1927,7 +1927,7 @@ TEST(wc3_game, multiselect_info_panel_refreshes_when_membership_shrinks) {
 
     T_EQ(multiselect_capture_count, 2);
     T_EQ(client->infopanel.entity, 0);
-    T_EQ(client->infopanel.hp, 2);
+    T_EQ(client->infopanel.count, 2);
 }
 
 TEST(wc3_game, multiselect_portrait_uses_focused_unit_and_safe_area_root) {
@@ -2201,7 +2201,7 @@ TEST(wc3_game, multiselect_portrait_live_stats_follow_focus) {
     G_SelectEntity(client, first);
     G_SelectEntity(client, second);
     client->infopanel.entity = 0;
-    client->infopanel.hp = 2;
+    client->infopanel.count = 2;
 
     T_ASSERT(G_FocusSelectedUnit(client, second));
     G_RefreshInfoPanel(player);
@@ -2237,11 +2237,8 @@ TEST(wc3_game, portrait_live_stats_refresh_reserved_connected_client_edict) {
     unit->mana.max_value = 100.0f;
     G_SelectEntity(client, unit);
 
-    /* Keep the legacy info-panel cache current so the test exercises only the
-     * per-frame live portrait producer and does not need to serialize FDF. */
+    /* Retain portrait identity so live stat refresh does not need to serialize FDF. */
     client->infopanel.entity = unit->s.number;
-    client->infopanel.hp = 311;
-    client->infopanel.mana = 33;
     client->infopanel.xp = 0;
     T_ASSERT(!player->inuse);
 
@@ -2253,8 +2250,6 @@ TEST(wc3_game, portrait_live_stats_refresh_reserved_connected_client_edict) {
 
     unit->health.value = 207.0f;
     unit->mana.value = 21.0f;
-    client->infopanel.hp = 207;
-    client->infopanel.mana = 21;
     G_UpdateClientInfoPanels();
     T_EQ(client->ps.stats[UI_PLAYERSTAT_SELECTION_HEALTH], 207);
     T_EQ(client->ps.stats[UI_PLAYERSTAT_SELECTION_MANA], 21);
@@ -2278,7 +2273,6 @@ TEST(wc3_game, selected_unit_status_invalidation_resends_info_panel) {
     /* Simulate a panel already serialized, then status application invalidates
      * it. The next ordinary refresh must not accept the old cache as current. */
     client->infopanel.entity = unit->s.number;
-    client->infopanel.hp = (int32_t)unit->health.value;
     client->infopanel.xp = (int32_t)unit->hero.xp;
     G_InvalidateUnitInfoPanel(unit);
     T_EQ(client->infopanel.entity, UINT32_MAX);
@@ -2297,10 +2291,10 @@ TEST(wc3_game, selected_unit_status_invalidation_resends_info_panel) {
     other->s.player = 0;
     G_SelectEntity(client, other);
     client->infopanel.entity = 0;
-    client->infopanel.hp = 2;
+    client->infopanel.count = 2;
     G_InvalidateUnitInfoPanel(unit);
     T_EQ(client->infopanel.entity, 0);
-    T_EQ(client->infopanel.hp, 2);
+    T_EQ(client->infopanel.count, 2);
 }
 
 TEST(wc3_game, loading_rows_support_roc_and_tft_schema) {
@@ -4255,8 +4249,8 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     first->s.origin.x = 96.0f;
     first->s.origin.y = 128.0f;
     first->owner = second;
-    first->movement.follow_target = second;
-    first->movement.explicit_allied_attack = true;
+    first->orders->follow_target = second;
+    first->orders->explicit_allied_attack = true;
     first->inventory[2] = second;
     if (!first->cargo) first->cargo = G_AllocCargo();
     assert(first->cargo);
@@ -4269,8 +4263,8 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     G_UpdateTimeOfDay();
     ai_stand(first);
     T_ASSERT(G_UnitIsSleeping(first));
-    strlcpy(first->animation_props, "alternate,work", sizeof(first->animation_props));
-    strlcpy(first->animation_request, "stand ready", sizeof(first->animation_request));
+    first->animation_props = G_InternAnimationName("alternate,work");
+    first->animation_request = G_InternAnimationName("stand ready");
     T_ASSERT(first->currentmove != NULL);
     umove_t const *const saved_move = first->currentmove;
     first->abilstatus[0] = (heroabilitystatus_t){
@@ -4338,11 +4332,11 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     game.clients[0].camera.target_controller = second;
     game.clients[0].camera.target_mode = CAMERA_TARGET_FOLLOW_FACING;
     game.clients[0].camera.orient_eye = (vec3_t){ 11.0f, 22.0f, 33.0f };
-    game.clients[0].camera.pan_active = true;
-    game.clients[0].camera.pan_start_time = 4321;
-    game.clients[0].camera.pan_start = (vec2_t){ 10.0f, 20.0f };
-    game.clients[0].camera.pan_destination = (vec2_t){ 110.0f, 220.0f };
-    game.clients[0].camera.pan_rate = (vec2_t){ 100.0f, 200.0f };
+    game.clients[0].camera.pan.active = true;
+    game.clients[0].camera.pan.time = 4321;
+    game.clients[0].camera.pan.start = (vec2_t){ 10.0f, 20.0f };
+    game.clients[0].camera.pan.destination = (vec2_t){ 110.0f, 220.0f };
+    game.clients[0].camera.pan.rate = (vec2_t){ 100.0f, 200.0f };
     game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].magnitude = 9.5f;
     game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].velocity = 3.25f;
     game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].vert_only = true;
@@ -4363,12 +4357,12 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     first->sleep->can_sleep = false;
     first->sleep->sleeping = false;
     first->owner = NULL;
-    first->movement.follow_target = NULL;
-    first->movement.explicit_allied_attack = false;
+    first->orders->follow_target = NULL;
+    first->orders->explicit_allied_attack = false;
     first->inventory[2] = NULL;
     first->cargo->units[3] = NULL;
-    first->animation_props[0] = '\0';
-    first->animation_request[0] = '\0';
+    first->animation_props = "";
+    first->animation_request = "";
     memset(first->abilstatus, 0, sizeof(first->abilstatus));
     memset(first->abilitycooldowns, 0, sizeof(first->abilitycooldowns));
     strlcpy(game.clients[0].jass.name, "Changed", sizeof(game.clients[0].jass.name));
@@ -4458,8 +4452,8 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     T_FEQ(level.camera_bounds.min.x, -100.0f, 0.001f);
     T_FEQ(level.camera_bounds.max.y, 50.0f, 0.001f);
     T_ASSERT(g_edicts[first - g_edicts].owner == &g_edicts[second - g_edicts]);
-    T_ASSERT(g_edicts[first - g_edicts].movement.follow_target == &g_edicts[second - g_edicts]);
-    T_ASSERT(g_edicts[first - g_edicts].movement.explicit_allied_attack);
+    T_ASSERT(g_edicts[first - g_edicts].orders->follow_target == &g_edicts[second - g_edicts]);
+    T_ASSERT(g_edicts[first - g_edicts].orders->explicit_allied_attack);
     T_ASSERT(g_edicts[first - g_edicts].inventory[2] == &g_edicts[second - g_edicts]);
     T_ASSERT(g_edicts[first - g_edicts].cargo->units[3] == &g_edicts[second - g_edicts]);
     T_STREQ(g_edicts[first - g_edicts].animation_props, "alternate,work");
@@ -4486,14 +4480,14 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     T_FEQ(game.clients[0].camera.orient_eye.x, 11.0f, 0.001f);
     T_FEQ(game.clients[0].camera.orient_eye.y, 22.0f, 0.001f);
     T_FEQ(game.clients[0].camera.orient_eye.z, 33.0f, 0.001f);
-    T_ASSERT(game.clients[0].camera.pan_active);
-    T_EQ(game.clients[0].camera.pan_start_time, 4321);
-    T_FEQ(game.clients[0].camera.pan_start.x, 10.0f, 0.001f);
-    T_FEQ(game.clients[0].camera.pan_start.y, 20.0f, 0.001f);
-    T_FEQ(game.clients[0].camera.pan_destination.x, 110.0f, 0.001f);
-    T_FEQ(game.clients[0].camera.pan_destination.y, 220.0f, 0.001f);
-    T_FEQ(game.clients[0].camera.pan_rate.x, 100.0f, 0.001f);
-    T_FEQ(game.clients[0].camera.pan_rate.y, 200.0f, 0.001f);
+    T_ASSERT(game.clients[0].camera.pan.active);
+    T_EQ(game.clients[0].camera.pan.time, 4321);
+    T_FEQ(game.clients[0].camera.pan.start.x, 10.0f, 0.001f);
+    T_FEQ(game.clients[0].camera.pan.start.y, 20.0f, 0.001f);
+    T_FEQ(game.clients[0].camera.pan.destination.x, 110.0f, 0.001f);
+    T_FEQ(game.clients[0].camera.pan.destination.y, 220.0f, 0.001f);
+    T_FEQ(game.clients[0].camera.pan.rate.x, 100.0f, 0.001f);
+    T_FEQ(game.clients[0].camera.pan.rate.y, 200.0f, 0.001f);
     T_FEQ(game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].magnitude, 9.5f, 0.001f);
     T_FEQ(game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].velocity, 3.25f, 0.001f);
     T_ASSERT(game.clients[0].camera.noise[CAMERA_NOISE_SOURCE].vert_only);
@@ -4658,12 +4652,12 @@ SAVE_INT_FIELD_TEST(field_variation_round_trip, variation, 7)
 SAVE_INT_FIELD_TEST(field_build_project_round_trip, build_project, MAKEFOURCC('h', 'b', 'a', 'r'))
 SAVE_INT_FIELD_TEST(field_spawn_time_round_trip, spawn_time, 12345)
 SAVE_INT_FIELD_TEST(field_aura_effect_role_round_trip, aura_effect_role, AURA_EFFECT_SOURCE)
-SAVE_INT_FIELD_TEST(field_wander_next_time_round_trip, wander_next_time, 9100)
-SAVE_INT_FIELD_TEST(field_wander_random_state_round_trip, wander_random_state, 0x1234567)
-SAVE_INT_FIELD_TEST(field_wander_goal_generation_round_trip, wander_goal_generation, 42)
-SAVE_INT_FIELD_TEST(field_waypoint_generation_round_trip, waypoint_generation, 43)
-SAVE_PTR_FIELD_TEST(field_wander_goal_round_trip, "wander_goal", wander_goal, 0)
-SAVE_PTR_FIELD_TEST(field_wander_waypoint_round_trip, "wander_waypoint", wander_waypoint, 0)
+SAVE_INT_FIELD_TEST(field_wander_next_time_round_trip, wander->next_time, 9100)
+SAVE_INT_FIELD_TEST(field_wander_random_state_round_trip, wander->random_state, 0x1234567)
+SAVE_INT_FIELD_TEST(field_wander_goal_generation_round_trip, wander->goal_generation, 42)
+SAVE_INT_FIELD_TEST(field_waypoint_generation_round_trip, route->serial, 43)
+SAVE_PTR_FIELD_TEST(field_wander_goal_round_trip, "wander->goal", wander->goal, 0)
+SAVE_PTR_FIELD_TEST(field_wander_waypoint_round_trip, "wander->waypoint", wander->waypoint, 0)
 SAVE_INT_FIELD_TEST(field_summon_ability_round_trip, summon_ability, MAKEFOURCC('A', 'O', 's', 'f'))
 
 TEST(wc3_save, ability_owned_timed_summon_round_trip) {
@@ -4843,7 +4837,42 @@ TEST(wc3_save, owned_target_effect_round_trip_preserves_owner_and_target_generat
 SAVE_INT_FIELD_TEST(field_shared_vision_round_trip, shared_vision, (1u << 0) | (1u << 7))
 SAVE_INT_FIELD_TEST(field_harvested_lumber_round_trip, harvested_lumber, 37)
 SAVE_INT_FIELD_TEST(field_harvested_gold_round_trip, harvested_gold, 41)
-SAVE_INT_FIELD_TEST(field_heatmap_round_trip, heatmap2, 73)
+/* Saved animation text must survive destruction of every interned process address. */
+TEST(wc3_save, animation_strings_restore_after_intern_storage_is_released) {
+    cstring_t file = Test_TempPath("animation-strings.bin");
+    reset_entities();
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    int const index = unit - g_edicts;
+    unit->animation_request = G_InternAnimationName("stand ready");
+    unit->animation_props = G_InternAnimationName("alternate,work");
+    unit->queued_animation = G_InternAnimationName("stand third");
+    T_ASSERT(WriteGame(file));
+    reset_entities();
+    G_FreeAnimationNames();
+    T_ASSERT(ReadGame(file));
+    unit = g_edicts + index;
+    T_STREQ(unit->animation_request, "stand ready");
+    T_STREQ(unit->animation_props, "alternate,work");
+    T_STREQ(unit->queued_animation, "stand third");
+    T_ASSERT(unit->animation_request == G_InternAnimationName("stand ready"));
+    remove(file);
+}
+
+/* A saved destination retains incarnation, but process-local routing fields must rebuild. */
+TEST(wc3_save, route_cache_rebuilds_after_load) {
+    cstring_t file = Test_TempPath("route-cache.bin");
+    reset_entities();
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    unit->route = G_AllocRoute();
+    unit->route->field = 73;
+    unit->route->serial = 42;
+    T_ASSERT(WriteGame(file));
+    T_ASSERT(ReadGame(file));
+    T_NOT_NULL(unit->route);
+    T_EQ(unit->route->field, 0);
+    T_EQ(unit->route->serial, 42);
+    remove(file);
+}
 SAVE_INT_FIELD_TEST(field_peons_inside_round_trip, peonsinside, 5)
 SAVE_INT_FIELD_TEST(field_ai_flags_round_trip, aiflags, 0x55)
 SAVE_INT_FIELD_TEST(field_corpse_flags_round_trip, aiflags, AI_CORPSE_UNRAISABLE | AI_CORPSE_NO_DECAY | AI_CORPSE_RESERVED)
@@ -5077,9 +5106,9 @@ TEST(wc3_save, field_channel_origin_round_trip) {
 
 TEST(wc3_save, movement_guard_state_round_trip) {
     cstring_t filename = Test_TempPath("wc3-save-movement-guard.bin");
-    field_t const *position = find_save_field("movement.guard_position");
-    field_t const *state = find_save_field("movement.guard_state");
-    field_t const *holding = find_save_field("movement.holding_position");
+    field_t const *position = find_save_field("orders->guard_position");
+    field_t const *state = find_save_field("orders->guard_state");
+    field_t const *holding = find_save_field("orders->holding_position");
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0, 0);
 
@@ -5087,17 +5116,17 @@ TEST(wc3_save, movement_guard_state_round_trip) {
     T_NOT_NULL(state); if (state) T_EQ(state->type, F_INT);
     T_NOT_NULL(holding); if (holding) T_EQ(holding->type, F_INT);
 
-    unit->movement.guard_position = (vec2_t){ 123.5f, 456.5f };
-    unit->movement.guard_state = GUARD_RETURNING;
-    unit->movement.holding_position = true;
+    unit->orders->guard_position = (vec2_t){ 123.5f, 456.5f };
+    unit->orders->guard_state = GUARD_RETURNING;
+    unit->orders->holding_position = true;
     T_ASSERT(WriteGame(filename));
     memset(&unit->movement, 0, sizeof(unit->movement));
     T_ASSERT(ReadGame(filename));
 
-    T_FEQ(unit->movement.guard_position.x, 123.5f, 0.001f);
-    T_FEQ(unit->movement.guard_position.y, 456.5f, 0.001f);
-    T_EQ(unit->movement.guard_state, GUARD_RETURNING);
-    T_ASSERT(unit->movement.holding_position);
+    T_FEQ(unit->orders->guard_position.x, 123.5f, 0.001f);
+    T_FEQ(unit->orders->guard_position.y, 456.5f, 0.001f);
+    T_EQ(unit->orders->guard_state, GUARD_RETURNING);
+    T_ASSERT(unit->orders->holding_position);
     remove(filename);
 }
 
@@ -5110,31 +5139,32 @@ TEST(wc3_save, route_resume_cache_and_wait_diagnostics_clear_on_round_trip) {
     unit_index = globals.num_edicts;
     unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0, 0);
     goal = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 128, 0);
-    unit->movement.route_resume_direction = (vec2_t){ 1.0f, 0.0f };
-    unit->movement.route_resume_goal_origin = goal->s.origin2;
-    unit->movement.route_resume_goal = goal;
-    unit->movement.route_resume_goal_spawn = goal->spawn_time;
-    unit->movement.route_resume_time = 1234;
-    unit->movement.route_resume_radius = 31.0f;
-    unit->movement.route_resume_flags = CM_PATHING_UNWALKABLE;
-    unit->movement.route_resume_valid = true;
-    unit->movement.route_resume_active = true;
-    unit->movement.path_wait_active = true;
-    unit->movement.path_wait_start = 5678;
-    unit->movement.path_wait_goal_number = goal->s.number;
-    unit->movement.path_wait_goal_spawn = goal->spawn_time;
-    unit->movement.path_wait_origin = unit->s.origin2;
+    G_BeginMovement(unit);
+    unit->movement->route_resume_direction = (vec2_t){ 1.0f, 0.0f };
+    unit->movement->route_resume_goal_origin = goal->s.origin2;
+    unit->movement->route_resume_goal = goal;
+    unit->movement->route_resume_goal_spawn = goal->spawn_time;
+    unit->movement->route_resume_time = 1234;
+    unit->movement->route_resume_radius = 31.0f;
+    unit->movement->route_resume_flags = CM_PATHING_UNWALKABLE;
+    unit->movement->route_resume_valid = true;
+    unit->movement->route_resume_active = true;
+    unit->movement->path_wait_active = true;
+    unit->movement->path_wait_start = 5678;
+    unit->movement->path_wait_goal_number = goal->s.number;
+    unit->movement->path_wait_goal_spawn = goal->spawn_time;
+    unit->movement->path_wait_origin = unit->s.origin2;
 
     T_ASSERT(WriteGame(filename));
-    unit->movement.route_resume_goal = (edict_t *)(uintptr_t)1;
+    unit->movement->route_resume_goal = (edict_t *)(uintptr_t)1;
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + unit_index;
-    T_NULL(unit->movement.route_resume_goal);
-    T_ASSERT(!unit->movement.route_resume_valid);
-    T_ASSERT(!unit->movement.route_resume_active);
-    T_ASSERT(!unit->movement.path_wait_active);
-    T_EQ(unit->movement.route_resume_time, 0);
-    T_EQ(unit->movement.path_wait_start, 0);
+    T_NULL(unit->movement->route_resume_goal);
+    T_ASSERT(!unit->movement->route_resume_valid);
+    T_ASSERT(!unit->movement->route_resume_active);
+    T_ASSERT(!unit->movement->path_wait_active);
+    T_EQ(unit->movement->route_resume_time, 0);
+    T_EQ(unit->movement->path_wait_start, 0);
     remove(filename);
 }
 
@@ -5151,31 +5181,31 @@ TEST(wc3_save, live_guard_return_move_resumes_after_round_trip) {
     unit->die = unit_die;
     unit_stand(unit);
     order_stop(unit);
-    T_ASSERT(unit->movement.guard_state != GUARD_NONE);
+    T_ASSERT(unit->orders->guard_state != GUARD_NONE);
 
     S_UnitAbilityEvent(unit, A_AUTO_COMBAT_START);
     unit->s.origin2.x = unit->s.origin.x = 400;
     gi.LinkEntity(unit);
     T_ASSERT(S_UnitAbilityEvent(unit, A_AUTO_COMBAT_END));
-    T_ASSERT(unit->movement.guard_state == GUARD_RETURNING);
+    T_ASSERT(unit->orders->guard_state == GUARD_RETURNING);
     T_ASSERT(unit->currentmove->proc == CAbilityMove);
     T_ASSERT(WriteGame(filename));
 
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + unit_index;
-    T_ASSERT(unit->movement.guard_state == GUARD_RETURNING);
+    T_ASSERT(unit->orders->guard_state == GUARD_RETURNING);
     T_ASSERT(unit->currentmove->proc == CAbilityMove);
     T_NOT_NULL(unit->goalentity);
     if (unit->goalentity) {
         T_FEQ(unit->goalentity->s.origin2.x, 200, 0.001f);
         T_FEQ(unit->goalentity->s.origin2.y, 0, 0.001f);
     }
-    unit->s.origin2 = unit->movement.guard_position;
+    unit->s.origin2 = unit->orders->guard_position;
     unit->s.origin.x = unit->s.origin2.x;
     unit->s.origin.y = unit->s.origin2.y;
     gi.LinkEntity(unit);
     unit->currentmove->think(unit);
-    T_ASSERT(unit->movement.guard_state == GUARD_IDLE);
+    T_ASSERT(unit->orders->guard_state == GUARD_IDLE);
     T_ASSERT(unit->currentmove->think == ai_stand);
     remove(filename);
 }
@@ -5199,21 +5229,21 @@ TEST(wc3_save, live_creep_guard_return_move_resumes_after_round_trip) {
     gi.LinkEntity(unit);
     G_CreepGuardAutoCombat(unit);
     T_ASSERT(G_CreepGuardCombatEnd(unit));
-    T_ASSERT(unit->movement.creep_guard_phase == CREEP_GUARD_RETURNING);
+    T_ASSERT(unit->orders->creep_guard_phase == CREEP_GUARD_RETURNING);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
     T_ASSERT(unit->goalentity);
     T_ASSERT(WriteGame(filename));
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + unit_index;
-    T_ASSERT(unit->movement.creep_guard_phase == CREEP_GUARD_RETURNING);
+    T_ASSERT(unit->orders->creep_guard_phase == CREEP_GUARD_RETURNING);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
     T_ASSERT(unit->goalentity);
     T_FEQ(unit->goalentity->s.origin2.x, 128.0f, 0.001f);
-    unit->s.origin2 = unit->movement.creep_guard_origin;
+    unit->s.origin2 = unit->orders->creep_guard_origin;
     unit->s.origin.x = unit->s.origin2.x;
     gi.LinkEntity(unit);
     G_CreepGuardTick(unit);
-    T_ASSERT(unit->movement.creep_guard_phase == CREEP_GUARD_IDLE);
+    T_ASSERT(unit->orders->creep_guard_phase == CREEP_GUARD_IDLE);
     remove(filename);
 }
 
@@ -5233,24 +5263,24 @@ TEST(wc3_save, creep_guard_return_retry_state_round_trip) {
     G_CreepGuardInit(unit);
     unit->s.origin2.x = unit->s.origin.x = 900;
     gi.LinkEntity(unit);
-    unit->movement.creep_guard_phase = CREEP_GUARD_RETURNING;
-    unit->movement.creep_guard_return_retries = 2;
-    unit->movement.creep_guard_retry_at_ms = 9000;
-    unit->movement.creep_guard_last_hit_ms = 2000;
-    unit->movement.creep_guard_outside_ms = 3000;
+    unit->orders->creep_guard_phase = CREEP_GUARD_RETURNING;
+    unit->orders->creep_guard_return_retries = 2;
+    unit->orders->creep_guard_retry_at_ms = 9000;
+    unit->orders->creep_guard_last_hit_ms = 2000;
+    unit->orders->creep_guard_outside_ms = 3000;
     T_ASSERT(WriteGame(filename));
-    if (unit->movement.creep_guard_phase == CREEP_GUARD_RETURNING) unit->movement.creep_guard_phase = CREEP_GUARD_IDLE;
-    unit->movement.creep_guard_return_retries = 0;
-    unit->movement.creep_guard_retry_at_ms = 0;
+    if (unit->orders->creep_guard_phase == CREEP_GUARD_RETURNING) unit->orders->creep_guard_phase = CREEP_GUARD_IDLE;
+    unit->orders->creep_guard_return_retries = 0;
+    unit->orders->creep_guard_retry_at_ms = 0;
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + unit_index;
-    T_ASSERT(unit->movement.creep_guard_enabled);
-    T_ASSERT(unit->movement.creep_guard_phase == CREEP_GUARD_RETURNING);
-    T_EQ(unit->movement.creep_guard_return_retries, 2u);
-    T_EQ(unit->movement.creep_guard_retry_at_ms, 9000u);
-    T_EQ(unit->movement.creep_guard_last_hit_ms, 2000u);
-    T_EQ(unit->movement.creep_guard_outside_ms, 3000u);
-    T_FEQ(unit->movement.creep_guard_origin.x, 128, 0.001f);
+    T_ASSERT(unit->orders->creep_guard_enabled);
+    T_ASSERT(unit->orders->creep_guard_phase == CREEP_GUARD_RETURNING);
+    T_EQ(unit->orders->creep_guard_return_retries, 2u);
+    T_EQ(unit->orders->creep_guard_retry_at_ms, 9000u);
+    T_EQ(unit->orders->creep_guard_last_hit_ms, 2000u);
+    T_EQ(unit->orders->creep_guard_outside_ms, 3000u);
+    T_FEQ(unit->orders->creep_guard_origin.x, 128, 0.001f);
     remove(filename);
 }
 
@@ -5536,13 +5566,13 @@ SAVE_PTR_FIELD_TEST(field_inventory_round_trip, "inventory", inventory[3], MAX_I
 SAVE_PTR_FIELD_TEST(field_cargo_round_trip, "cargo->units", cargo->units[4], MAX_CARGO)
 SAVE_PTR_FIELD_TEST(field_item_carrier_round_trip, "item->carrier", item->carrier, 0)
 SAVE_PTR_FIELD_TEST(field_ground_next_round_trip, "ground_next", ground_next, 0)
-SAVE_PTR_FIELD_TEST(field_attackmove_waypoint_round_trip, "movement.attackmove_waypoint", movement.attackmove_waypoint, 0)
-SAVE_PTR_FIELD_TEST(field_patrol_a_round_trip, "movement.patrol_a", movement.patrol_a, 0)
-SAVE_PTR_FIELD_TEST(field_patrol_b_round_trip, "movement.patrol_b", movement.patrol_b, 0)
-SAVE_PTR_FIELD_TEST(field_patrol_target_round_trip, "movement.patrol_target", movement.patrol_target, 0)
+SAVE_PTR_FIELD_TEST(field_attackmove_waypoint_round_trip, "orders->attackmove_waypoint", orders->attackmove_waypoint, 0)
+SAVE_PTR_FIELD_TEST(field_patrol_a_round_trip, "orders->patrol_a", orders->patrol_a, 0)
+SAVE_PTR_FIELD_TEST(field_patrol_b_round_trip, "orders->patrol_b", orders->patrol_b, 0)
+SAVE_PTR_FIELD_TEST(field_patrol_target_round_trip, "orders->patrol_target", orders->patrol_target, 0)
 SAVE_PTR_FIELD_TEST(field_goal_entity_round_trip, "goalentity", goalentity, 0)
-SAVE_PTR_FIELD_TEST(field_item_drop_round_trip, "item_drop", item_drop, 0)
-SAVE_PTR_FIELD_TEST(field_spell_item_round_trip, "spell_item", spell_item, 0)
+SAVE_PTR_FIELD_TEST(field_item_drop_round_trip, "orders->item_drop", orders->item_drop, 0)
+SAVE_PTR_FIELD_TEST(field_spell_item_round_trip, "channel->source_item", channel->source_item, 0)
 SAVE_PTR_FIELD_TEST(field_soul_trap_head_round_trip, "soul_trap_head", soul_trap_head, 0)
 SAVE_PTR_FIELD_TEST(field_soul_trap_carrier_round_trip, "soul_trap_carrier", soul_trap_carrier, 0)
 SAVE_PTR_FIELD_TEST(field_soul_trap_next_round_trip, "soul_trap_next", soul_trap_next, 0)
@@ -5557,7 +5587,7 @@ SAVE_INT_FIELD_TEST(field_item_pending_use_carrier_spawn_round_trip, item->pendi
 SAVE_INT_FIELD_TEST(field_item_pending_use_slot_round_trip, item->pending_use_slot, 4)
 SAVE_INT_FIELD_TEST(field_item_soul_target_spawn_round_trip, item->soul_target_spawn_time, 250)
 SAVE_PTR_FIELD_TEST(field_combat_entity_round_trip, "combatentity", combatentity, 0)
-SAVE_PTR_FIELD_TEST(field_secondary_goal_round_trip, "secondarygoal", secondarygoal, 0)
+SAVE_PTR_FIELD_TEST(field_secondary_goal_round_trip, "orders->resource_goal", orders->resource_goal, 0)
 SAVE_PTR_FIELD_TEST(field_owner_round_trip, "owner", owner, 0)
 SAVE_PTR_FIELD_TEST(field_build_round_trip, "build", build, 0)
 SAVE_PTR_FIELD_TEST(field_build_preview_round_trip, "build_preview", build_preview, 0)
@@ -6059,13 +6089,13 @@ TEST(wc3_save, round_trip_waypoint_references) {
     T_ASSERT(waypoint->svflags & SVF_NOCLIENT);
     G_InitWaypoints(); T_EQ(globals.num_edicts, count);
     unit->goalentity = waypoint;
-    unit->movement.attackmove_waypoint = waypoint;
+    unit->orders->attackmove_waypoint = waypoint;
     T_ASSERT(WriteGame(filename));
     waypoint->s.origin2 = (vec2_t){ 0 };
-    unit->goalentity = unit->movement.attackmove_waypoint = NULL;
+    unit->goalentity = unit->orders->attackmove_waypoint = NULL;
     Waypoint_add(&(vec2_t){ 1.0f, 1.0f });
     T_ASSERT(ReadGame(filename));
-    T_ASSERT(unit->goalentity == waypoint && unit->movement.attackmove_waypoint == waypoint);
+    T_ASSERT(unit->goalentity == waypoint && unit->orders->attackmove_waypoint == waypoint);
     T_FEQ(waypoint->s.origin2.x, destination.x, 0.01f); T_FEQ(waypoint->s.origin2.y, destination.y, 0.01f);
     T_EQ(level.waypoints.cursor, cursor);
     remove(filename);

@@ -112,19 +112,19 @@ static void goldmine_debug_log_approach(edict_t *ent, edict_t *mine,
             ent->s.number, (cstring_t)&ent->s.class_id, ent->s.origin.x, ent->s.origin.y, ent->collision,
             mine->s.number, (cstring_t)&mine->s.class_id, mine->s.origin.x, mine->s.origin.y,
             mine->s.angle, mine->collision, dist, contact, step, footprint_dist,
-            ent->movement.heading, ent->movement.flow_direct, ent->movement.path.valid,
-            ent->movement.path.waypoint.x, ent->movement.path.waypoint.y,
-            ent->movement.flow_generation, ent->movement.flow_goal_reached,
-            ent->movement.flow_unreachable);
+            ent->movement->heading, ent->movement->flow_direct, ent->movement->path.valid,
+            ent->movement->path.waypoint.x, ent->movement->path.waypoint.y,
+            ent->movement->flow_generation, ent->movement->flow_goal_reached,
+            ent->movement->flow_unreachable);
 }
 
 /* A resumable route miss leaves direct, accelerator, and flow states clear.
  * Gold movement must hold then: using the previous facing would send workers
  * in an unrelated direction while the shared route is still being built. */
 static bool gold_route_pending(edict_t const *worker) {
-    return worker && !worker->movement.flow_direct &&
-           !worker->movement.path.valid &&
-           worker->movement.flow_generation == 0;
+    return worker && worker->movement && !worker->movement->flow_direct &&
+           !worker->movement->path.valid &&
+           worker->movement->flow_generation == 0;
 }
 
 /* Warsmash-style return movement still needs a concrete static endpoint for a
@@ -366,7 +366,7 @@ static void goldmine_finish_deposit(edict_t *ent, edict_t *dropoff, int debug) {
     player_t *player;
 
     G_PublishMessage(ent, GAME_MSG_HARVEST_DEPOSIT_GOLD, dropoff);
-    ent->goalentity = ent->secondarygoal;
+    ent->goalentity = ent->orders->resource_goal;
     player = G_GetPlayerByNumber(ent->s.player);
     if (player) {
         G_CreditResourceIncome(player, ent, PLAYERSTATE_RESOURCE_GOLD,
@@ -467,8 +467,8 @@ static void ai_minegold(edict_t *ent) {
 static void ai_waittoenter(edict_t *ent) {
 }
 
-static umove_t harvestgold_move_walk = { "walk", ai_walkmine, NULL, CAbilityGoldMine };
-static umove_t harvestgold_move_walkback = { "walk", ai_goldmine_walkback, NULL, CAbilityGoldMine };
+static umove_t harvestgold_move_walk = { "walk", ai_walkmine, NULL, CAbilityGoldMine, .travel = true };
+static umove_t harvestgold_move_walkback = { "walk", ai_goldmine_walkback, NULL, CAbilityGoldMine, .travel = true };
 static umove_t harvestgold_move_minegold = { "attack", ai_minegold, NULL, CAbilityGoldMine };
 static umove_t harvestgold_move_wait = { "stand", ai_waittoenter, NULL, CAbilityGoldMine };
 
@@ -599,7 +599,7 @@ void harvest_gold_start(edict_t *self, edict_t *target) {
                 target ? target->s.angle : 0.0f);
     }
     self->goalentity = target;
-    self->secondarygoal = target;
+    self->orders->resource_goal = target;
     G_PublishMessage(self, GAME_MSG_HARVEST_MOVE_GOLD, target);
     harvestgold_walk(self);
 }
@@ -811,7 +811,7 @@ void S_AcolyteHarvestRelease(edict_t *worker) {
     worker->acolyte_mine->mine_spawn_time = 0;
     worker->acolyte_mine->slot = -1;
     if (worker->goalentity == mine) worker->goalentity = NULL;
-    if (worker->secondarygoal == mine) worker->secondarygoal = NULL;
+    if (worker->orders->resource_goal == mine) worker->orders->resource_goal = NULL;
 }
 
 void S_MineOverlayRelease(edict_t *overlay) {
@@ -1052,7 +1052,7 @@ static void acolyte_snap_to_slot(edict_t *worker) {
 
 static void ai_acolyte_harvest_walk(edict_t *worker);
 static void ai_acolyte_harvest_work(edict_t *worker);
-static umove_t acolyte_harvest_move_walk = { "walk", ai_acolyte_harvest_walk, NULL, CAbilityAcolyteHarvest };
+static umove_t acolyte_harvest_move_walk = { "walk", ai_acolyte_harvest_walk, NULL, CAbilityAcolyteHarvest, .travel = true };
 static umove_t acolyte_harvest_move_work = { "stand work", ai_acolyte_harvest_work, NULL, CAbilityAcolyteHarvest };
 
 /* Advance an Acolyte toward its assigned Haunted Mine and claim its slot on arrival. */
@@ -1076,7 +1076,7 @@ static void ai_acolyte_harvest_walk(edict_t *worker) {
         return;
     }
     unit_changeangle_interaction_ignore_units(worker);
-    if (worker->movement.flow_unreachable) {
+    if (worker->movement->flow_unreachable) {
         unit_stand(worker);
         return;
     }
@@ -1104,14 +1104,14 @@ bool S_AcolyteHarvestOrder(edict_t *worker, edict_t *mine) {
 
     G_ClearUnitOrderQueue(worker);
     S_AcolyteHarvestRelease(worker);
-    worker->movement.follow_target = NULL;
-    worker->movement.attackmove_waypoint = NULL;
-    worker->movement.patrol_a = NULL;
-    worker->movement.patrol_b = NULL;
-    worker->movement.patrol_target = NULL;
-    worker->movement.holding_position = false;
+    worker->orders->follow_target = NULL;
+    worker->orders->attackmove_waypoint = NULL;
+    worker->orders->patrol_a = NULL;
+    worker->orders->patrol_b = NULL;
+    worker->orders->patrol_target = NULL;
+    worker->orders->holding_position = false;
     worker->goalentity = mine;
-    worker->secondarygoal = mine;
+    worker->orders->resource_goal = mine;
     move_reset_progress(worker);
     unit_setmove(worker, &acolyte_harvest_move_walk);
     return true;
@@ -1433,18 +1433,18 @@ bool S_AutoEntangleNearby(edict_t *caster, bool instant) {
 }
 
 BZ_ABILITY_PROC(CAbilityEntangle) {
-    if (msg == A_ISSUED_TARGET_ORDER && call && call->issued_target_order.order) {
-        cstring_t order = call->issued_target_order.order;
+    if (msg == A_ISSUED_TARGET_ORDER && call && call->order) {
+        cstring_t order = call->order;
         bool instant;
         if (strcmp(order, "entangle") && strcmp(order, "entangleinstant") &&
             strcmp(order, "autoentangle") && strcmp(order, "autoentangleinstant"))
             return ABILITY_ORDER_UNHANDLED;
         instant = !strcmp(order, "entangleinstant") || !strcmp(order, "autoentangleinstant");
-        return entangle_goldmine_start(ent, call->issued_target_order.target, instant, NULL) ?
+        return entangle_goldmine_start(ent, call->entity, instant, NULL) ?
             ABILITY_ORDER_ACCEPTED : ABILITY_ORDER_REJECTED;
     }
     switch (msg) {
-    case A_COMMAND: entangle_goldmine_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: entangle_goldmine_command(call && call->entity ? call->entity : ent); return true;
     /* The mine must retire at Tree death, before the corpse's later removal. */
     case A_DEATH:
     case A_UNIT_REMOVE: S_ReleaseEntangledMineForTree(ent); return true;

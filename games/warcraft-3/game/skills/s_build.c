@@ -99,7 +99,7 @@ static void ai_build_walk(edict_t *ent) {
 #ifdef WC3_DEBUG_BUILD
         fprintf(stderr, "WC3_BUILD walk-retry worker=%ld id=%.4s reason=blocked distance=%.1f step=%.1f flow=(%d,%d) origin=(%.1f,%.1f) target=(%.1f,%.1f)\n",
                 (long)(ent - g_edicts), (cstring_t)&ent->build_project, distance, step,
-                ent->movement.flow_goal_reached, ent->movement.flow_unreachable,
+                ent->movement->flow_goal_reached, ent->movement->flow_unreachable,
                 ent->s.origin2.x, ent->s.origin2.y, goal->s.origin2.x, goal->s.origin2.y);
 #endif
         /* A construction footprint makes the raw build center blocked, but
@@ -116,7 +116,7 @@ static void ai_build_walk(edict_t *ent) {
     else
         unit_changeangle_for_radius(ent, ent->collision);
 
-    if (ent->movement.flow_unreachable) {
+    if (ent->movement->flow_unreachable) {
         /* A real construction footprint is now static pathing, so its center
          * is intentionally unreachable. Build must continue to the closest
          * legal approach cell instead of treating the worker's point order as
@@ -131,7 +131,7 @@ static void ai_build_walk(edict_t *ent) {
                     goal->s.origin2.x, goal->s.origin2.y);
 #endif
             unit_changeangle_towards_point(ent, &approach);
-            if (!ent->movement.flow_unreachable) {
+            if (!ent->movement->flow_unreachable) {
                 unit_moveindirection(ent);
                 return;
             }
@@ -148,7 +148,7 @@ static void ai_build_walk(edict_t *ent) {
     unit_moveindirection(ent);
 }
 
-static umove_t build_move_walk = { "walk", ai_build_walk, NULL, CAbilityBuild };
+static umove_t build_move_walk = { "walk", ai_build_walk, NULL, CAbilityBuild, .travel = true };
 /* Undead builders remain visible for the short summon animation while the
  * structure has already begun autonomous construction. The building-owned
  * construction timer releases this worker after the Warsmash 2.267 s window. */
@@ -714,7 +714,7 @@ BZ_ABILITY_PROC(CAbilityBuild) {
     unitOrder_t const *queued = call ? call->queued_order : NULL;
 
     if (msg == A_COMMAND) {
-        AbilityBuild_Command(call && call->client ? call->client : ent);
+        AbilityBuild_Command(call && call->entity ? call->entity : ent);
         return true;
     }
     if ((msg == A_QUEUE_ORDER_START || msg == A_QUEUE_ORDER_CANCEL) && queued &&

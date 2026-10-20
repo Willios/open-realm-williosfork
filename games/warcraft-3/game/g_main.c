@@ -1061,6 +1061,7 @@ static void G_ShutdownGame(void) {
     G_FowShutdown();
     G_BlightShutdown();
     G_FreeModels();
+    G_FreeAnimationNames();
     if (game.clients) FOR_LOOP(i, game.max_clients) G_ClearPlayerAbilityAvailability(game.clients + i);
     gi.MemFree(g_edicts);
     g_edicts = NULL;
@@ -1156,12 +1157,12 @@ static void G_ReclampClientCamera(gameClient_t *client) {
     client->camera.old_state.position = position;
     position = G_ClampCameraPosition(client, &client->camera.state.position);
     client->camera.state.position = position;
-    if (client->camera.pan_active) {
+    if (client->camera.pan.active) {
         position = G_CameraPanPositionAtTime(client, G_Time(), NULL);
-        client->camera.pan_start = G_ClampCameraPosition(client, &position);
-        client->camera.pan_start_time = G_Time();
-        position = G_ClampCameraPosition(client, &client->camera.pan_destination);
-        client->camera.pan_destination = position;
+        client->camera.pan.start = G_ClampCameraPosition(client, &position);
+        client->camera.pan.time = G_Time();
+        position = G_ClampCameraPosition(client, &client->camera.pan.destination);
+        client->camera.pan.destination = position;
     }
 }
 
@@ -1183,11 +1184,11 @@ void G_SetCameraBounds(float const bounds[8]) {
 
 void G_ClearCameraPan(gameClient_t *client) {
     if (!client) return;
-    client->camera.pan_active = false;
-    client->camera.pan_start_time = 0;
-    client->camera.pan_start = (vec2_t){ 0, 0 };
-    client->camera.pan_destination = (vec2_t){ 0, 0 };
-    client->camera.pan_rate = (vec2_t){ 0, 0 };
+    client->camera.pan.active = false;
+    client->camera.pan.time = 0;
+    client->camera.pan.start = (vec2_t){ 0, 0 };
+    client->camera.pan.destination = (vec2_t){ 0, 0 };
+    client->camera.pan.rate = (vec2_t){ 0, 0 };
 }
 
 static float G_CameraPanAxisAtTime(float start, float destination, float rate, float elapsed) {
@@ -1205,17 +1206,17 @@ vec2_t G_CameraPanPositionAtTime(gameClient_t *client, uint32_t now, bool *compl
     float elapsed;
 
     if (complete) *complete = true;
-    if (!client || !client->camera.pan_active)
+    if (!client || !client->camera.pan.active)
         return client ? client->camera.state.position : (vec2_t){ 0, 0 };
-    elapsed = now > client->camera.pan_start_time ?
-        (now - client->camera.pan_start_time) / 1000.0f : 0.0f;
-    position.x = G_CameraPanAxisAtTime(client->camera.pan_start.x, client->camera.pan_destination.x,
-                                       client->camera.pan_rate.x, elapsed);
-    position.y = G_CameraPanAxisAtTime(client->camera.pan_start.y, client->camera.pan_destination.y,
-                                       client->camera.pan_rate.y, elapsed);
+    elapsed = now > client->camera.pan.time ?
+        (now - client->camera.pan.time) / 1000.0f : 0.0f;
+    position.x = G_CameraPanAxisAtTime(client->camera.pan.start.x, client->camera.pan.destination.x,
+                                       client->camera.pan.rate.x, elapsed);
+    position.y = G_CameraPanAxisAtTime(client->camera.pan.start.y, client->camera.pan.destination.y,
+                                       client->camera.pan.rate.y, elapsed);
     if (complete)
-        *complete = position.x == client->camera.pan_destination.x &&
-                    position.y == client->camera.pan_destination.y;
+        *complete = position.x == client->camera.pan.destination.x &&
+                    position.y == client->camera.pan.destination.y;
     return position;
 }
 
@@ -1390,14 +1391,14 @@ static void G_RunClients(void) {
         bool pan_complete = false;
         vec2_t pan_position = { 0, 0 };
         G_UpdateCameraTarget(client);
-        if (client->camera.pan_active)
+        if (client->camera.pan.active)
             pan_position = G_CameraPanPositionAtTime(client, G_Time(), &pan_complete);
         duration = client->camera.end_time - client->camera.start_time;
         if (G_Time() < client->camera.end_time && duration > 0) {
             float k = (G_Time() - client->camera.start_time) / (float)duration;
             camerasetup_t const *a = &client->camera.old_state;
             camerasetup_t const *b = &client->camera.state;
-            vec2_t p = client->camera.pan_active ? pan_position : Vector2_lerp(&a->position, &b->position, k);
+            vec2_t p = client->camera.pan.active ? pan_position : Vector2_lerp(&a->position, &b->position, k);
             client->ps.vieworigin = G_MakeCameraOrigin(client, p.x, p.y, LerpNumber(a->z_offset, b->z_offset, k));
             /* JASS interpolates camera fields independently. Angle fields use
              * the game's periodic-degree rule; WC3 takes the shortest arc. */
@@ -1412,7 +1413,7 @@ static void G_RunClients(void) {
                 .znear = LerpNumber(a->near_z, b->near_z, k),
                 .zfar = LerpNumber(a->far_z, b->far_z, k) });
         } else {
-            vec2_t p = client->camera.pan_active ? pan_position : client->camera.state.position;
+            vec2_t p = client->camera.pan.active ? pan_position : client->camera.state.position;
             client->ps.vieworigin = G_MakeCameraOrigin(client, p.x, p.y, client->camera.state.z_offset);
             client->ps.viewangles = client->camera.state.viewangles;
             client->ps.distance = client->camera.state.target_distance;
@@ -1423,9 +1424,9 @@ static void G_RunClients(void) {
         }
         client->ps.viewoffset = G_CameraNoiseOffset(client, CAMERA_NOISE_TARGET, 0.0);
         client->ps.eyeoffset = G_CameraNoiseOffset(client, CAMERA_NOISE_SOURCE, CAMERA_NOISE_SOURCE_PHASE);
-        if (client->camera.pan_active && pan_complete) {
-            client->camera.old_state.position = client->camera.pan_destination;
-            client->camera.state.position = client->camera.pan_destination;
+        if (client->camera.pan.active && pan_complete) {
+            client->camera.old_state.position = client->camera.pan.destination;
+            client->camera.state.position = client->camera.pan.destination;
             G_ClearCameraPan(client);
         }
         if (client_ent) client_ent->s.origin = client->ps.vieworigin;

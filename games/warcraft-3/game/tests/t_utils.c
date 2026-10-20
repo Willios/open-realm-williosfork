@@ -28,6 +28,7 @@ void test_sound_event(edict_t *ent, uint32_t request, uint32_t event) {
 edict_t *alloc_test_unit(uint32_t class_id, float x, float y) {
     static UnitWeapons_t const test_weapons = { .attacksEnabled = 3 };
     edict_t *ent = G_Spawn();
+    G_InitUnitOrders(ent);
     ent->class_id = class_id;
     G_BindEntityData(ent);
     /* This helper constructs allocator-only units instead of running

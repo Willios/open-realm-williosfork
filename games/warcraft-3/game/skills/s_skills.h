@@ -30,7 +30,7 @@
     static void NAME##_Command(edict_t *clent); \
     BZ_ABILITY_PROC(C##NAME) { \
         if (msg != A_COMMAND) return false; \
-        NAME##_Command(call && call->client ? call->client : ent); \
+        NAME##_Command(call && call->entity ? call->entity : ent); \
         return true; \
     } \
     void NAME##_Command(edict_t *clent)

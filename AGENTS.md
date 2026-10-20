@@ -70,7 +70,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 | WC3 Human09 cinematic lifecycle, selection/region diagnostics, and campaign failure evidence | [docs/games/warcraft-3/human09-cinematic-lifecycle.md](docs/games/warcraft-3/human09-cinematic-lifecycle.md) |
 | WC3 campaign unlocks, completed-difficulty tracking, ORCP migration, selector visibility | [docs/games/warcraft-3/campaign-progress.md](docs/games/warcraft-3/campaign-progress.md) |
 | WC3 difficulty preference, fresh-map initialization and JASS difficulty state | [docs/games/warcraft-3/game-difficulty.md](docs/games/warcraft-3/game-difficulty.md) |
-| WC3 local state review, cooldown deadline, ability payload and retained-state rationale | [docs/games/warcraft-3/state-review.md](docs/games/warcraft-3/state-review.md) |
+| WC3 optional travel/waypoints, retained orders, player records, interned animation strings and ability payload | [docs/games/warcraft-3/state-review.md](docs/games/warcraft-3/state-review.md) |
 | WC3 sparse edict state: direct pointer access, allocation, release and persistence | [docs/games/warcraft-3/pooled-entity-state.md](docs/games/warcraft-3/pooled-entity-state.md) |
 | WC3 game save/load format, Hero walk diagnostic, `F_CFUNCTION` C callbacks, and `field_t` synchronization | [docs/games/warcraft-3/save-load.md](docs/games/warcraft-3/save-load.md) |
 | WC3 HUD texture/font indices vs names across `SV_Map` / save-load | [docs/games/warcraft-3/hud-media.md](docs/games/warcraft-3/hud-media.md) |

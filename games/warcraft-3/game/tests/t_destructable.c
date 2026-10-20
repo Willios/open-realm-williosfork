@@ -242,6 +242,7 @@ static edict_t *make_destructable_test_attacker(float x, float y) {
     ent->s.origin = (vec3_t){ x, y, 0.0f };
     ent->health.value = 100.0f;
     ent->health.max_value = 100.0f;
+    G_InitUnitOrders(ent);
     ent->svflags |= SVF_MONSTER;
     ent->attack1.type = ATK_NORMAL;
     ent->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS */
@@ -780,6 +781,7 @@ TEST(wc3_destructable, non_destructable_path_texture_keeps_axis_aligned_contract
     building = G_Spawn();
     building->class_id = MAKEFOURCC('h', 't', 'o', 'w');
     building->s.class_id = building->class_id;
+    G_InitUnitOrders(building);
     building->svflags |= SVF_MONSTER;
     building->s.angle = (float)M_PI / 2.0f;
     building->pathtex = (pathTex_t *)&pathtex;

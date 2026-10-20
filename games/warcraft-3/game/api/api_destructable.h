@@ -162,14 +162,14 @@ uint32_t QueueDestructableAnimation(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
     cstring_t const animation = jass_checkstring(j, 2);
     if (G_IsDestructable(d) && animation)
-        strlcpy(d->queued_animation, animation, sizeof(d->queued_animation));
+        d->queued_animation = G_InternAnimationName(animation);
     return 0;
 }
 uint32_t SetDestructableAnimation(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
     cstring_t animation = jass_checkstring(j, 2);
     if (G_IsDestructable(d) && animation) {
-        d->queued_animation[0] = '\0';
+        d->queued_animation = "";
         G_SetUnitAnimation(d, animation);
         d->animation_override = d->animation != NULL;
         if (d->animation) d->s.frame = d->animation->interval[0];

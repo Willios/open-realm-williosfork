@@ -626,7 +626,7 @@ BZ_ABILITY_PROC(CAbilityRoot) {
         return false;
     }
     switch (msg) {
-    case A_COMMAND: ancient_root_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: ancient_root_command(call && call->entity ? call->entity : ent); return true;
     case A_UPDATE: ancient_root_update(ent); return true;
     case A_MOVE_LEAVE:
         if (ent && ent->ancient_root && !ent->ancient_root->approaching &&

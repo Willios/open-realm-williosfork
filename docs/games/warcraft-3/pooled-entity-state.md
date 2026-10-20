@@ -18,7 +18,7 @@ The reference is id Software's [Quake II edict definition](https://github.com/id
 
 ## Lifetime
 
-Pools have 2,048 slots (2,047 usable, slot zero reserved), except the destructable pool at 8,192: every map-placed destructable owns a persistent record, and retail campaign maps peak near 5,000 (NightElf04, UndeadX01). All other pools peak at 256 or fewer. Each game shutdown logs `WC3 pool peak <name>=N/cap` for pools that were used; the map audit logs retain it, so rerun `make audit-wc3-maps` after adding a pool or raising content density. Allocation zeroes the selected record. Exhaustion logs the pool name and fails through `gi.error`; it never provides a shared writable fallback. `G_FreeAncientRoot(ent)` releases that record and clears its member. `G_PoolsReleaseEdict()` releases every attached record during entity teardown. Game initialization and map replacement reset all pools and detach all edict pool pointers.
+Ability pools have 2,048 slots (2,047 usable, slot zero reserved), except the destructable pool at 8,192: every map-placed destructable owns a persistent record, and retail campaign maps peak near 5,000 (NightElf04, UndeadX01). Movement, retained orders, destination routes and wander use `MAX_ENTITIES` slots because they can serve an entire active unit population; they are not restricted to the small ability-pool cap. Other ability pools previously measured at 256 or fewer. Each game shutdown logs `WC3 pool peak <name>=N/cap` for pools that were used; the map audit logs retain it, so rerun `make audit-wc3-maps` after adding a pool or raising content density. Allocation zeroes the selected record. Exhaustion logs the pool name and fails through `gi.error`; it never provides a shared writable fallback. `G_FreeAncientRoot(ent)` releases that record and clears its member. `G_PoolsReleaseEdict()` releases every attached record during entity teardown. Game initialization and map replacement reset all pools and detach all edict pool pointers.
 
 Construction state exists only while construction is in progress, including paused Human construction. Completion and stop release it after worker cleanup; `ent->construction != NULL` is the active-state check. There is no separate `active` flag.
 
@@ -43,7 +43,7 @@ Some state must remain independent of record presence:
 
 ## Save/load and verification
 
-Save format 64 persists the complete records of all 27 pools. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
+Save format 102 includes the four additional movement/order/route/wander roles alongside the original 27 pools. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
 
 `wc3_pools.release_reuses_zeroed_owned_state` checks initial absence, release, reuse and reset. `wc3_save.all_sparse_pools_restore_records_and_entity_references` checks all pool attachments, absent state on another entity, scalar state and entity references. Construction tests verify release on stop, cancellation and completion, a fresh lifecycle after stop, worker restoration, and completion events/food happening once. Existing ability, combat, construction, mining, item, cargo and save tests exercise the lifecycle entry points in both ROC and TFT modes.
 
@@ -51,3 +51,12 @@ Save format 64 persists the complete records of all 27 pools. Only pointer fixup
 make test-wc3-engine
 make test
 ```
+
+## Travel state
+
+`movement` is optional active-travel scratch; `orders` retains unit intent at rest,
+`route` belongs to routing destinations, and `wander` owns Awan's idle schedule and
+private waypoint. `G_UnitIsMoving()` checks travel-record presence, including paused
+or route-waiting operations. Stationary facing never needs a movement record.
+See [entity and player state](state-review.md) for allocation/release, save fixups,
+and the fields moved out of the old embedded edict state.

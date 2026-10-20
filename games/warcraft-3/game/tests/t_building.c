@@ -617,7 +617,7 @@ TEST(wc3_building, selected_building_rebuilds_info_panel_for_construction_and_up
     /* This is the cache state of an ordinary selected-unit panel immediately
      * before the selected building enters construction. */
     client->infopanel.entity = building->s.number;
-    client->infopanel.hp = (int32_t)building->health.value;
+    client->infopanel.count = (int32_t)building->health.value;
     client->infopanel.xp = 0;
     building->build = building;
     if (!building->construction) building->construction = G_AllocConstruction();
@@ -685,7 +685,7 @@ TEST(wc3_building, unsummoning_refreshes_training_queue_progress_panel) {
         .code = MAKEFOURCC('B','u','n','s'), .level = 1 };
     G_SelectEntity(client, building);
     client->infopanel.entity = 0;
-    client->infopanel.hp = -1;
+    client->infopanel.count = -1;
 
     building_queue_frame_count = 0;
     gi.Write = building_queue_capture_write;
@@ -3247,12 +3247,12 @@ TEST(wc3_building, build_order_clears_stop_guard) {
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = G_UnitBalance(barracks)->lumberCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
     order_stop(builder);
-    T_ASSERT(builder->movement.guard_state == GUARD_IDLE);
+    T_ASSERT(builder->orders->guard_state == GUARD_IDLE);
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
 
     T_EQ(builder->build_project, barracks);
-    T_ASSERT(builder->movement.guard_state == GUARD_NONE);
+    T_ASSERT(builder->orders->guard_state == GUARD_NONE);
 }
 
 /* Human04's opening sends these three preplaced Peasants to the centres of
@@ -4255,6 +4255,7 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
             ziggurat_balance = *ent->data.UnitBalance;
             ziggurat_balance.buildTime = 1;
             ent->data.UnitBalance = &ziggurat_balance;
+            G_InitUnitOrders(ent);
             ent->svflags |= SVF_MONSTER;
             ent->health.max_value = 1000.0f;
             ent->health.value = ent->health.max_value;
@@ -4296,6 +4297,7 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
     acolyte->heroabilities[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','u','n','s'), .level = 1);
     acolyte->mana.value = acolyte->mana.max_value = 100.0f;
     ziggurat->s.player = client->ps.number;
+    G_InitUnitOrders(ziggurat);
     ziggurat->svflags |= SVF_MONSTER;
     ziggurat->s.flags |= EF_BUILDING;
     ziggurat->targtype = TARG_STRUCTURE;
@@ -5365,7 +5367,7 @@ TEST(wc3_building, default_self_rally_does_not_autorepair_producer) {
     T_EQ(worker->autocast_code, 0);
     T_ASSERT(!(worker->aiflags & AI_AUTOCAST_REPAIR));
     T_FEQ(producer->health.value, 500.0f, 0.01f);
-    T_NULL(worker->movement.follow_target);
+    T_NULL(worker->orders->follow_target);
     T_ASSERT(worker->build != producer);
     T_ASSERT(worker->goalentity != producer);
     T_ASSERT(!worker->buildwork || worker->buildwork->ability == 0);
@@ -5972,9 +5974,9 @@ static edict_t *building_queued_build_preview(edict_t *worker, uint32_t queue_of
     unitOrder_t const *queued;
     uint32_t slot;
 
-    if (!worker || queue_offset >= worker->order_queue.count) return NULL;
-    slot = (worker->order_queue.head + queue_offset) % MAX_UNIT_ORDER_QUEUE;
-    queued = &worker->order_queue.entries[slot];
+    if (!worker || queue_offset >= worker->orders->queue.count) return NULL;
+    slot = (worker->orders->queue.head + queue_offset) % MAX_UNIT_ORDER_QUEUE;
+    queued = &worker->orders->queue.entries[slot];
     if (queued->target_type != UNIT_ORDER_TARGET_BUILD || !queued->target_number ||
         queued->target_number >= globals.num_edicts) {
         return NULL;
@@ -6068,10 +6070,10 @@ TEST(wc3_building, shift_build_click_keeps_overlay_and_queues_followup_site) {
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(!building_cursor_clear_seen);
     T_EQ(G_UnitQueuedOrderCount(worker), 1);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].order_id, barracks);
-    T_FEQ(worker->order_queue.entries[worker->order_queue.head].point.x, 512.0f, 0.01f);
-    T_FEQ(worker->order_queue.entries[worker->order_queue.head].point.y, 64.0f, 0.01f);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].order_id, barracks);
+    T_FEQ(worker->orders->queue.entries[worker->orders->queue.head].point.x, 512.0f, 0.01f);
+    T_FEQ(worker->orders->queue.entries[worker->orders->queue.head].point.y, 64.0f, 0.01f);
     {
         edict_t *preview = building_queued_build_preview(worker, 0);
         T_NOT_NULL(preview);
@@ -6239,16 +6241,16 @@ TEST(wc3_building, queued_build_payload_and_indicator_survive_save_load) {
     strlcpy(level.map_path, "Maps\\Campaign\\QueuedBuildSaveTest.w3m", sizeof(level.map_path));
     T_ASSERT(WriteGame(filename));
 
-    memset(&worker->order_queue, 0, sizeof(worker->order_queue));
+    memset(&worker->orders->queue, 0, sizeof(worker->orders->queue));
     preview->inuse = false;
     T_ASSERT(ReadGame(filename));
     worker = g_edicts + worker_number;
     preview = g_edicts + preview_number;
     T_EQ(G_UnitQueuedOrderCount(worker), 1);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].order_id, barracks);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_number, preview_number);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_spawn_time, preview_spawn_time);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].order_id, barracks);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_number, preview_number);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_spawn_time, preview_spawn_time);
     T_ASSERT(preview->inuse);
     G_ClearUnitOrderQueue(worker);
     T_EQ(G_UnitQueuedOrderCount(worker), 0);

@@ -313,7 +313,7 @@ static void cannibalize_approach_walk(edict_t *caster) {
     unit_moveindirection_ignore_units(caster);
 }
 
-static umove_t cannibalize_approach_move = { "walk", cannibalize_approach_walk, NULL, CAbilityMove };
+static umove_t cannibalize_approach_move = { "walk", cannibalize_approach_walk, NULL, CAbilityMove, .travel = true };
 
 static bool cannibalize_corpse_allowed(edict_t *caster, uint32_t code, edict_t *corpse) {
     return S_SpellCorpseTargetPosition(code, caster, corpse, NULL);
@@ -452,7 +452,7 @@ BZ_ABILITY_PROC(CAbilityCannibalize) {
     abilityitem_t const *spell = call ? call->item : NULL;
     switch (msg) {
     case A_COMMAND:
-        return cannibalize_command(ent, call ? call->client : NULL, spell);
+        return cannibalize_command(ent, call ? call->entity : NULL, spell);
     case A_VALIDATE:
         return spell && G_UnitAbilityResearchAvailable(ent, spell->code) && cannibalize_validate(ent, spell);
     case A_EXECUTE: {

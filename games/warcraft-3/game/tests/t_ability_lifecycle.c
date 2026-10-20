@@ -786,7 +786,7 @@ TEST(wc3_ability_lifecycle, cannibalize_command_approaches_nearby_corpse) {
     slkTestData_t *rows = parse_slk_string(review_slk), *old = G_SetSLKRows("AbilityData", rows);
     edict_t *clent = &g_edicts[0];
     abilityitem_t item = S_AbilityItem(FS_SLKKey("Acan"));
-    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .client = clent);
+    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .entity = clent);
     caster->health.value = 500;
     corpse->data.UnitData = &corpse_data; corpse->health.value = 0; corpse->svflags |= SVF_DEADMONSTER;
     clent->client = &game.clients[0]; clent->client->ps.number = 0; G_SelectEntity(clent->client, caster);

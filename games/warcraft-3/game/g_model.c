@@ -579,6 +579,30 @@ static void AnimationTagSetWrite(animationTagSet_t const *set, string_t out, siz
     }
 }
 
+/* Animation names outlive JASS arguments and are shared by units until model shutdown. */
+typedef struct animationName_s {
+    struct animationName_s *next;
+    char text[];
+} animationName_t;
+#define ANIMATION_NAME_BUCKETS 256 // hash buckets; bounds lookup chains for shared model/script names
+static animationName_t *animation_names[ANIMATION_NAME_BUCKETS];
+
+/* Intern by content so repeated Walk requests and tag changes do not allocate per unit or frame. */
+cstring_t G_InternAnimationName(cstring_t text) {
+    uint32_t hash = 2166136261u;
+    if (!text || !*text) return "";
+    for (cstring_t p = text; *p; p++) hash = (hash ^ (uint8_t)*p) * 16777619u;
+    uint32_t bucket = hash % ANIMATION_NAME_BUCKETS;
+    for (animationName_t *name = animation_names[bucket]; name; name = name->next)
+        if (!strcmp(name->text, text)) return name->text;
+    size_t len = strlen(text) + 1;
+    animationName_t *name = gi.MemAlloc(sizeof(*name) + len);
+    name->next = animation_names[bucket];
+    memcpy(name->text, text, len);
+    animation_names[bucket] = name;
+    return name->text;
+}
+
 void G_ResetUnitAnimationProperties(edict_t *unit) {
     animationTagSet_t properties = {0};
     cstring_t authored;
@@ -586,8 +610,10 @@ void G_ResetUnitAnimationProperties(edict_t *unit) {
     if (!unit) return;
     authored = unit->data.UnitProfile ? unit->data.UnitProfile->animProps : NULL;
     AnimationParseWords(authored, &properties);
-    AnimationTagSetWrite(&properties, unit->animation_props, sizeof(unit->animation_props));
-    unit->animation_request[0] = '\0';
+    char tags[WC3_ANIMATION_PROPERTIES_SIZE];
+    AnimationTagSetWrite(&properties, tags, sizeof(tags));
+    unit->animation_props = G_InternAnimationName(tags);
+    unit->animation_request = "";
 }
 
 animation_t const *G_GetUnitAnimation(edict_t *unit, cstring_t animname) {
@@ -595,13 +621,12 @@ animation_t const *G_GetUnitAnimation(edict_t *unit, cstring_t animname) {
 }
 
 void G_SetUnitAnimation(edict_t *unit, cstring_t animname) {
-    char request[WC3_ANIMATION_REQUEST_SIZE];
+    cstring_t request;
     char primary[WC3_ANIMATION_TAG_SIZE];
     animationTagSet_t request_tags = {0};
 
     if (!unit || !animname) return;
-    strlcpy(request, animname, sizeof(request));
-    strlcpy(unit->animation_request, request, sizeof(unit->animation_request));
+    request = unit->animation_request = G_InternAnimationName(animname);
     AnimationParseRequest(request, primary, &request_tags);
     unit->animation = !strcasecmp(primary, "walk") ?
         AnimationVariantForProperties(GetModel(unit->s.model), request, unit->animation_props) : NULL;
@@ -622,16 +647,15 @@ void G_RunDestructableAnimation(edict_t *ent) {
         ent->s.frame = start;
         return;
     }
-    if ((anim->flags & 1) && ent->s.frame == end - 1 && !ent->queued_animation[0]) return;
+    if ((anim->flags & 1) && ent->s.frame == end - 1 && (!ent->queued_animation || !*ent->queued_animation)) return;
     next = ent->s.frame + (uint32_t)MAX(0.0f, FRAMETIME * ent->animation_speed);
     if (next < end) {
         ent->s.frame = next;
         return;
     }
-    if (ent->queued_animation[0]) {
-        char queued[WC3_ANIMATION_REQUEST_SIZE];
-        strlcpy(queued, ent->queued_animation, sizeof(queued));
-        ent->queued_animation[0] = '\0';
+    if (ent->queued_animation && *ent->queued_animation) {
+        cstring_t queued = ent->queued_animation;
+        ent->queued_animation = "";
         G_SetUnitAnimation(ent, queued);
         if (ent->animation) {
             ent->s.frame = ent->animation->interval[0];
@@ -639,7 +663,7 @@ void G_RunDestructableAnimation(edict_t *ent) {
         }
         /* Unknown queued clip must not strand the existing terminal pose. */
         ent->animation = anim;
-        strlcpy(ent->animation_request, anim->name, sizeof(ent->animation_request));
+        ent->animation_request = G_InternAnimationName(anim->name);
     }
     ent->s.frame = (anim->flags & 1) ? end - 1 : start + (next - start) % (end - start);
 }
@@ -648,7 +672,7 @@ void G_AddUnitAnimationProperties(edict_t *unit, cstring_t properties, bool add)
     animationTagSet_t current = {0};
     animationTagSet_t changed = {0};
     animationTagSet_t result = {0};
-    char request[WC3_ANIMATION_REQUEST_SIZE];
+    cstring_t request;
     bool mutated = false;
 
     if (!unit || !properties || !*properties) return;
@@ -673,12 +697,27 @@ void G_AddUnitAnimationProperties(edict_t *unit, cstring_t properties, bool add)
     }
     if (!mutated) return;
 
-    AnimationTagSetWrite(&result, unit->animation_props, sizeof(unit->animation_props));
-    strlcpy(request, unit->animation_request, sizeof(request));
+    char tags[WC3_ANIMATION_PROPERTIES_SIZE];
+    AnimationTagSetWrite(&result, tags, sizeof(tags));
+    unit->animation_props = G_InternAnimationName(tags);
+    request = unit->animation_request ? unit->animation_request : "";
     if (!request[0] && unit->currentmove && unit->currentmove->animation)
-        strlcpy(request, unit->currentmove->animation, sizeof(request));
-    if (!request[0]) strlcpy(request, "stand", sizeof(request));
+        request = unit->currentmove->animation;
+    if (!request[0]) request = "stand";
     G_SetUnitAnimation(unit, request);
+}
+
+/* Logical script names can outlive a model-cache refresh; only full game shutdown releases this arena. */
+void G_FreeAnimationNames(void) {
+    FOR_LOOP(i, ANIMATION_NAME_BUCKETS) {
+        animationName_t *name = animation_names[i];
+        while (name) {
+            animationName_t *next = name->next;
+            gi.MemFree(name);
+            name = next;
+        }
+        animation_names[i] = NULL;
+    }
 }
 
 void G_FreeModels(void) {

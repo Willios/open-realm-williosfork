@@ -385,6 +385,7 @@ TEST(wc3_pathfinding, amphibious_command_destination_avoids_ground_and_sea_units
     setup_test_pathmap(8, 8, cells);
     reset_entities();
     blocker = make_unit_at(target.x, target.y);
+    G_InitUnitOrders(blocker);
     blocker->svflags |= SVF_MONSTER;
     blocker->collision = 0.1f;
 
@@ -1023,14 +1024,15 @@ TEST(wc3_pathfinding, interaction_point_route_reports_adjusted_goal) {
     edict_t *unit = make_unit_at(goal_x, goal_y);
     unit->collision = 0.0f;
     unit->goalentity = target;
-    target->heatmap2 = gen;
-    target->heatmap2_radius = 0.0f;
+    if (!target->route) target->route = G_AllocRoute();
+    target->route->field = gen;
+    target->route->radius = 0.0f;
 
     unit_changeangle(unit);
 
-    T_EQ(unit->movement.flow_generation, gen);
-    T_ASSERT(unit->movement.flow_goal_reached);
-    T_ASSERT(!unit->movement.flow_unreachable);
+    T_EQ(unit->movement->flow_generation, gen);
+    T_ASSERT(unit->movement->flow_goal_reached);
+    T_ASSERT(!unit->movement->flow_unreachable);
 }
 
 TEST(wc3_pathfinding, line_walkability_respects_collision_radius) {
@@ -1203,7 +1205,7 @@ TEST(wc3_pathfinding, move_order_requests_collision_sized_route) {
     T_ASSERT(!CM_LineIsWalkableForRadius(&unit->s.origin2, &wp->s.origin2, unit->collision));
     T_ASSERT(CM_BuildHeatmapForRadius(wp, unit->collision));
     unit_changeangle(unit);
-    T_FEQ(wp->heatmap2_radius, unit->collision, 0.001f);
+    T_FEQ(wp->route->radius, unit->collision, 0.001f);
 }
 
 TEST(wc3_pathfinding, patrol_requests_collision_sized_route) {
@@ -1221,7 +1223,7 @@ TEST(wc3_pathfinding, patrol_requests_collision_sized_route) {
     T_ASSERT(CM_BuildHeatmapForRadius(wp, unit->collision));
     unit_changeangle(unit);
 
-    T_FEQ(wp->heatmap2_radius, unit->collision, 0.001f);
+    T_FEQ(wp->route->radius, unit->collision, 0.001f);
 }
 
 TEST(wc3_pathfinding, attack_move_requests_collision_sized_route) {
@@ -1239,7 +1241,7 @@ TEST(wc3_pathfinding, attack_move_requests_collision_sized_route) {
     T_ASSERT(CM_BuildHeatmapForRadius(wp, unit->collision));
     unit_changeangle(unit);
 
-    T_FEQ(wp->heatmap2_radius, unit->collision, 0.001f);
+    T_FEQ(wp->route->radius, unit->collision, 0.001f);
 }
 
 /* -----------------------------------------------------------------------
@@ -1304,6 +1306,7 @@ TEST(wc3_pathfinding, closest_pathable_ignores_dead_dynamic_unit) {
     setup_test_pathmap(MAP_W, MAP_H, open_map);
     reset_entities();
     blocker = make_unit_at(point.x, point.y);
+    G_InitUnitOrders(blocker);
     blocker->svflags |= SVF_MONSTER;
     blocker->collision = 0.5f;
 
@@ -1325,6 +1328,7 @@ TEST(wc3_pathfinding, closest_pathable_dynamic_units_use_movement_layer) {
     setup_test_pathmap(MAP_W, MAP_H, cells);
     reset_entities();
     blocker = make_unit_at(point.x, point.y);
+    G_InitUnitOrders(blocker);
     blocker->svflags |= SVF_MONSTER;
     blocker->collision = 0.5f;
     blocker->aiflags |= AI_FLYING;
@@ -1393,13 +1397,13 @@ TEST(wc3_pathfinding, movement_throttles_repeated_unreachable_fallback) {
 
     CM_ResetTestPathPerfStats();
     unit_changeangle(unit);
-    T_EQ(unit->movement.flow_fallback_state, MOVE_FALLBACK_RETRY);
-    first_time = unit->movement.flow_fallback_time;
+    T_EQ(unit->movement->flow_fallback_state, MOVE_FALLBACK_RETRY);
+    first_time = unit->movement->flow_fallback_time;
     stats = CM_GetTestPathPerfStats();
     first_calls = stats.closest_reachable_calls;
     T_EQ(first_calls, 1);
     unit_changeangle(unit);
-    second_time = unit->movement.flow_fallback_time;
+    second_time = unit->movement->flow_fallback_time;
     T_EQ(second_time, first_time);
     stats = CM_GetTestPathPerfStats();
     T_EQ(stats.closest_reachable_calls, first_calls);
@@ -1423,8 +1427,8 @@ TEST(wc3_pathfinding, movement_remembers_applied_unreachable_fallback) {
     T_ASSERT(CM_BuildHeatmapForRadius(goal, unit->collision) != 0);
 
     unit_changeangle(unit);
-    T_EQ(unit->movement.flow_fallback_state, MOVE_FALLBACK_APPLIED);
-    T_ASSERT(unit->movement.flow_fallback_goal == goal);
+    T_EQ(unit->movement->flow_fallback_state, MOVE_FALLBACK_APPLIED);
+    T_ASSERT(unit->movement->flow_fallback_goal == goal);
 }
 
 /* The flood and the flow must not cut diagonally through a wall corner: with

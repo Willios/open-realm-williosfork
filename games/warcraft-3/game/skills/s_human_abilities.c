@@ -323,7 +323,7 @@ void S_PolymorphRemove(edict_t *unit) {
         G_ClearUnitOrderQueue(unit);
         unit_leavecombat(unit);
         unit->goalentity = NULL;
-        unit->secondarygoal = NULL;
+        unit->orders->resource_goal = NULL;
         unit_stand(unit);
     }
     client = G_GetPlayerClientByNumber(unit->s.player);
@@ -398,7 +398,7 @@ static void polymorph_execute(edict_t *caster, spellTarget_t st, abilityitem_t c
     S_SpellCancelChannel(st.entity);
     unit_leavecombat(st.entity);
     st.entity->goalentity = NULL;
-    st.entity->secondarygoal = NULL;
+    st.entity->orders->resource_goal = NULL;
     st.entity->animation = NULL;
     unit_stand(st.entity);
     {
@@ -598,7 +598,7 @@ BZ_ABILITY_PROC(CAbilityDefend) {
         if (!call || !call->item || !G_UnitAbilityResearchAvailable(ent, code)) return false;
         human_toggle_execute(ent, target, call->item);
         return true;
-    case A_PROJECTILE_HIT: return defend_projectile_reaction(call ? call->projectile : NULL);
+    case A_PROJECTILE_HIT: return defend_projectile_reaction(call ? call->entity : NULL);
     default: return CAbilitySimpleSpell(ent, msg, call);
     }
 }

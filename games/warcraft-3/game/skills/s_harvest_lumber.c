@@ -534,11 +534,11 @@ static void ai_walktree(edict_t *ent) {
          * briefly, then take the deterministic bounded pass if the worker in
          * front has stopped inside chop range. */
         unit_changeangle_for_radius_worker(ent, ent->collision);
-        if (ent->movement.flow_goal_reached) {
+        if (ent->movement->flow_goal_reached) {
             harvest_route_failed(ent, "route_goal_out_of_range");
             return;
         }
-        if (ent->movement.flow_unreachable) {
+        if (ent->movement->flow_unreachable) {
             harvest_route_failed(ent, "route_unreachable");
             return;
         }
@@ -567,12 +567,12 @@ static void harvest_finish_lumber_deposit(edict_t *ent) {
 
     /* Resolve the next live tree at the deposit boundary.  Resuming with the
      * felled tree left it as the worker's active goal for another tick. */
-    tree = ent->secondarygoal;
+    tree = ent->orders->resource_goal;
     if (tree && M_IsDead(tree))
         tree = find_another_tree_near(ent, &tree->s.origin2);
     else if (!tree)
         tree = find_another_tree(ent);
-    ent->goalentity = ent->secondarygoal = tree;
+    ent->goalentity = ent->orders->resource_goal = tree;
     if (tree) {
         G_PublishMessage(ent, GAME_MSG_HARVEST_RESUME_LUMBER, tree);
         move_reset_progress(ent);
@@ -634,7 +634,7 @@ static void ai_harvest_walkback(edict_t *ent) {
 }
 
 static void ai_chop(edict_t *ent) {
-    edict_t *tree = ent->secondarygoal;
+    edict_t *tree = ent->orders->resource_goal;
     harvestLumberTuning_t const tuning = harvest_lumber_tuning(ent);
     bool const valid_hit = tree && G_IsDestructable(tree) && !M_IsDead(tree) &&
                            !tree->invulnerable && tuning.tree_damage > 0.0f;
@@ -669,8 +669,8 @@ static void ai_cooldown(edict_t *ent) {
     unit_runwait(ent, harvest_swing);
 }
 
-static umove_t harvest_move_walk = { "walk", ai_walktree, NULL, CAbilityHarvest };
-static umove_t harvest_move_walkback = { "walk", ai_harvest_walkback, NULL, CAbilityHarvest };
+static umove_t harvest_move_walk = { "walk", ai_walktree, NULL, CAbilityHarvest, .travel = true };
+static umove_t harvest_move_walkback = { "walk", ai_harvest_walkback, NULL, CAbilityHarvest, .travel = true };
 static umove_t harvest_move_swing = { "attack", ai_swing, harvest_cooldown, CAbilityHarvest };
 static umove_t harvest_move_cooldown = { "stand ready", ai_cooldown, NULL, CAbilityHarvest };
 
@@ -720,7 +720,7 @@ void CMD_Harvest(edict_t *ent);
 void harvest_start(edict_t *self, edict_t *target) {
     harvestLumberTuning_t const tuning = harvest_lumber_tuning(self);
 
-    self->secondarygoal = target;
+    self->orders->resource_goal = target;
     if (self->harvested_lumber >= tuning.lumber_capacity && self->harvested_lumber > 0) {
         harvest_walkback(self);
         return;
@@ -988,14 +988,14 @@ static void ai_wisp_walktree(edict_t * ent) {
     ent->wait = tuning.interval;
 }
 
-static umove_t wisp_harvest_walk = { "walk", ai_wisp_walktree, NULL, CAbilityWispHarvest };
+static umove_t wisp_harvest_walk = { "walk", ai_wisp_walktree, NULL, CAbilityWispHarvest, .travel = true };
 
 void wisp_harvest_start(edict_t * self, edict_t * target) {
     if (!self || !target || target->targtype != TARG_TREE || M_IsDead(target) ||
         !S_WispHarvestCanLumber(self)) return;
     S_WispHarvestRelease(self);
     self->goalentity = target;
-    self->secondarygoal = NULL;
+    self->orders->resource_goal = NULL;
     self->wait = 0.0f;
     move_reset_progress(self);
     unit_setmove(self, &wisp_harvest_walk);
@@ -1033,10 +1033,10 @@ BZ_ABILITY_PROC(CAbilityHarvestBase) {
 BZ_ABILITY_PROC(CAbilityWispHarvest) {
     switch (msg) {
     case A_INIT: return true;
-    case A_COMMAND: wisp_harvest_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: wisp_harvest_command(call && call->entity ? call->entity : ent); return true;
     case A_ISSUED_TARGET_ORDER: {
-        edict_t *target = call ? call->issued_target_order.target : NULL;
-        cstring_t order = call ? call->issued_target_order.order : NULL;
+        edict_t *target = call ? call->entity : NULL;
+        cstring_t order = call ? call->order : NULL;
         if (!order || strcmp(order, "smart") || !target || target->targtype != TARG_TREE)
             return ABILITY_ORDER_UNHANDLED;
         if (!S_WispHarvestCanLumber(ent)) return ABILITY_ORDER_REJECTED;
@@ -1055,7 +1055,7 @@ BZ_ABILITY_PROC(CAbilityWispHarvest) {
         S_WispHarvestRelease(ent);
         if (ent && ent->currentmove && ent->currentmove->proc == CAbilityWispHarvest) {
             ent->goalentity = NULL;
-            ent->secondarygoal = NULL;
+            ent->orders->resource_goal = NULL;
             if (ent->stand) ent->stand(ent);
         }
         return true;
@@ -1184,7 +1184,7 @@ static void harvest_lumber_command(edict_t *clent) {
 BZ_ABILITY_PROC(CAbilityHarvestLumber) {
     switch (msg) {
     case A_INIT: return true;
-    case A_COMMAND: harvest_lumber_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: harvest_lumber_command(call && call->entity ? call->entity : ent); return true;
     case A_TOGGLE_ON: return harvest_is_toggle_on(ent);
     default: return false;
     }
@@ -1193,15 +1193,15 @@ BZ_ABILITY_PROC(CAbilityHarvestLumber) {
 BZ_ABILITY_PROC(CAbilityHarvest) {
     switch (msg) {
     case A_INIT:
-        if (!call || !call->classname) return false;
-        HARVEST_TREE_DAMAGE = AB_Data(call->classname, 1, 1);     /* lumber/tree-HP per swing */
-        HARVEST_LUMBER_CAPACITY = AB_Data(call->classname, 1, 2); /* max lumber to carry */
-        HARVEST_GOLD_CAPACITY = AB_Data(call->classname, 1, 3);
-        HARVEST_RANGE = G_AbilityDataName(call->classname)->level[0].range;
-        HARVEST_COOLDOWN = G_AbilityDataName(call->classname)->level[0].dur;
-        HARVEST_SEARCH_RANGE = G_AbilityDataName(call->classname)->level[0].area;
+        if (!call || !S_AbilityClass(call)) return false;
+        HARVEST_TREE_DAMAGE = AB_Data(S_AbilityClass(call), 1, 1);     /* lumber/tree-HP per swing */
+        HARVEST_LUMBER_CAPACITY = AB_Data(S_AbilityClass(call), 1, 2); /* max lumber to carry */
+        HARVEST_GOLD_CAPACITY = AB_Data(S_AbilityClass(call), 1, 3);
+        HARVEST_RANGE = G_AbilityDataName(S_AbilityClass(call))->level[0].range;
+        HARVEST_COOLDOWN = G_AbilityDataName(S_AbilityClass(call))->level[0].dur;
+        HARVEST_SEARCH_RANGE = G_AbilityDataName(S_AbilityClass(call))->level[0].area;
         return true;
-    case A_COMMAND: harvest_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: harvest_command(call && call->entity ? call->entity : ent); return true;
     case A_TOGGLE_ON: return harvest_is_toggle_on(ent);
     default: return false;
     }

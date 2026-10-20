@@ -411,6 +411,7 @@ void G_ApplyUnitAbilityTraits(edict_t *ent) {
  * (type, weapon class, damage dice, range, projectile model/speed) for the
  * unit's class_id and stores them in the edict. */
 void SP_SpawnUnit(edict_t *self) {
+    G_InitUnitOrders(self);
     PATHSTR model_filename;
     UnitBalance_t const *b = self->data.UnitBalance;
     UnitData_t const *d = self->data.UnitData;

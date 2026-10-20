@@ -28,6 +28,7 @@ typedef enum {
     F_FLOAT,
     F_LSTRING,            // string on disk, pointer in memory, TAG_LEVEL
     F_GSTRING,            // string on disk, pointer in memory, TAG_GAME
+    F_ANIMSTRING,        // shared animation string; text on disk, interned pointer in memory
     F_VECTOR,
     F_REGION,
     F_REGION_REGISTRY,
@@ -69,6 +70,7 @@ typedef struct {
 #define F_METADATA_F_FLOAT(...) 0, 0
 #define F_METADATA_F_LSTRING(...) 0, 0
 #define F_METADATA_F_GSTRING(...) 0, 0
+#define F_METADATA_F_ANIMSTRING(...) 0, 0
 #define F_METADATA_F_VECTOR(...) 0, 0
 #define F_METADATA_F_REGION(...) 0, 0
 #define F_METADATA_F_REGION_REGISTRY(count, schema) count, (uintptr_t)(schema)
@@ -130,7 +132,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 99 persists timed full-map visibility deadlines. */
 /* Version 100 retains VM-owned item pools rather than dropping them as unknown host handles. */
 /* Version 101 removes derived attack cooldown fields; only the simulation deadline is persisted. */
-static uint32_t const save_version = 101;
+/* Version 102 separates optional movement, route and wander records from retained orders. */
+static uint32_t const save_version = 102;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -759,50 +762,72 @@ static field_t const ancient_root_fields[] = {
 };
 
 static field_t const movement_fields[] = {
-    /* Shared route jobs and resumable movement directions are process-local
-     * caches. In particular route_resume_goal is an edict pointer, so clear
-     * the complete route-resume/wait record on save and rebuild it after load. */
-    TF(edictMovement_s, route_resume_direction, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_goal_origin, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_goal, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_goal_spawn, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_time, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_radius, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_flags, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_valid, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, route_resume_active, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, path_wait_active, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, path_wait_start, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, path_wait_goal_number, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, path_wait_goal_spawn, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, path_wait_origin, F_IGNORE, 0, FIELD_RUNTIME),
-    TF(edictMovement_s, waygate_target, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, waygate_goal, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, attackmove_waypoint, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, patrol_a, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, patrol_b, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, patrol_target, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, follow_target, F_EDICT, 0, FIELD_NONE),
-    TF(edictMovement_s, wisp_egress_tree, F_EDICT, 0, FIELD_NONE),
-    F(edictMovement_s, wisp_egress_tree_spawn_time, F_INT),
-    F(edictMovement_s, wisp_egress_target, F_VECTOR),
-    F(edictMovement_s, wisp_egress_active, F_INT),
-    F(edictMovement_s, wisp_egress_target_valid, F_INT),
-    F(edictMovement_s, holding_position, F_INT),
-    F(edictMovement_s, guard_position, F_VECTOR),
-    F(edictMovement_s, guard_state, F_INT),
-    F(edictMovement_s, creep_guard_origin, F_VECTOR),
-    F(edictMovement_s, creep_guard_last_hit_ms, F_INT),
-    F(edictMovement_s, creep_guard_outside_ms, F_INT),
-    F(edictMovement_s, creep_guard_return_retries, F_INT),
-    F(edictMovement_s, creep_guard_retry_at_ms, F_INT),
-    F(edictMovement_s, creep_guard_enabled, F_INT),
-    F(edictMovement_s, creep_guard_phase, F_INT),
-    F(edictMovement_s, explicit_allied_attack, F_INT),
-    F(edictMovement_s, cargo_unload_pending, F_INT),
-    F(edictMovement_s, cargo_unload_ability, F_INT),
-    TF(edictMovement_s, cargo_unload_goal, F_EDICT, 0, FIELD_NONE),
-    F(edictMovement_s, cargo_unload_goal_spawn_time, F_INT),
+    TF(movement_t, route_resume_direction, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_goal_origin, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_goal, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_goal_spawn, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_time, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_radius, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_flags, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_valid, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, route_resume_active, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, path_wait_active, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, path_wait_start, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, path_wait_goal_number, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, path_wait_goal_spawn, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, path_wait_origin, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(movement_t, flow_fallback_goal, F_EDICT, 0, FIELD_NONE),
+    TF(movement_t, path, F_IGNORE, 0, FIELD_RUNTIME),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const order_fields[] = {
+    TF(unitOrders_t, item_drop, F_EDICT, 0, FIELD_NONE),
+
+    TF(unitOrders_t, waygate_target, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, waygate_goal, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, attackmove_waypoint, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, patrol_a, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, patrol_b, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, patrol_target, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, follow_target, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, wisp_egress_tree, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, wisp_egress_tree_spawn_time, F_INT),
+    TF(unitOrders_t, wisp_egress_target, F_VECTOR),
+    TF(unitOrders_t, wisp_egress_active, F_INT),
+    TF(unitOrders_t, wisp_egress_target_valid, F_INT),
+    TF(unitOrders_t, holding_position, F_INT),
+    TF(unitOrders_t, guard_position, F_VECTOR),
+    TF(unitOrders_t, guard_state, F_INT),
+    TF(unitOrders_t, creep_guard_origin, F_VECTOR),
+    TF(unitOrders_t, creep_guard_last_hit_ms, F_INT),
+    TF(unitOrders_t, creep_guard_outside_ms, F_INT),
+    TF(unitOrders_t, creep_guard_return_retries, F_INT),
+    TF(unitOrders_t, creep_guard_retry_at_ms, F_INT),
+    TF(unitOrders_t, creep_guard_enabled, F_INT),
+    TF(unitOrders_t, creep_guard_phase, F_INT),
+    TF(unitOrders_t, explicit_allied_attack, F_INT),
+    TF(unitOrders_t, cargo_unload_pending, F_INT),
+    TF(unitOrders_t, cargo_unload_ability, F_INT),
+    TF(unitOrders_t, cargo_unload_goal, F_EDICT, 0, FIELD_NONE),
+    TF(unitOrders_t, cargo_unload_goal_spawn_time, F_INT),
+    TF(unitOrders_t, resource_goal, F_EDICT, 0, FIELD_NONE),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const route_fields[] = {
+    TF(routeCache_t, shared_goal, F_EDICT, 0, FIELD_NONE),
+    TF(routeCache_t, serial, F_INT),
+    TF(routeCache_t, field, F_IGNORE, 0, FIELD_RUNTIME),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const wander_fields[] = {
+    TF(wander_t, next_time, F_INT),
+    TF(wander_t, random_state, F_INT),
+    TF(wander_t, goal_generation, F_INT),
+    TF(wander_t, goal, F_EDICT, 0, FIELD_NONE),
+    TF(wander_t, waypoint, F_EDICT, 0, FIELD_NONE),
     { NULL, 0, 0, 0, 0, 0 }
 };
 
@@ -846,6 +871,8 @@ static field_t const sleep_fields[] = {
 };
 
 static field_t const channel_fields[] = {
+    TF(channel_t, source_item, F_EDICT, 0, FIELD_NONE),
+    TF(channel_t, source_item_spawn_time, F_INT),
     TF(channel_t, code, F_INT),
     TF(channel_t, serial, F_INT),
     TF(channel_t, owner_spawn_time, F_INT),
@@ -910,6 +937,9 @@ field_t edict_fields[] = {
     F(edict_s, avatar, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, sleep, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, channel, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, movement, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, route, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, wander, F_IGNORE, 0, FIELD_RUNTIME),
 
     F(edict_s, class_id, F_INT),
     F(edict_s, variation, F_INT),
@@ -918,18 +948,11 @@ field_t edict_fields[] = {
     F(edict_s, spawn_time, F_INT),
     F(edict_s, summon_ability, F_INT),
     F(edict_s, aura_effect_role, F_INT),
-    F(edict_s, wander_next_time, F_INT),
-    F(edict_s, wander_random_state, F_INT),
-    F(edict_s, wander_goal, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, wander_waypoint, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, wander_goal_generation, F_INT),
-    F(edict_s, waypoint_generation, F_INT),
     F(edict_s, permanent_invisibility_reveal_until, F_INT),
     F(edict_s, forced_visibility_count, F_INT),
     F(edict_s, shared_vision, F_INT),
     F(edict_s, harvested_lumber, F_INT),
     F(edict_s, harvested_gold, F_INT),
-    F(edict_s, heatmap2, F_INT),
     F(edict_s, peonsinside, F_INT),
     F(edict_s, aiflags, F_INT),
     F(edict_s, autocast_code, F_INT),
@@ -949,11 +972,9 @@ field_t edict_fields[] = {
     F(edict_s, hero_shortcut_alert_until, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, inventory, F_EDICT, MAX_INVENTORY, FIELD_NONE),
     F(edict_s, ground_next, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, movement, F_STRUCT, 1, movement_fields),
+    F(edict_s, orders, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, goalentity, F_EDICT, 0, FIELD_NONE),
     F(edict_s, attack_target_spawn_time, F_INT),
-    F(edict_s, item_drop, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, spell_item, F_EDICT, 0, FIELD_NONE),
     F(edict_s, soul_trap_head, F_EDICT, 0, FIELD_NONE),
     F(edict_s, soul_trap_carrier, F_EDICT, 0, FIELD_NONE),
     F(edict_s, soul_trap_next, F_EDICT, 0, FIELD_NONE),
@@ -966,7 +987,6 @@ field_t edict_fields[] = {
     F(edict_s, soul_trapped_ability_added, F_INT),
     F(edict_s, soul_possession_added, F_INT),
     F(edict_s, combatentity, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, secondarygoal, F_EDICT, 0, FIELD_NONE),
     F(edict_s, owner, F_EDICT, 0, FIELD_NONE),
     F(edict_s, build, F_EDICT, 0, FIELD_NONE),
     F(edict_s, client, F_IGNORE, 0, FIELD_RUNTIME),
@@ -980,6 +1000,9 @@ field_t edict_fields[] = {
     F(edict_s, animation_speed, F_FLOAT),
     F(edict_s, animation_override, F_INT),
     F(edict_s, animation, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, animation_request, F_ANIMSTRING),
+    F(edict_s, queued_animation, F_ANIMSTRING),
+    F(edict_s, animation_props, F_ANIMSTRING),
     F(edict_s, currentmove, F_MMOVE),
     F(edict_s, stand, F_CFUNCTION),
     F(edict_s, birth, F_CFUNCTION),
@@ -1479,6 +1502,9 @@ static bool WriteField1(field_t const *field, uint8_t *base) {
     FOR_LOOP(i, count) {
         void *p = base + field->ofs + i * size;
         switch (field->type) {
+        case F_ANIMSTRING:
+            *(cstring_t *)p = NULL; /* text follows the raw edict, never a process address */
+            break;
         case F_EDICT: {
             edict_t *value = *(edict_t * *)p;
             uintptr_t ptr = (uintptr_t)value, base = (uintptr_t)g_edicts;
@@ -1678,6 +1704,7 @@ static bool WriteMappedFields(FILE *f, field_t const *fields, uint8_t *base) {
         }
         case F_LSTRING:
         case F_GSTRING:
+        case F_ANIMSTRING:
             if (!WriteString(f, *(cstring_t *)(base + fields->ofs))) return false;
             break;
         case F_EDICT:
@@ -1748,6 +1775,13 @@ static bool ReadMappedFields(FILE *f, field_t const *fields, uint8_t *base) {
             if (!LoadBytes(f, &id, sizeof(id))) return false;
             *(region_t * *)(base + fields->ofs) = id == UINT32_MAX ? NULL : G_LoadJassHandle("region", id);
             if (id != UINT32_MAX && !*(region_t * *)(base + fields->ofs)) return false;
+            break;
+        }
+        case F_ANIMSTRING: {
+            char *text = NULL;
+            if (!ReadString(f, &text)) return false;
+            *(cstring_t *)(base + fields->ofs) = G_InternAnimationName(text);
+            free(text);
             break;
         }
         case F_LSTRING:
@@ -1921,7 +1955,10 @@ static bool WriteEdict(FILE *f, edict_t const *ent) {
     ClearRuntimeFields(&temp, edict_fields, FIELD_RUNTIME);
     for (field = edict_fields; field->name; field++)
         if (!WriteField1(field, (uint8_t *)&temp)) return false;
-    return SaveBytes(f, &temp, sizeof(temp));
+    if (!SaveBytes(f, &temp, sizeof(temp))) return false;
+    for (field = edict_fields; field->name; field++)
+        if (field->type == F_ANIMSTRING && !WriteString(f, *(cstring_t *)((uint8_t const *)ent + field->ofs))) return false;
+    return true;
 }
 
 static bool WriteClient(FILE *f, gameClient_t const *client) {
@@ -2075,12 +2112,19 @@ static bool ReadEdict(FILE *f, edict_t *ent) {
     ClearRuntimeFields(ent, edict_fields, FIELD_RUNTIME);
     for (field = edict_fields; field->name; field++)
         if (!ReadField(field, (uint8_t *)ent)) return false;
+    for (field = edict_fields; field->name; field++) {
+        if (field->type != F_ANIMSTRING) continue;
+        char *text = NULL;
+        if (!ReadString(f, &text)) return false;
+        *(cstring_t *)((uint8_t *)ent + field->ofs) = G_InternAnimationName(text);
+        free(text);
+    }
     /* Table rows are process-owned; C callbacks already came back through F_CFUNCTION. */
     if (ent->class_id) {
         G_BindEntityData(ent);
         /* animation is a process-owned model pointer and is deliberately not serialized.
          * Re-resolve it from the persisted logical request plus per-unit animation tags. */
-        if (ent->animation_request[0])
+        if (ent->animation_request && *ent->animation_request)
             ent->animation = G_GetUnitAnimation(ent, ent->animation_request);
     }
     return true;
@@ -2123,9 +2167,17 @@ POOL_ALLOC(Waygate)
 POOL_ALLOC(Artillery)
 POOL_ALLOC(Avatar)
 POOL_ALLOC(Sleep)
+POOL_ALLOC(Orders)
+POOL_ALLOC(Movement)
+POOL_ALLOC(Route)
+POOL_ALLOC(Wander)
 POOL_ALLOC(Channel)
 
 static savePool_t const save_pools[] = {
+    { "orders", offsetof(edict_t, orders), sizeof(unitOrders_t), order_fields, SaveAllocOrders },
+    { "movement", offsetof(edict_t, movement), sizeof(movement_t), movement_fields, SaveAllocMovement },
+    { "route", offsetof(edict_t, route), sizeof(routeCache_t), route_fields, SaveAllocRoute },
+    { "wander", offsetof(edict_t, wander), sizeof(wander_t), wander_fields, SaveAllocWander },
     { "construction", offsetof(edict_t, construction), sizeof(construction_t), construction_fields, SaveAllocConstruction },
     { "research", offsetof(edict_t, research), sizeof(research_t), scalar_pool_fields, SaveAllocResearch },
     { "rally", offsetof(edict_t, rally), sizeof(rally_t), rally_fields, SaveAllocRally },
@@ -2892,16 +2944,16 @@ TEST(wc3_save, cargo_unload_rejects_unallocated_goal_index) {
     setup_test_world();
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    edict_t restored;
     int const index = globals.num_edicts;
     FILE *f = tmpfile();
     T_NOT_NULL(f);
     if (!f) return;
-    T_ASSERT(WriteEdict(f, unit));
-    T_ASSERT(fseek(f, offsetof(edict_t, movement.cargo_unload_goal), SEEK_SET) == 0);
+    T_ASSERT(WritePool(f, &save_pools[0]));
+    T_ASSERT(fseek(f, sizeof(uint32_t) * 2 + offsetof(unitOrders_t, cargo_unload_goal), SEEK_SET) == 0);
     T_ASSERT(SaveBytes(f, &index, sizeof(index)));
     rewind(f);
-    T_ASSERT(!ReadEdict(f, &restored));
+    G_FreeOrders(unit);
+    T_ASSERT(!ReadPool(f, &save_pools[0]));
     fclose(f);
 }
 
@@ -2910,9 +2962,9 @@ TEST(wc3_save, cargo_unload_rejects_foreign_goal_pointer) {
     setup_test_world();
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    unit->movement.cargo_unload_goal = (edict_t *)(uintptr_t)1;
+    unit->orders->cargo_unload_goal = (edict_t *)(uintptr_t)1;
     T_ASSERT(!WriteGame(filename));
-    unit->movement.cargo_unload_goal = NULL;
+    unit->orders->cargo_unload_goal = NULL;
     remove(filename);
 }
 
@@ -2927,9 +2979,9 @@ TEST(wc3_save, failed_overwrite_preserves_previous_committed_save) {
     T_NOT_NULL(f);
     if (f) { T_ASSERT(ReadFooter(f)); fclose(f); }
     unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    unit->movement.cargo_unload_goal = (edict_t *)(uintptr_t)1;
+    unit->orders->cargo_unload_goal = (edict_t *)(uintptr_t)1;
     T_ASSERT(!WriteGame(filename));
-    unit->movement.cargo_unload_goal = NULL;
+    unit->orders->cargo_unload_goal = NULL;
     f = fopen(filename, "rb");
     T_NOT_NULL(f);
     if (f) { T_ASSERT(ReadFooter(f)); fclose(f); }
@@ -2961,10 +3013,10 @@ TEST(wc3_save, elevator_occluder_and_pending_animation_round_trip) {
     G_BindEntityData(deck);
     deck->destructable = G_AllocDestructable();
     deck->destructable->occluder_height = 256.0f;
-    strlcpy(deck->queued_animation, "stand third", sizeof(deck->queued_animation));
+    deck->queued_animation = G_InternAnimationName("stand third");
     T_ASSERT(WriteGame(filename));
     deck->destructable->occluder_height = 0.0f;
-    deck->queued_animation[0] = '\0';
+    deck->queued_animation = "";
     T_ASSERT(ReadGame(filename));
     deck = &g_edicts[index];
     T_NOT_NULL(deck->destructable);
@@ -2985,23 +3037,23 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     unit->attack_cooldown_end_time = 12000;
     unit->attack_backswing_end_time = 9000;
     unit->attack_target_spawn_time = goal->spawn_time;
-    unit->movement.cargo_unload_pending = true;
-    unit->movement.cargo_unload_ability = MAKEFOURCC('A','t','d','p');
-    unit->movement.cargo_unload_goal = goal;
-    unit->movement.cargo_unload_goal_spawn_time = goal->spawn_time;
-    unit->movement.wisp_egress_tree = goal;
-    unit->movement.wisp_egress_tree_spawn_time = goal->spawn_time;
-    unit->movement.wisp_egress_target = (vec2_t){ -32.0f, 48.0f };
-    unit->movement.wisp_egress_active = true;
-    unit->movement.wisp_egress_target_valid = true;
+    unit->orders->cargo_unload_pending = true;
+    unit->orders->cargo_unload_ability = MAKEFOURCC('A','t','d','p');
+    unit->orders->cargo_unload_goal = goal;
+    unit->orders->cargo_unload_goal_spawn_time = goal->spawn_time;
+    unit->orders->wisp_egress_tree = goal;
+    unit->orders->wisp_egress_tree_spawn_time = goal->spawn_time;
+    unit->orders->wisp_egress_target = (vec2_t){ -32.0f, 48.0f };
+    unit->orders->wisp_egress_active = true;
+    unit->orders->wisp_egress_target_valid = true;
     unit->unitinfo.PropWindow = 0.0f;
     T_ASSERT(WriteGame(filename));
     unit->attack_cooldown_end_time = G_Time();
-    unit->movement.cargo_unload_pending = false;
-    unit->movement.cargo_unload_goal = NULL;
-    unit->movement.wisp_egress_tree = NULL;
-    unit->movement.wisp_egress_active = false;
-    unit->movement.wisp_egress_target_valid = false;
+    unit->orders->cargo_unload_pending = false;
+    unit->orders->cargo_unload_goal = NULL;
+    unit->orders->wisp_egress_tree = NULL;
+    unit->orders->wisp_egress_active = false;
+    unit->orders->wisp_egress_target_valid = false;
     unit->unitinfo.PropWindow = 1.0f;
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + index;
@@ -3011,16 +3063,16 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     T_EQ(unit->attack_backswing_end_time, 9000);
     T_EQ(unit->attack_target_spawn_time, goal->spawn_time);
     T_FEQ(unit->unitinfo.PropWindow, 0.0f, 0.001f);
-    T_ASSERT(unit->movement.cargo_unload_pending);
-    T_EQ(unit->movement.cargo_unload_ability, MAKEFOURCC('A','t','d','p'));
-    T_EQ(unit->movement.cargo_unload_goal, goal);
-    T_EQ(unit->movement.cargo_unload_goal_spawn_time, goal->spawn_time);
-    T_ASSERT(unit->movement.wisp_egress_active);
-    T_ASSERT(unit->movement.wisp_egress_target_valid);
-    T_EQ(unit->movement.wisp_egress_tree, goal);
-    T_EQ(unit->movement.wisp_egress_tree_spawn_time, goal->spawn_time);
-    T_FEQ(unit->movement.wisp_egress_target.x, -32.0f, 0.001f);
-    T_FEQ(unit->movement.wisp_egress_target.y, 48.0f, 0.001f);
+    T_ASSERT(unit->orders->cargo_unload_pending);
+    T_EQ(unit->orders->cargo_unload_ability, MAKEFOURCC('A','t','d','p'));
+    T_EQ(unit->orders->cargo_unload_goal, goal);
+    T_EQ(unit->orders->cargo_unload_goal_spawn_time, goal->spawn_time);
+    T_ASSERT(unit->orders->wisp_egress_active);
+    T_ASSERT(unit->orders->wisp_egress_target_valid);
+    T_EQ(unit->orders->wisp_egress_tree, goal);
+    T_EQ(unit->orders->wisp_egress_tree_spawn_time, goal->spawn_time);
+    T_FEQ(unit->orders->wisp_egress_target.x, -32.0f, 0.001f);
+    T_FEQ(unit->orders->wisp_egress_target.y, 48.0f, 0.001f);
     remove(filename);
 }
 
@@ -3124,7 +3176,8 @@ TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     T_ASSERT(ReadGame(filename));
     FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
         T_NOT_NULL(SavePoolSlot(unit, save_pools + i));
-        T_NULL(SavePoolSlot(target, save_pools + i));
+        if (!strcmp(save_pools[i].name, "orders")) T_NOT_NULL(target->orders);
+        else T_NULL(SavePoolSlot(target, save_pools + i));
     }
     T_ASSERT(unit->construction);
     T_FEQ(unit->construction->progress, 13.5f, 0.001f);

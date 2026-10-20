@@ -250,7 +250,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
     }
     distance = M_DistanceToGoal(worker);
     step = unit_movedistance(worker);
-    if (move_is_blocked(worker, distance, step) || worker->movement.flow_unreachable) {
+    if (move_is_blocked(worker, distance, step) || worker->movement->flow_unreachable) {
         militia_clear_pairing(worker);
         worker->goalentity = NULL;
         move_reset_progress(worker);
@@ -258,7 +258,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
         return;
     }
     unit_changeangle_for_radius(worker, worker->collision);
-    if (worker->movement.flow_goal_reached && !militia_in_range(worker, hall)) {
+    if (worker->movement->flow_goal_reached && !militia_in_range(worker, hall)) {
         militia_clear_pairing(worker);
         worker->goalentity = NULL;
         move_reset_progress(worker);
@@ -268,7 +268,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
     unit_moveindirection(worker);
 }
 
-static umove_t militia_move_walk = { "walk", ai_militia_pair_walk, NULL, CAbilityMilitia };
+static umove_t militia_move_walk = { "walk", ai_militia_pair_walk, NULL, CAbilityMilitia, .travel = true };
 
 bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     uint32_t worker_ability;
@@ -311,7 +311,7 @@ bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     worker->militia->partner = hall;
     worker->militia->partner_spawn_time = hall->spawn_time;
     worker->militia->returning = returning;
-    worker->movement.holding_position = false;
+    worker->orders->holding_position = false;
     if (militia_in_range(worker, hall)) {
         bool const transformed = returning ? militia_transform_back(worker, true) : militia_transform_forward(worker);
         if (!transformed) S_CancelMilitiaPairing(worker);
@@ -448,7 +448,7 @@ BZ_COMMAND_PROC(AbilityMilitiaConvert) {
 
 BZ_ABILITY_PROC(CAbilityMilitia) {
     switch (msg) {
-    case A_COMMAND: militia_cmd(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: militia_cmd(call && call->entity ? call->entity : ent); return true;
     case A_TOGGLE_ON: return militia_toggle_on(ent);
     default: return false;
     }

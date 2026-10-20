@@ -203,6 +203,7 @@ TEST(wc3_bot, expansion_natives_keep_one_viable_mine_and_order_hall_normally) {
     worker = make_bot_harvest_unit(MAKEFOURCC('h','p','e','a'), 128, 0, 2, &bot_harvester_abilities);
     worker->data.UnitProfile = &worker_profile;
     foe = make_bot_harvest_unit(MAKEFOURCC('o','f','o','o'), 700, 256, 3, NULL);
+    G_InitUnitOrders(foe);
     foe->svflags |= SVF_MONSTER;
     player->stats[PLAYERSTATE_RESOURCE_GOLD] = 10000;
     player->stats[PLAYERSTATE_RESOURCE_LUMBER] = 10000;
@@ -592,6 +593,7 @@ TEST(wc3_bot, campaign_difficulty_drives_ai_settings_defenders_and_wave_quantiti
         G_BotStop(2);
         FOR_LOOP(i, 2) {
             edict_t *unit = make_bot_harvest_unit(defender, 64.0f * (float)i, 0, 2, NULL);
+            G_InitUnitOrders(unit);
             unit->svflags |= SVF_MONSTER;
         }
         level.setup.difficulty = difficulty;
@@ -965,6 +967,7 @@ TEST(wc3_bot, group_flee_enters_retreat_after_persistent_local_disadvantage_and_
     enemy = make_bot_harvest_unit(MAKEFOURCC('o','g','r','u'), 600, 0, 1, NULL);
     first->data.UnitBalance = second->data.UnitBalance = &friendly_balance;
     enemy->data.UnitBalance = &enemy_balance; enemy->data.UnitWeapons = &enabled_attack;
+    G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER;
     first->health.value = first->health.max_value = 100;
     second->health.value = second->health.max_value = 100;
@@ -1185,6 +1188,7 @@ TEST(wc3_bot, set_assault_group_form_group_uses_max_then_appends_duplicate_entry
     reset_entities();
     FOR_LOOP(i, 6) {
         edict_t *unit = make_bot_harvest_unit(type, (float)i * 32.0f, 0, 2, NULL);
+        G_InitUnitOrders(unit);
         unit->svflags |= SVF_MONSTER;
     }
 
@@ -1206,6 +1210,8 @@ TEST(wc3_bot, suicide_player_launches_full_and_timeout_partial_assaults_at_targe
     edict_t *second = make_bot_harvest_unit(type, 32, 0, 2, NULL);
     edict_t *enemy = make_bot_harvest_unit(type, 256, 128, 1, NULL);
     player_t *target = &game.clients[1].ps;
+
+    G_InitUnitOrders(enemy);
 
     enemy->svflags |= SVF_MONSTER;
     mapinfo->players[1].used = true;
@@ -1240,7 +1246,10 @@ TEST(wc3_bot, suicide_player_skips_nearest_hidden_target_for_visible_enemy) {
     edict_t *hidden = make_bot_harvest_unit(MAKEFOURCC('o','g','r','u'), 64, 0, 1, NULL);
     edict_t *visible = make_bot_harvest_unit(MAKEFOURCC('o','g','r','u'), 256, 0, 1, NULL);
 
+    G_InitUnitOrders(hidden);
+
     hidden->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(visible);
     visible->svflags |= SVF_MONSTER;
     hidden->s.renderfx |= RF_HIDDEN;
     mapinfo->players[1].used = true;
@@ -1266,6 +1275,8 @@ TEST(wc3_bot, suicide_player_native_runs_in_player_bound_ai_vm) {
     mapInfo_t *mapinfo = (mapInfo_t *)level.mapinfo;
     edict_t *unit = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 0, 0, 2, NULL);
     edict_t *enemy = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 256, 128, 1, NULL);
+
+    G_InitUnitOrders(enemy);
 
     enemy->svflags |= SVF_MONSTER;
     mapinfo->players[1].used = true;
@@ -1673,6 +1684,7 @@ TEST(wc3_bot, get_creep_camp_filters_total_level_flyers_and_nearest_camp) {
     far_b = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 3300, 0);
     for (edict_t *u = near_a; u; u = u == near_a ? near_b : u == near_b ? far_a : u == far_a ? far_b : NULL) {
         u->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
+        G_InitUnitOrders(u);
         u->svflags |= SVF_MONSTER;
         u->health.value = u->health.max_value = 100;
         u->data.UnitData = &ground_data;
@@ -1950,7 +1962,9 @@ TEST(wc3_bot, individual_flee_policy_moves_damaged_combat_unit_home) {
     unit = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 500, 0, 2, NULL);
     enemy = make_bot_harvest_unit(MAKEFOURCC('o','g','r','u'), 550, 0, 1, NULL);
     unit->health.max_value = 100; unit->health.value = 20;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER;
     unit->attack1.type = ATK_NORMAL;
     enemy->attack1.type = ATK_NORMAL;
@@ -2115,7 +2129,9 @@ TEST(wc3_bot, captain_targeting_selects_one_visible_group_objective) {
     b = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 640, 128, 2, NULL);
     enemy_a = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 96, 128, 3, NULL);
     enemy_b = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 608, 128, 3, NULL);
+    G_InitUnitOrders(enemy_a);
     enemy_a->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(enemy_b);
     enemy_b->svflags |= SVF_MONSTER;
     T_ASSERT(G_BotAddAssault(player, 2, a->class_id));
     player->rdflags |= RDF_NOFOG; /* isolate target-scoring from fog fixture */

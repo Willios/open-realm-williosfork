@@ -194,8 +194,7 @@ static void unit_prepare_stand(edict_t *self) {
     self->build = NULL;
     self->s.renderfx &= ~RF_NO_UBERSPLAT;
     self->s.ability = 255;
-    self->movement.last_distance = 0;
-    self->movement.blocked_frames = 0;
+    G_FreeMovement(self);
 }
 
 /* Let a persistent ability claim the stand transition before the generic idle move is installed. */
@@ -332,7 +331,7 @@ static void revive_corpse_state(edict_t *ent, float life_fraction, bool temporar
     if (!ent) return;
     ent->svflags &= ~SVF_DEADMONSTER; ent->s.flags &= ~EF_NOT_SELECTABLE;
     ent->aiflags &= ~AI_HOLD_FRAME; ent->s.renderfx &= ~RF_HIDDEN;
-    ent->combatentity = ent->goalentity = ent->secondarygoal = NULL;
+    ent->combatentity = ent->goalentity = ent->orders->resource_goal = NULL;
     ent->wait = 0; G_ClearUnitOrderQueue(ent);
     ent->aiflags &= ~(AI_CORPSE_RESERVED | AI_CORPSE_IN_CARGO);
     if (temporary_summon) ent->aiflags |= AI_CORPSE_UNRAISABLE | AI_CORPSE_NO_DECAY;
@@ -890,9 +889,9 @@ bool G_GetActiveUnitOrder(edict_t const *self, unitOrder_t *out) {
 bool G_GetQueuedUnitOrder(edict_t const *self, uint32_t index, unitOrder_t *out) {
     uint32_t slot;
     if (out) memset(out, 0, sizeof(*out));
-    if (!self || !out || index >= self->order_queue.count || index >= MAX_UNIT_ORDER_QUEUE) return false;
-    slot = (self->order_queue.head + index) % MAX_UNIT_ORDER_QUEUE;
-    *out = self->order_queue.entries[slot];
+    if (!self || !self->orders || !out || index >= self->orders->queue.count || index >= MAX_UNIT_ORDER_QUEUE) return false;
+    slot = (self->orders->queue.head + index) % MAX_UNIT_ORDER_QUEUE;
+    *out = self->orders->queue.entries[slot];
     return out->order[0] != '\0';
 }
 
@@ -1022,7 +1021,8 @@ bool G_QueueUnitOrder(edict_t *self, cstring_t order, unitOrderTargetType_t targ
     uint32_t slot;
 
     if (!self || !unit_order_name_valid(order)) return false;
-    queue = &self->order_queue;
+    G_InitUnitOrders(self);
+    queue = &self->orders->queue;
     if (queue->count >= MAX_UNIT_ORDER_QUEUE) return false;
     slot = (queue->head + queue->count) % MAX_UNIT_ORDER_QUEUE;
     queued = &queue->entries[slot];
@@ -1046,8 +1046,8 @@ bool G_QueueUnitOrder(edict_t *self, cstring_t order, unitOrderTargetType_t targ
 static bool unit_queue_pop(edict_t *self, unitOrder_t *out) {
     unitOrderQueue_t *queue;
 
-    if (!self || !out) return false;
-    queue = &self->order_queue;
+    if (!self || !self->orders || !out) return false;
+    queue = &self->orders->queue;
     if (!queue->count) return false;
     *out = queue->entries[queue->head];
     memset(&queue->entries[queue->head], 0, sizeof(queue->entries[queue->head]));
@@ -1060,8 +1060,8 @@ static bool unit_queue_pop(edict_t *self, unitOrder_t *out) {
 void G_ClearUnitOrderQueue(edict_t *self) {
     unitOrderQueue_t *queue;
 
-    if (!self) return;
-    queue = &self->order_queue;
+    if (!self || !self->orders) return;
+    queue = &self->orders->queue;
     FOR_LOOP(i, queue->count) {
         uint32_t const slot = (queue->head + i) % MAX_UNIT_ORDER_QUEUE;
         S_UnitQueuedOrderEvent(self, &queue->entries[slot], A_QUEUE_ORDER_CANCEL);
@@ -1070,7 +1070,7 @@ void G_ClearUnitOrderQueue(edict_t *self) {
 }
 
 uint32_t G_UnitQueuedOrderCount(edict_t const *self) {
-    return self ? self->order_queue.count : 0;
+    return self && self->orders ? self->orders->queue.count : 0;
 }
 
 static bool unit_issueorder_now(edict_t *self, cstring_t order, vec2_t const *point, float group_speed);
@@ -1080,7 +1080,7 @@ static bool unit_issuetargetorder_now(edict_t *self, cstring_t order, edict_t *t
     if (M_IsDead(self)) return false;
     if (S_GoldMineWorkerIsInside(self)) return false;
 
-    self->movement.holding_position = false;
+    self->orders->holding_position = false;
     if (!strcmp(order, "repair")) {
         return S_OrderRepair(self, target, 0);
     }
@@ -1134,13 +1134,13 @@ static bool unit_issuetargetorder_now(edict_t *self, cstring_t order, edict_t *t
         }
         if ((target->svflags & SVF_MONSTER) && unit_smart_target_is_followable(self, target)) {
             order_follow(self, target);
-            return self->movement.follow_target == target;
+            return self->orders->follow_target == target;
         }
         return unit_issueorder_now(self, "move", &target->s.origin2, 0.0f);
     }
     if (!strcmp(order, "move") && (target->svflags & SVF_MONSTER)) {
         order_follow(self, target);
-        return self->movement.follow_target == target;
+        return self->orders->follow_target == target;
     }
     if (!strcmp(order, "attack")) {
         if (S_UnitPolymorphed(self)) return false;
@@ -1184,10 +1184,10 @@ static bool unit_issueorder_now(edict_t *self, cstring_t order, vec2_t const *po
         order_patrol(self, waypoint);
         return true;
     }
-    self->movement.holding_position = false;
+    self->orders->holding_position = false;
     if (!strcmp(order, "smart") || !strcmp(order, "move")) {
         order_move(self, waypoint);
-        self->movement.group_speed = group_speed;
+        self->movement->group_speed = group_speed;
         return true;
     }
     if (!strcmp(order, "attack")) {
@@ -1426,13 +1426,13 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     temporary_attack1 = unit->attack1.temporaryDamageBonus;
     temporary_attack2 = unit->attack2.temporaryDamageBonus;
     old_flags = unit->s.flags;
-    creep_guard_origin = unit->movement.creep_guard_origin;
-    creep_guard_last_hit_ms = unit->movement.creep_guard_last_hit_ms;
-    creep_guard_outside_ms = unit->movement.creep_guard_outside_ms;
-    creep_guard_return_retries = unit->movement.creep_guard_return_retries;
-    creep_guard_retry_at_ms = unit->movement.creep_guard_retry_at_ms;
-    creep_guard_enabled = unit->movement.creep_guard_enabled;
-    creep_guard_phase = unit->movement.creep_guard_phase;
+    creep_guard_origin = unit->orders->creep_guard_origin;
+    creep_guard_last_hit_ms = unit->orders->creep_guard_last_hit_ms;
+    creep_guard_outside_ms = unit->orders->creep_guard_outside_ms;
+    creep_guard_return_retries = unit->orders->creep_guard_return_retries;
+    creep_guard_retry_at_ms = unit->orders->creep_guard_retry_at_ms;
+    creep_guard_enabled = unit->orders->creep_guard_enabled;
+    creep_guard_phase = unit->orders->creep_guard_phase;
 
     G_ClearUnitFood(unit);
     if (source_building && unit->pathtex) {
@@ -1455,13 +1455,13 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     SP_SpawnUnit(unit);
     /* A transformation retains the same handle, owner, and guard post. Do not
      * silently recapture its current position or re-enable a disabled guard. */
-    unit->movement.creep_guard_origin = creep_guard_origin;
-    unit->movement.creep_guard_last_hit_ms = creep_guard_last_hit_ms;
-    unit->movement.creep_guard_outside_ms = creep_guard_outside_ms;
-    unit->movement.creep_guard_return_retries = creep_guard_return_retries;
-    unit->movement.creep_guard_retry_at_ms = creep_guard_retry_at_ms;
-    unit->movement.creep_guard_enabled = creep_guard_enabled;
-    unit->movement.creep_guard_phase = creep_guard_phase;
+    unit->orders->creep_guard_origin = creep_guard_origin;
+    unit->orders->creep_guard_last_hit_ms = creep_guard_last_hit_ms;
+    unit->orders->creep_guard_outside_ms = creep_guard_outside_ms;
+    unit->orders->creep_guard_return_retries = creep_guard_return_retries;
+    unit->orders->creep_guard_retry_at_ms = creep_guard_retry_at_ms;
+    unit->orders->creep_guard_enabled = creep_guard_enabled;
+    unit->orders->creep_guard_phase = creep_guard_phase;
     G_ApplyTemporaryMaxHealthBonus(unit, temporary_health);
     G_ApplyTemporaryMaxManaBonus(unit, temporary_mana);
     G_SetHealth(unit, MIN(unit->health.max_value, MAX(0.0f, unit->health.max_value * health_ratio)));
@@ -1602,8 +1602,8 @@ edict_t *unit_create(uint32_t player, uint32_t unitid, vec2_t const *location, f
                    player, location->x, location->y);
     /* SP_SpawnUnit captured the requested location before the unstuck search.
      * Guard the actual final spawn point, not an obstructed requested point. */
-    if (unit->movement.creep_guard_enabled)
-        unit->movement.creep_guard_origin = unit->s.origin2;
+    if (unit->orders->creep_guard_enabled)
+        unit->orders->creep_guard_origin = unit->s.origin2;
     if (unit->stand) {
         unit->stand(unit);
     }

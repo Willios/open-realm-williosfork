@@ -143,7 +143,7 @@ Version 36 expands the raw `GAMECLIENT` Warcraft music state with per-client ses
 
 Version 37 adds the timer callback generation/pending fields, expands the bounded event ring, and adds the Undead Sacrifice queue relationship. A queued Shade carries `edict_s.sacrifice` and `sacrifice.worker` is relocated through an `F_EDICT` fixup; the saved worker generation and hidden/paused restoration scalars remain in the raw edict record. This lets a save taken while an Acolyte is hidden inside a Sacrificial Pit resume the same production item and cancel/complete safely instead of retaining a process pointer. Version 36 saves are rejected by the exact-version guard because the timer schema and event ring layout changed. See [Undead Sacrifice](sacrifice.md).
 
-Save format version 45 adds Way Gate destination/activation values and explicit approach state. `movement.waygate_target` and `movement.waygate_goal` use the ordinary `F_EDICT` relocation contract, `waygate_target_spawn_time` guards the target incarnation, and the behavior continues to use the existing `currentmove` `F_MMOVE` relocation. The exact version guard rejects version 44 saves independently of the `sizeof(edict_t)` header check. See [Way Gates](way-gates.md).
+Save format version 45 adds Way Gate destination/activation values and explicit approach state. `orders->waygate_target` and `orders->waygate_goal` use the ordinary `F_EDICT` relocation contract, `waygate_target_spawn_time` guards the target incarnation, and the behavior continues to use the existing `currentmove` `F_MMOVE` relocation. The exact version guard rejects version 44 saves independently of the `sizeof(edict_t)` header check. See [Way Gates](way-gates.md).
 
 Ability-owned temporary summons rely on three already-persisted parts of the edict contract together: the `owner` `F_EDICT` fixup, the scalar `summon_ability` alias, and the raw timed-status record carrying `BTLF` (`timestamp`/`duration_ms`). The save regression suite covers that combined lifecycle so a loaded temporary summon keeps both provenance and its remaining timed-life state; no additional save-format field is required.
 
@@ -207,7 +207,7 @@ common path memcpy-shaped while making pointer exceptions declarative rather tha
 
 - Add every persistent `edict_t` entity pointer to `fields[]` as `F_EDICT`, including array elements and nested fields.
 - Use `TFC(type, field, kind, capacity, count_field)` for a bounded typedef-backed array. The descriptor writes and restores `count_field` itself, then processes that many elements; do not map the count separately.
-- Persistent movement defaults are part of that rule: Attack-Move/Patrol waypoints and `movement.follow_target` must be encoded as entity indexes rather than raw pointers.
+- Persistent movement defaults are part of that rule: Attack-Move/Patrol waypoints and `orders->follow_target` must be encoded as entity indexes rather than raw pointers.
 - Do not add process-owned pointers such as path textures, metadata rows, or animations. `WriteEdict()` clears `FIELD_RUNTIME` pointers and `ReadEdict()` rebinds class metadata; spatial links are rebuilt with `gi.LinkEntity`.
 - Edict C callbacks (`think`, `stand`, `birth`, `prethink`, `die`, `idle`, `move`, `run`, `attack`, `pain`) use `F_CFUNCTION`, not `F_IGNORE`. Add every production assignment to the versioned `save_cfunctions[]` roster in `g_save.c`; an unrostered pointer fails the save instead of writing an address.
 - JASS `F_FUNCTION` remains name-string identity for timers and triggers. Do not overload it with C symbols.
@@ -383,7 +383,7 @@ level.time = gi.GetTime();
 ```
 
 Every persisted absolute deadline lives in this clock: `edict_s.spawn_time`, `edict_s.freetime`,
-`edict_s.heatmap2_time`, `heroabilitystatus_t.timestamp`, client `camera.start_time` /
+`edict_s.route->time`, `heroabilitystatus_t.timestamp`, client `camera.start_time` /
 `message.end_time` / `cinematic_end_time`, and `level.cinefilter`. A save taken at `level.time = 20800`
 must restore the server clock to `20800`; otherwise every deadline would sit ~20.7 s in the future and
 units would stall waiting for cooldowns that already elapsed. Symptom seen in the field:
@@ -957,3 +957,13 @@ item through the original. It also checks invalid rawcodes and retired pools.
 JASS verification scheduled with `jass_callbyname(..., true)` requires
 `jass_runevents` before inspecting its error state; enqueueing alone does not execute
 assertions.
+
+## Optional travel records and animation text (version 102)
+
+The entity layout now references `movement`, `orders`, `route` and `wander` pools.
+Their schemas retain entity identity and clear process-local route caches on load.
+Animation request/queue/property strings are immutable interned text in memory;
+`F_ANIMSTRING` clears raw pointers and appends content after each edict, then interns
+that content while reading. A save must not depend on the old string arena surviving.
+Version 102 rejects older layouts. The network protocol is unchanged.
+See [entity and player state](state-review.md) for ownership and regression tests.

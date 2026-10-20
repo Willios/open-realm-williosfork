@@ -181,8 +181,8 @@ void G_SetUnitPlayer(edict_t *unit, uint32_t player) {
     }
     /* Ownership transfer must cancel an AI-owned return without resetting
      * the independent Stop guard anchor to the creep's current position. */
-    if (unit->movement.creep_guard_enabled &&
-        unit->movement.creep_guard_phase == CREEP_GUARD_RETURNING)
+    if (unit->orders && unit->orders->creep_guard_enabled &&
+        unit->orders->creep_guard_phase == CREEP_GUARD_RETURNING)
         order_stop_cleanup(unit);
     unit->s.player = player;
     /* A converted creep must not carry autonomous combat/return orders across

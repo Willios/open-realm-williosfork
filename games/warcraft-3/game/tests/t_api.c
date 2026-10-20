@@ -507,6 +507,7 @@ TEST(wc3_api, movement_crossing_region_publishes_entering_unit) {
         }
     }
     T_NOT_NULL(mover);
+    G_InitUnitOrders(mover);
     mover->svflags |= SVF_MONSTER;
     mover->movetype = MOVETYPE_STEP;
     mover->stand = unit_stand;
@@ -576,6 +577,7 @@ TEST(wc3_api, nonunit_map_entity_placement_does_not_fire_region_enter) {
 
     /* The runtime unit classification admits the same entity and delivers
      * the crossing through the normal movement entry point. */
+    G_InitUnitOrders(map_entity);
     map_entity->svflags |= SVF_MONSTER;
     old_position = (vec2_t){ 0.0f, 0.0f };
     G_UnitPositionChanged(map_entity, &old_position);
@@ -1646,8 +1648,8 @@ TEST(wc3_api, escape_restores_game_camera_ui_and_control) {
     T_EQ(gc->ps.client_ui_state, CLIENT_UI_GAME);
     T_EQ(gc->ps.uiflags, 1u << LAYER_CINEMATIC);
     T_ASSERT(!gc->no_control);
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 128, 0.001f); T_FEQ(gc->camera.pan_destination.y, 256, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 128, 0.001f); T_FEQ(gc->camera.pan.destination.y, 256, 0.001f);
     T_FEQ(gc->ps.distance, WC3_CAMERA_DEFAULT_DISTANCE, 0.001f); T_FEQ(gc->ps.fov, WC3_CAMERA_DEFAULT_FOV, 0.001f);
     T_FEQ(gc->ps.znear, WC3_CAMERA_DEFAULT_NEAR_Z, 0.001f);
     T_FEQ(gc->ps.zfar, WC3_CAMERA_DEFAULT_FAR_Z, 0.001f);
@@ -1764,6 +1766,7 @@ TEST(wc3_api, leaving_region_event_is_registered_and_dispatched) {
         if (g_edicts[i].inuse && g_edicts[i].class_id == MAKEFOURCC('h','p','e','a') && g_edicts[i].s.player == 0)
             leaving = &g_edicts[i];
     T_NOT_NULL(leaving);
+    G_InitUnitOrders(leaving);
     leaving->svflags |= SVF_MONSTER;
     leaving->movetype = MOVETYPE_STEP;
     leaving->stand = unit_stand;
@@ -2175,9 +2178,9 @@ TEST(wc3_api, timed_camera_pan_with_z_interpolates_target_height) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraToTimedWithZ(200.0, 300.0, 400.0, 2.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 200.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 300.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 200.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 300.0f, 0.001f);
     T_FEQ(gc->camera.state.z_offset, 400.0f, 0.001f);
     T_EQ(gc->camera.start_time, 100);
     T_EQ(gc->camera.end_time, 2100);
@@ -2254,21 +2257,21 @@ TEST(wc3_api, untimed_camera_pan_uses_authored_forward_and_strafe_rates) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraTo(200.0, 400.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_rate.x, 100.0f, 0.001f);
-    T_FEQ(gc->camera.pan_rate.y, 200.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.rate.x, 100.0f, 0.001f);
+    T_FEQ(gc->camera.pan.rate.y, 200.0f, 0.001f);
 
     level.time = 1100;
     G_RunClients();
     T_FEQ(gc->ps.vieworigin.x, 100.0f, 0.001f);
     T_FEQ(gc->ps.vieworigin.y, 200.0f, 0.001f);
-    T_ASSERT(gc->camera.pan_active);
+    T_ASSERT(gc->camera.pan.active);
 
     level.time = 2100;
     G_RunClients();
     T_FEQ(gc->ps.vieworigin.x, 200.0f, 0.001f);
     T_FEQ(gc->ps.vieworigin.y, 400.0f, 0.001f);
-    T_ASSERT(!gc->camera.pan_active);
+    T_ASSERT(!gc->camera.pan.active);
     T_FEQ(gc->camera.state.position.x, 200.0f, 0.001f);
     T_FEQ(gc->camera.state.position.y, 400.0f, 0.001f);
     currentplayer = NULL;
@@ -2291,7 +2294,7 @@ TEST(wc3_api, invalid_camera_pan_rates_report_error_without_snapping) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraTo(200.0, 400.0)\n"
         "endfunction\n"));
-    T_ASSERT(!gc->camera.pan_active);
+    T_ASSERT(!gc->camera.pan.active);
     T_FEQ(gc->camera.state.position.x, 10.0f, 0.001f);
     T_FEQ(gc->camera.state.position.y, 20.0f, 0.001f);
 
@@ -2317,9 +2320,9 @@ TEST(wc3_api, camera_setup_pantimed_uses_normal_pan_rates) {
         "  call CameraSetupSetDestPosition(c, 200.0, 400.0, 0.0)\n"
         "  call CameraSetupApply(c, true, true)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 200.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 400.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 200.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 400.0f, 0.001f);
 
     level.time = 1100;
     G_RunClients();
@@ -2399,9 +2402,9 @@ TEST(wc3_api, camera_setup_applies_clip_planes_z_and_dopan_contract) {
         "  call CameraSetupSetField(c, CAMERA_FIELD_FARZ, 7500.0, 0.0)\n"
         "  call CameraSetupApplyWithZ(c, 275.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 700.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 800.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 700.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 800.0f, 0.001f);
     T_FEQ(gc->camera.state.near_z, 65.0f, 0.001f);
     T_FEQ(gc->camera.state.far_z, 7500.0f, 0.001f);
     T_FEQ(gc->camera.state.z_offset, 275.0f, 0.001f);
@@ -3416,10 +3419,10 @@ TEST(wc3_api, neutral_creep_createunit_anchor_uses_resolved_spawn) {
     creep = unit_create(PLAYER_NEUTRAL_AGGRESSIVE, BZ_WC3_UNIT_PEASANT, &requested, 0);
     T_NOT_NULL(creep);
     if (!creep) return;
-    T_ASSERT(creep->movement.creep_guard_enabled);
+    T_ASSERT(creep->orders->creep_guard_enabled);
     T_ASSERT(Vector2_distance(&creep->s.origin2, &requested) > 0.01f);
-    T_FEQ(creep->movement.creep_guard_origin.x, creep->s.origin2.x, 0.001f);
-    T_FEQ(creep->movement.creep_guard_origin.y, creep->s.origin2.y, 0.001f);
+    T_FEQ(creep->orders->creep_guard_origin.x, creep->s.origin2.x, 0.001f);
+    T_FEQ(creep->orders->creep_guard_origin.y, creep->s.origin2.y, 0.001f);
 }
 
 TEST(wc3_api, flyer_unstuck_search_uses_unflyable_instead_of_unwalkable) {

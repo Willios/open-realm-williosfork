@@ -564,7 +564,7 @@ TEST(wc3_ancient_root, approaching_root_remains_interruptible) {
 
 static void ancient_begin_root_placement(edict_t *player, edict_t *unit) {
     abilityitem_t item = S_AbilityItem(TEST_AROO);
-    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .client = player);
+    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .entity = player);
     G_SelectEntity(player->client, unit);
     T_ASSERT(S_AbilityMessage(unit, A_COMMAND, &call));
     T_NOT_NULL(player->client->menu.on_location_selected);

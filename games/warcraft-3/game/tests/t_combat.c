@@ -1892,11 +1892,11 @@ TEST(wc3_combat, attack_completion_resumes_persistent_follow) {
     enemy->targtype = TARG_GROUND;
 
     order_follow(follower, leader);
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     order_attack(follower, enemy);
     T_Damage(enemy, follower, 100);
 
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
     T_ASSERT(follower->currentmove && follower->currentmove->proc == CAbilityMove);
 }
@@ -2314,6 +2314,7 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_swing_cooldown) {
     order_attack(attacker, target);
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "attack");
+    T_NULL(attacker->movement);
     T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
     swing_cooldown_end = attacker->attack_cooldown_end_time;
 
@@ -2323,6 +2324,7 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_swing_cooldown) {
     attacker->wait = FRAMETIME / 1000.0f;
     attacker->currentmove->think(attacker);
     T_ASSERT(target->health.value < target->health.max_value);
+    T_NULL(attacker->movement);
     T_EQ(attacker->attack_cooldown_end_time, swing_cooldown_end);
 
     /* The attack animation's end callback happens later than damage point.
@@ -2697,6 +2699,7 @@ TEST(wc3_combat, direct_attack_rejects_reused_target_edict) {
     target = G_Spawn();
     T_EQ((uint32_t)(target - g_edicts), target_number);
     target->spawn_time = level.time;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     target->health.value = target->health.max_value = 420.0f;
     target->targtype = TARG_GROUND;

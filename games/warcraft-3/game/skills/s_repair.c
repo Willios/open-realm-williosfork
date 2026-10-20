@@ -448,11 +448,11 @@ static void ai_repair_walk(edict_t *ent) {
 
     unit_changeangle_for_radius(ent, ent->collision);
 
-    if (ent->movement.flow_goal_reached && !repair_in_range(ent, building)) {
+    if (ent->movement->flow_goal_reached && !repair_in_range(ent, building)) {
         repair_stop_reason(ent, "walk_goal_reached_out_of_range");
         return;
     }
-    if (ent->movement.flow_unreachable) {
+    if (ent->movement->flow_unreachable) {
         repair_stop_reason(ent, "walk_unreachable");
         return;
     }
@@ -476,7 +476,7 @@ static void ai_repair(edict_t *ent) {
 
     data = repair_data(ent);
     hp = &building->health;
-    unit_changeangle(ent);
+    unit_facegoal(ent);
 
     if (building->construction) {
         float ratio;
@@ -598,9 +598,9 @@ static void ai_repair_legacy(edict_t *ent) {
     }
 }
 
-static umove_t repair_move_walk = { "walk", ai_repair_walk, NULL, CAbilityRepair };
+static umove_t repair_move_walk = { "walk", ai_repair_walk, NULL, CAbilityRepair, .travel = true };
 static umove_t repair_move_work = { "stand work", ai_repair, NULL, CAbilityRepair };
-static umove_t repair_generic_move_walk = { "walk", ai_repair_walk, NULL, CAbilityRepairGeneric };
+static umove_t repair_generic_move_walk = { "walk", ai_repair_walk, NULL, CAbilityRepairGeneric, .travel = true };
 static umove_t repair_generic_move_work = { "stand work", ai_repair, NULL, CAbilityRepairGeneric };
 static umove_t repair_legacy_move_work = { "stand work", ai_repair_legacy, NULL, CAbilityRepair };
 
@@ -970,7 +970,7 @@ static void repair_command(edict_t *clent) {
 #define BZ_REPAIR_PROC(NAME) \
     BZ_ABILITY_PROC(C##NAME) { \
         switch (msg) { \
-        case A_COMMAND: repair_command(call && call->client ? call->client : ent); return true; \
+        case A_COMMAND: repair_command(call && call->entity ? call->entity : ent); return true; \
         case A_AUTOCAST_ON: return repair_autocast_is_on(ent); \
         case A_AUTOCAST_SET: repair_autocast_set(ent, call && call->enabled); return true; \
         case A_AUTOCAST_ACQUIRE: return repair_autocast_acquire(ent); \

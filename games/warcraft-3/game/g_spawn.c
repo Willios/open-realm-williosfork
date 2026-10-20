@@ -1004,6 +1004,7 @@ static edict_t *SP_SpawnAtLocationInternal(uint32_t class_id, uint32_t player, v
     if (!ent) {
         return NULL;
     }
+    G_InitUnitOrders(ent);
     ent->class_id = class_id;
     ent->s.class_id = class_id;
     ent->spawn_time = G_Time();

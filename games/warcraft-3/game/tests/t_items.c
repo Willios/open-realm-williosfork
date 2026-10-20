@@ -269,7 +269,7 @@ TEST(wc3_items, change_time_item_uses_ability_hour_minute_and_duration) {
     T_ASSERT(ability->flags & AB_ITEM);
     {
         abilityitem_t item = S_AbilityItem(MAKEFOURCC('A','I','c','t'));
-        abilityCall_t call = MAKE(abilityCall_t, .item = &item, .client = player);
+        abilityCall_t call = MAKE(abilityCall_t, .item = &item, .entity = player);
         T_ASSERT(S_AbilityMessage(player, A_ITEM_USE, &call));
     }
     T_ASSERT(level.timeofday.false_time.active);
@@ -307,7 +307,7 @@ TEST(wc3_items, invisibility_item_uses_authored_duration_and_buff_status) {
     player->client->menu.ability_code = MAKEFOURCC('A','I','v','i');
     item = S_AbilityItem(MAKEFOURCC('A','I','v','i'));
     T_EQ(item.ability->proc, CAbilityItemInvis);
-    call = MAKE(abilityCall_t, .item = &item, .client = player);
+    call = MAKE(abilityCall_t, .item = &item, .entity = player);
 
     T_ASSERT(S_AbilityMessage(player, A_ITEM_USE, &call));
     status = unit_findstatus(hero, MAKEFOURCC('B','i','x','x'));
@@ -381,7 +381,7 @@ TEST(wc3_items, stock_invisibility_item_applies_and_expires_binv) {
     G_SelectEntity(player->client, hero);
     player->client->menu.ability_code = MAKEFOURCC('A','I','v','i');
     item = S_AbilityItem(MAKEFOURCC('A','I','v','i'));
-    call = MAKE(abilityCall_t, .item = &item, .client = player);
+    call = MAKE(abilityCall_t, .item = &item, .entity = player);
 
     T_ASSERT(S_AbilityMessage(player, A_ITEM_USE, &call));
     status = unit_findstatus(hero, MAKEFOURCC('B','i','n','v'));
@@ -759,6 +759,7 @@ TEST(wc3_items, gold_powerup_uses_authored_grant_without_inventory_slot) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     owner = G_GetPlayerClientByNumber(0);
@@ -839,6 +840,7 @@ TEST(wc3_items, gold_powerup_negative_data_drains_and_clamps_at_zero) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     owner = G_GetPlayerClientByNumber(0);
@@ -882,6 +884,7 @@ TEST(wc3_items, lumber_powerup_uses_authored_grant_without_inventory_slot) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     owner = G_GetPlayerClientByNumber(0);
@@ -970,6 +973,7 @@ TEST(wc3_items, lumber_powerup_negative_data_clamps_at_zero) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     owner = G_GetPlayerClientByNumber(0);
@@ -1006,9 +1010,13 @@ TEST(wc3_items, healing_rune_uses_authored_aoe_with_full_inventory) {
     distant = make_item_test_inventory_unit(100, 0);
     mechanical = make_item_test_inventory_unit(30, 0);
     picker->s.player = nearby->s.player = distant->s.player = mechanical->s.player = 0;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(nearby);
     nearby->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(distant);
     distant->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(mechanical);
     mechanical->svflags |= SVF_MONSTER;
     picker->targtype = nearby->targtype = distant->targtype = TARG_GROUND;
     mechanical->targtype = TARG_MECHANICAL;
@@ -1068,10 +1076,15 @@ TEST(wc3_items, mana_rune_restores_authored_aoe_without_inventory_slot) {
     mechanical = make_item_test_inventory_unit(40, 0);
     picker->s.player = nearby->s.player = distant->s.player = mechanical->s.player = 0;
     enemy->s.player = 1;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(nearby);
     nearby->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(distant);
     distant->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(mechanical);
     mechanical->svflags |= SVF_MONSTER;
     picker->targtype = nearby->targtype = distant->targtype = enemy->targtype = TARG_GROUND;
     mechanical->targtype = TARG_MECHANICAL;
@@ -1142,10 +1155,15 @@ TEST(wc3_items, restoration_rune_restores_both_resources_from_authored_data) {
     mechanical = make_item_test_inventory_unit(35, 0);
     picker->s.player = nearby->s.player = distant->s.player = mechanical->s.player = 0;
     enemy->s.player = 1;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(nearby);
     nearby->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(distant);
     distant->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(mechanical);
     mechanical->svflags |= SVF_MONSTER;
     picker->targtype = nearby->targtype = distant->targtype = enemy->targtype = TARG_GROUND;
     mechanical->targtype = TARG_MECHANICAL;
@@ -1211,6 +1229,7 @@ TEST(wc3_items, resurrection_rune_revives_authored_count_without_inventory_slot)
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     picker = make_item_test_inventory_unit(0, 0);
     picker->s.player = 0;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
     picker->targtype = TARG_GROUND;
     FOR_LOOP(slot, G_InventoryCapacity(picker)) {
@@ -1293,7 +1312,9 @@ TEST(wc3_items, shielding_rune_arms_eligible_allies_with_full_inventory) {
     outside = make_item_test_inventory_unit(200, 0);
     picker->s.player = ally->s.player = outside->s.player = 0;
     enemy->s.player = 1;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER; ally->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER; outside->svflags |= SVF_MONSTER;
     picker->targtype = ally->targtype = enemy->targtype = outside->targtype = TARG_GROUND;
     FOR_LOOP(slot, G_InventoryCapacity(picker)) {
@@ -1345,6 +1366,7 @@ TEST(wc3_items, shielding_rune_intercepts_hostile_unit_spells_only) {
     caster = make_item_test_inventory_unit(0, 0);
     victim = make_item_test_inventory_unit(50, 0);
     caster->s.player = 1; victim->s.player = 0;
+    G_InitUnitOrders(caster);
     caster->svflags |= SVF_MONSTER; victim->svflags |= SVF_MONSTER;
     caster->targtype = victim->targtype = TARG_GROUND;
     unit_addstatus(victim, "BNss", 1);
@@ -1383,6 +1405,7 @@ TEST(wc3_items, speed_powerup_applies_authored_status_and_movement_cap) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     item = make_item_test_world_item(MAKEFOURCC('p','s','p','d'), 32, 0);
@@ -1410,6 +1433,7 @@ TEST(wc3_items, speed_powerup_applies_authored_status_and_movement_cap) {
 
     recipient = make_item_test_inventory_unit(50, 0);
     recipient->s.player = 0;
+    G_InitUnitOrders(recipient);
     recipient->svflags |= SVF_MONSTER;
     recipient->targtype = TARG_GROUND;
     item = make_item_test_world_item(MAKEFOURCC('p','r','s','p'), 0, 0);
@@ -1443,6 +1467,7 @@ TEST(wc3_items, speed_powerup_without_valid_recipient_is_consumed) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     picker = make_item_test_inventory_unit(0, 0);
     picker->s.player = 0;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
     picker->targtype = TARG_MECHANICAL;
     item = make_item_test_world_item(MAKEFOURCC('p','s','p','d'), 32, 0);
@@ -1475,6 +1500,7 @@ TEST(wc3_items, custom_speed_powerup_rawcode_gets_movement_cap) {
     ((mapInfo_t *)level.mapinfo)->fileFormat = 24;
     unit = make_item_test_inventory_unit(0, 0);
     unit->s.player = 0;
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
     unit->targtype = TARG_GROUND;
     item = make_item_test_world_item(MAKEFOURCC('p','s','p','d'), 32, 0);
@@ -2804,7 +2830,7 @@ TEST(wc3_items, point_target_item_walks_into_range_then_places_at_clicked_point)
     T_NOT_NULL(hero->goalentity);
     if (hero->goalentity) T_FEQ(hero->goalentity->s.origin2.x, 700.0f, 0.001f);
     T_EQ(G_ItemCharges(item), 4);
-    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->spell_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
+    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->channel && ent->channel->source_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
         approach = ent; break;
     }
     T_NOT_NULL(approach);
@@ -2828,7 +2854,7 @@ TEST(wc3_items, point_target_item_walks_into_range_then_places_at_clicked_point)
     G_ClientCommand(player, 3, far_click);
     T_NOT_NULL(hero->goalentity);
     if (hero->goalentity) T_FEQ(hero->goalentity->s.origin2.x, 700.0f, 0.001f);
-    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->spell_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
+    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->channel && ent->channel->source_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
         approach = ent; break;
     }
     T_NOT_NULL(approach);
@@ -2857,7 +2883,7 @@ TEST(wc3_items, point_target_item_walks_into_range_then_places_at_clicked_point)
     G_UseItem(hero, 0);
     G_ClientCommand(player, 3, another_far_click);
     approach = NULL;
-    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->spell_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
+    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->channel && ent->channel->source_item == item && ent->class_id == MAKEFOURCC('A','I','p','m')) {
         approach = ent; break;
     }
     T_NOT_NULL(approach);
@@ -2886,7 +2912,7 @@ TEST(wc3_items, point_target_item_walks_into_range_then_places_at_clicked_point)
     G_UseItem(hero, 0);
     G_ClientCommand(player, 3, save_far_click);
     approach = NULL;
-    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->spell_item == item &&
+    FILTER_EDICTS(ent, ent->inuse && ent->owner == hero && ent->channel && ent->channel->source_item == item &&
                   ent->class_id == MAKEFOURCC('A','I','p','m')) {
         approach = ent; break;
     }
@@ -3216,7 +3242,7 @@ TEST(wc3_items, point_drop_waits_for_simulation_tick) {
     T_ASSERT(item->item->in_world);
     T_FEQ(item->s.origin2.x, destination.x, 0.001f);
     T_FEQ(item->s.origin2.y, destination.y, 0.001f);
-    T_NULL(unit->item_drop);
+    T_NULL(unit->orders->item_drop);
     T_NULL(unit->goalentity);
 }
 
@@ -3233,7 +3259,7 @@ TEST(wc3_items, distant_point_drop_moves_before_releasing_item) {
     T_ASSERT(unit->inventory[0] == item);
     T_ASSERT(!item->item || !item->item->in_world);
     T_ASSERT(unit->s.origin2.x > 0.0f);
-    T_ASSERT(unit->item_drop == item);
+    T_ASSERT(unit->orders->item_drop == item);
     T_NOT_NULL(unit->goalentity);
 }
 
@@ -3250,7 +3276,7 @@ TEST(wc3_items, point_drop_revalidates_carried_item) {
     item->item->carrier = NULL;
     unit->currentmove->think(unit);
 
-    T_NULL(unit->item_drop);
+    T_NULL(unit->orders->item_drop);
     T_NULL(unit->goalentity);
     T_STREQ(unit->currentmove->animation, "stand");
 }
@@ -3312,7 +3338,7 @@ TEST(wc3_items, targeted_give_to_inventory_unit_finishes_on_tick) {
     source->currentmove->think(source);
     T_NULL(source->inventory[0]);
     T_ASSERT(recipient->inventory[0] == item);
-    T_NULL(source->item_drop);
+    T_NULL(source->orders->item_drop);
     T_NULL(source->goalentity);
 }
 
@@ -3340,7 +3366,7 @@ TEST(wc3_items, inventory_drag_select_entity_queues_handoff) {
     T_ASSERT(client->menu.dragged_item == item);
     snprintf(target_number, sizeof(target_number), "%u", recipient->s.number);
     G_ClientCommand(clent, 2, select);
-    T_ASSERT(source->item_drop == item);
+    T_ASSERT(source->orders->item_drop == item);
     T_ASSERT(source->goalentity == recipient);
     T_ASSERT(source->inventory[0] == item);
     source->currentmove->think(source);
@@ -3379,7 +3405,7 @@ TEST(wc3_items, stationary_inventory_giver_hands_off_only_in_range) {
     T_ASSERT(G_OrderGiveItemTarget(source, item, recipient));
     T_NULL(source->inventory[0]);
     T_ASSERT(recipient->inventory[0] == item);
-    T_NULL(source->item_drop);
+    T_NULL(source->orders->item_drop);
     T_NULL(source->goalentity);
 
     far_recipient = make_item_test_inventory_unit(512, 0);
@@ -3387,7 +3413,7 @@ TEST(wc3_items, stationary_inventory_giver_hands_off_only_in_range) {
     T_ASSERT(G_AddItemToSlot(source, far_item, 0));
     T_ASSERT(!G_OrderGiveItemTarget(source, far_item, far_recipient));
     T_ASSERT(source->inventory[0] == far_item);
-    T_NULL(source->item_drop);
+    T_NULL(source->orders->item_drop);
     T_NULL(source->goalentity);
 }
 
@@ -3426,7 +3452,7 @@ TEST(wc3_items, targeted_give_revalidates_cancelled_or_invalid_target) {
     recipient->health.value = 0.0f;
     source->currentmove->think(source);
     T_ASSERT(source->inventory[0] == item);
-    T_NULL(source->item_drop);
+    T_NULL(source->orders->item_drop);
     T_NULL(source->goalentity);
 }
 
@@ -3657,6 +3683,7 @@ TEST(wc3_items, soul_gem_targets_grom_after_death_trigger_revives_him) {
 
     carrier = make_item_test_inventory_unit(64, 64);
     carrier->s.player = 0;
+    G_InitUnitOrders(carrier);
     carrier->svflags |= SVF_MONSTER;
     grom = NULL;
     FOR_LOOP(i, globals.num_edicts) {
@@ -3757,6 +3784,7 @@ TEST(wc3_items, soul_gem_approach_is_cancelled_if_grom_dies_before_revival_dispa
 
     carrier = make_item_test_inventory_unit(64, 64);
     carrier->s.player = 0;
+    G_InitUnitOrders(carrier);
     carrier->svflags |= SVF_MONSTER;
     grom = NULL;
     FOR_LOOP(i, globals.num_edicts) {
@@ -3850,6 +3878,7 @@ TEST(wc3_items, soul_gem_target_capture_keeps_live_hero_until_carrier_death) {
     G_FowInit(); G_FowConnectPlayer(0); G_FowConnectPlayer(1); G_FowConnectPlayer(2);
     carrier = make_item_test_inventory_unit(64, 64);
     carrier->s.player = 0;
+    G_InitUnitOrders(carrier);
     carrier->svflags |= SVF_MONSTER;
     existing_soul = make_item_test_world_item(MAKEFOURCC('s','o','u','l'), 64, 64);
     existing_soul->data.ItemData = G_ItemData(MAKEFOURCC('s','o','u','l'));
@@ -3978,6 +4007,7 @@ TEST(wc3_items, soul_gem_rejects_nonhero_from_authored_target_mask) {
     level.alliances[0][1] = level.alliances[1][0] = 0;
     carrier = make_item_test_inventory_unit(64, 64);
     carrier->s.player = 0;
+    G_InitUnitOrders(carrier);
     carrier->svflags |= SVF_MONSTER;
     target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96, 64);
     target->s.player = 1;
@@ -4103,7 +4133,7 @@ TEST(wc3_items, soul_gem_pending_approach_round_trips_save) {
     G_ClientCommand(clent, 2, select);
     thinker = &globals.edicts[thinker_slot];
     T_ASSERT(thinker->inuse && thinker->think);
-    T_ASSERT(thinker->spell_item == gem);
+    T_ASSERT(thinker->channel->source_item == gem);
     T_EQ(thinker->channel->owner_spawn_time, carrier->spawn_time);
     T_EQ(thinker->channel->target_spawn_time, target->spawn_time);
 
@@ -4112,12 +4142,12 @@ TEST(wc3_items, soul_gem_pending_approach_round_trips_save) {
     if (saved) {
         /* g_save.c checks the append-only v47 roster identity directly; this
          * round trip verifies the pending thinker pointer and its payload. */
-        thinker->think = NULL; thinker->spell_item = NULL;
+        thinker->think = NULL; thinker->channel->source_item = NULL;
         T_ASSERT(ReadGame(path));
         thinker = &globals.edicts[thinker_slot];
         T_NOT_NULL(thinker->think);
         T_EQ(thinker->think, S_SpellTargetApproachThink);
-        T_ASSERT(thinker->spell_item == gem);
+        T_ASSERT(thinker->channel->source_item == gem);
         T_EQ(thinker->channel->owner_spawn_time, carrier->spawn_time);
         T_EQ(thinker->channel->target_spawn_time, target->spawn_time);
         carrier->s.origin2.x = carrier->s.origin.x = 480.0f;
@@ -4417,17 +4447,17 @@ TEST(wc3_items, targeted_give_order_survives_full_game_save_load) {
     T_ASSERT(WriteGame(filename));
     /* These transient changes are discarded by the restored save. */
     giver->goalentity = NULL;
-    giver->item_drop = NULL;
+    giver->orders->item_drop = NULL;
     T_ASSERT(ReadGame(filename));
     T_ASSERT(giver->goalentity == receiver);
-    T_ASSERT(giver->item_drop == item);
+    T_ASSERT(giver->orders->item_drop == item);
     T_NOT_NULL(giver->currentmove);
     T_ASSERT(giver->inventory[0] == item);
     if (giver->currentmove && giver->currentmove->think)
         giver->currentmove->think(giver);
     T_NULL(giver->inventory[0]);
     T_ASSERT(receiver->inventory[0] == item);
-    T_NULL(giver->item_drop);
+    T_NULL(giver->orders->item_drop);
     T_NULL(giver->goalentity);
     remove(filename);
 }
@@ -4632,6 +4662,7 @@ TEST(wc3_items, glyph_powerups_grant_authored_upgrade_levels) {
     memset(client->tech, 0, sizeof(client->tech));
     picker = make_item_test_inventory_unit(0, 0);
     picker->s.player = 0;
+    G_InitUnitOrders(picker);
     picker->svflags |= SVF_MONSTER;
     picker->targtype = TARG_GROUND;
     item = make_item_test_world_item(MAKEFOURCC('g','f','o','r'), 32, 0);

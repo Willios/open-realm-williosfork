@@ -67,7 +67,7 @@ static void shortcut_test_write(pfWriteType_t type, void const *value) {
 }
 
 TEST(wc3_shortcuts, peasant_plain_stand_is_idle_but_busy_move_is_not) {
-    umove_t busy = { "walk", NULL, NULL, NULL };
+    umove_t busy = { "walk", NULL, NULL, NULL, .travel = true };
     edict_t *worker;
 
     reset_entities();
@@ -95,7 +95,7 @@ TEST(wc3_shortcuts, hold_position_worker_is_not_idle) {
     worker->svflags |= SVF_MONSTER;
     worker->s.player = 0;
     worker->stand = unit_stand;
-    worker->movement.holding_position = true;
+    worker->orders->holding_position = true;
     unit_stand(worker);
 
     T_ASSERT(!G_UnitIsIdleWorker(worker));

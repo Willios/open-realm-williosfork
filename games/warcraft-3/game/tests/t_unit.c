@@ -52,6 +52,34 @@ static int death_sound_index(cstring_t path) {
     return 77;
 }
 
+/* Script/stack animation names are copied once and shared independently of caller storage. */
+TEST(wc3_unit, animation_names_are_shared_owned_and_not_truncated) {
+    char name[160];
+    memset(name, 'a', sizeof(name) - 1);
+    name[sizeof(name) - 1] = 0;
+    cstring_t saved = G_InternAnimationName(name);
+    T_ASSERT(saved != name);
+    T_EQ(strlen(saved), sizeof(name) - 1);
+    T_ASSERT(G_InternAnimationName(name) == saved);
+    name[0] = 'b';
+    T_EQ(saved[0], 'a');
+    T_ASSERT(G_InternAnimationName(name) != saved);
+    T_STREQ(G_InternAnimationName(NULL), "");
+}
+
+/* Movement scratch must not reserve a full routing record on every stationary edict. */
+TEST(wc3_unit, movement_storage_is_optional) {
+    T_EQ(sizeof(((edict_t *)0)->movement), sizeof(void *));
+    reset_entities();
+    edict_t *effect = G_Spawn();
+    T_NULL(effect->movement);
+    T_NULL(effect->orders);
+    T_EQ(G_UnitQueuedOrderCount(effect), 0);
+    G_ClearUnitOrderQueue(effect);
+    T_NULL(effect->orders); /* queries and cleanup do not create retained intent */
+    G_FreeEdict(effect);
+}
+
 TEST(wc3_unit, death_sound_uses_existing_numbered_asset) {
     struct game_import old = gi;
     UnitUI_t ui = { .soundLabel = "Test", .modelFile = "Units\\Human\\Test\\Test" };
@@ -922,7 +950,9 @@ TEST(wc3_unit, smart_on_passive_ally_starts_persistent_follow) {
     reset_test_entities();
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = 0;
     leader->s.player = 1;
@@ -932,7 +962,7 @@ TEST(wc3_unit, smart_on_passive_ally_starts_persistent_follow) {
     level.alliances[0][1] |= 1 << ALLIANCE_PASSIVE;
 
     T_ASSERT(unit_issuetargetorder(follower, "smart", leader));
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
     T_ASSERT(follower->currentmove && follower->currentmove->proc == CAbilityMove);
 }
@@ -941,12 +971,14 @@ TEST(wc3_unit, target_move_on_unit_starts_persistent_follow) {
     reset_test_entities();
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = leader->s.player = 0;
 
     T_ASSERT(unit_issuetargetorder(follower, "move", leader));
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
     T_ASSERT(follower->currentmove && follower->currentmove->proc == CAbilityMove);
 }
@@ -993,7 +1025,9 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
     setup_test_world();
     follower = make_unit(200.0f, 0.0f);
     building = make_unit(0.0f, 0.0f);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(building);
     building->svflags |= SVF_MONSTER;
     follower->s.player = building->s.player = 0;
     building->s.flags |= EF_BUILDING;
@@ -1014,7 +1048,7 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
      * footprint-aware follow is already within the intended structure range. */
     T_ASSERT(M_DistanceToGoal(follower) == 0.0f);
     T_ASSERT(unit_issuetargetorder(follower, "smart", building));
-    T_ASSERT(follower->movement.follow_target == building);
+    T_ASSERT(follower->orders->follow_target == building);
     T_ASSERT(follower->goalentity == building);
     T_ASSERT(M_DistanceToGoal(follower) > G_FollowStopRange(follower, building));
     T_FEQ(G_FollowStopRange(follower, building), 100.0f, 0.001f);
@@ -1024,7 +1058,7 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
     follower->animation = &(animation_t){ .name = "stand", .interval = { 0, 300 } };
     follower->currentmove->think(follower);
 
-    T_ASSERT(follower->movement.follow_target == building);
+    T_ASSERT(follower->orders->follow_target == building);
     T_ASSERT(G_AnimationHasPrimary(follower->animation, "stand"));
 
     building->pathtex = NULL;
@@ -1038,7 +1072,9 @@ TEST(wc3_unit, queued_smart_on_passive_ally_revalidates_to_follow) {
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
     vec2_t first = { 96.0f, 0.0f };
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = 0;
     leader->s.player = 1;
@@ -1054,7 +1090,7 @@ TEST(wc3_unit, queued_smart_on_passive_ally_revalidates_to_follow) {
     unit_stand(follower);
 
     T_EQ(G_UnitQueuedOrderCount(follower), 0);
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
 }
 
@@ -1109,6 +1145,8 @@ TEST(wc3_unit, no_creep_sleep_player_state_blocks_new_natural_sleep) {
     edict_t *creep = make_unit(0, 0);
     uint16_t *no_creep_sleep = &game.clients[PLAYER_NEUTRAL_AGGRESSIVE].ps.stats[WC3_PLAYERSTATE_NO_CREEP_SLEEP];
 
+    G_InitUnitOrders(creep);
+
     creep->svflags |= SVF_MONSTER;
     creep->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     if (!creep->sleep) creep->sleep = G_AllocSleep();
@@ -1132,11 +1170,14 @@ TEST(wc3_unit, unit_add_sleep_policy_is_neutral_only_and_wakes_when_disabled) {
     edict_t *neutral = make_unit(0, 0);
     edict_t *player_unit = make_unit(64, 0);
 
+    G_InitUnitOrders(neutral);
+
     neutral->svflags |= SVF_MONSTER;
     neutral->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     if (!neutral->sleep) neutral->sleep = G_AllocSleep();
     assert(neutral->sleep);
     neutral->sleep->can_sleep = false;
+    G_InitUnitOrders(player_unit);
     player_unit->svflags |= SVF_MONSTER;
     player_unit->s.player = 0;
     if (!player_unit->sleep) player_unit->sleep = G_AllocSleep();
@@ -1166,7 +1207,9 @@ TEST(wc3_unit, smart_on_neutral_aggressive_attacks_not_follows) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
@@ -1174,7 +1217,7 @@ TEST(wc3_unit, smart_on_neutral_aggressive_attacks_not_follows) {
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
     T_ASSERT(unit->goalentity == target);
-    T_ASSERT(unit->movement.follow_target == NULL);
+    T_ASSERT(unit->orders->follow_target == NULL);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityAttack);
 }
 
@@ -1182,7 +1225,9 @@ TEST(wc3_unit, smart_on_neutral_aggressive_follows_after_passive_alliance) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
@@ -1192,7 +1237,7 @@ TEST(wc3_unit, smart_on_neutral_aggressive_follows_after_passive_alliance) {
                         ALLIANCE_PASSIVE, true);
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
-    T_ASSERT(unit->movement.follow_target == target);
+    T_ASSERT(unit->orders->follow_target == target);
     T_ASSERT(unit->goalentity == target);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
 }
@@ -1201,14 +1246,16 @@ TEST(wc3_unit, smart_on_neutral_passive_uses_persistent_follow) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_PASSIVE;
     G_InitPlayerAlliances(level.mapinfo);
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
-    T_ASSERT(unit->movement.follow_target == target);
+    T_ASSERT(unit->orders->follow_target == target);
     T_ASSERT(unit->goalentity == target);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
 }
@@ -1217,7 +1264,9 @@ TEST(wc3_unit, smart_on_shared_vision_enemy_still_attacks) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = 1;
@@ -1228,7 +1277,7 @@ TEST(wc3_unit, smart_on_shared_vision_enemy_still_attacks) {
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
     T_ASSERT(unit->goalentity == target);
-    T_ASSERT(unit->movement.follow_target == NULL);
+    T_ASSERT(unit->orders->follow_target == NULL);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityAttack);
 }
 
@@ -1627,8 +1676,8 @@ TEST(wc3_unit, point_attack_order_uses_attack_move_behavior) {
     vec2_t dest = { 128.0f, 0.0f };
 
     T_ASSERT(unit_issueorder(ent, "attack", &dest));
-    T_NOT_NULL(ent->movement.attackmove_waypoint);
-    T_ASSERT(ent->goalentity == ent->movement.attackmove_waypoint);
+    T_NOT_NULL(ent->orders->attackmove_waypoint);
+    T_ASSERT(ent->goalentity == ent->orders->attackmove_waypoint);
 }
 
 TEST(wc3_unit, issueorder_move_preserves_combat_state) {
@@ -1688,7 +1737,7 @@ TEST(wc3_unit, issueimmediateorder_holdposition_uses_hold_state) {
     unit_issueorder(ent, "move", &dest);
 
     T_ASSERT(unit_issueimmediateorder(ent, "holdposition"));
-    T_ASSERT(ent->movement.holding_position);
+    T_ASSERT(ent->orders->holding_position);
     T_STREQ(ent->currentmove->animation, "stand");
 }
 
@@ -1928,15 +1977,15 @@ TEST(wc3_unit, creep_transform_preserves_guard_anchor_and_active_phase) {
     creep->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     G_CreepGuardInit(creep);
     creep->s.origin2.x = 512.0f;
-    creep->movement.creep_guard_phase = CREEP_GUARD_COMBAT;
-    creep->movement.creep_guard_last_hit_ms = 1234;
-    creep->movement.creep_guard_outside_ms = 2345;
+    creep->orders->creep_guard_phase = CREEP_GUARD_COMBAT;
+    creep->orders->creep_guard_last_hit_ms = 1234;
+    creep->orders->creep_guard_outside_ms = 2345;
     T_ASSERT(G_TransformUnitType(creep, MAKEFOURCC('h','f','o','o')));
-    T_ASSERT(creep->movement.creep_guard_enabled);
-    T_EQ(creep->movement.creep_guard_phase, CREEP_GUARD_COMBAT);
-    T_FEQ(creep->movement.creep_guard_origin.x, 64.0f, 0.001f);
-    T_EQ(creep->movement.creep_guard_last_hit_ms, 1234u);
-    T_EQ(creep->movement.creep_guard_outside_ms, 2345u);
+    T_ASSERT(creep->orders->creep_guard_enabled);
+    T_EQ(creep->orders->creep_guard_phase, CREEP_GUARD_COMBAT);
+    T_FEQ(creep->orders->creep_guard_origin.x, 64.0f, 0.001f);
+    T_EQ(creep->orders->creep_guard_last_hit_ms, 1234u);
+    T_EQ(creep->orders->creep_guard_outside_ms, 2345u);
     restore_raven_form_test_data(ability_rows, old_ability, ui_rows, old_ui, profile_rows, old_profile);
 }
 
@@ -1950,9 +1999,9 @@ TEST(wc3_unit, creep_transform_does_not_reenable_disabled_guard) {
     G_CreepGuardSetEnabled(creep, false);
     creep->s.origin2.x = 512.0f;
     T_ASSERT(G_TransformUnitType(creep, MAKEFOURCC('h','f','o','o')));
-    T_ASSERT(!creep->movement.creep_guard_enabled);
-    T_EQ(creep->movement.creep_guard_phase, CREEP_GUARD_IDLE);
-    T_FEQ(creep->movement.creep_guard_origin.x, 64.0f, 0.001f);
+    T_ASSERT(!creep->orders->creep_guard_enabled);
+    T_EQ(creep->orders->creep_guard_phase, CREEP_GUARD_IDLE);
+    T_FEQ(creep->orders->creep_guard_origin.x, 64.0f, 0.001f);
     restore_raven_form_test_data(ability_rows, old_ability, ui_rows, old_ui, profile_rows, old_profile);
 }
 
@@ -2189,7 +2238,7 @@ TEST(wc3_unit, issueimmediateorder_autoharvestlumber_uses_nearest_live_tree) {
 
     T_ASSERT(unit_issueimmediateorder(worker, "autoharvestlumber"));
     T_ASSERT(worker->goalentity == near_tree);
-    T_ASSERT(worker->secondarygoal == near_tree);
+    T_ASSERT(worker->orders->resource_goal == near_tree);
     T_STREQ(worker->currentmove->animation, "walk");
 }
 
@@ -2204,7 +2253,7 @@ TEST(wc3_unit, issueimmediateorder_autoharvestgold_uses_nearest_live_mine) {
 
     T_ASSERT(unit_issueimmediateorder(worker, "autoharvestgold"));
     T_ASSERT(worker->goalentity == near_mine);
-    T_ASSERT(worker->secondarygoal == near_mine);
+    T_ASSERT(worker->orders->resource_goal == near_mine);
     T_STREQ(worker->currentmove->animation, "walk");
 }
 

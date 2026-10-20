@@ -1804,6 +1804,8 @@ TEST(wc3_spell, regeneration_auras_use_alias_object_data_and_maximum_resources) 
 	edict_t *blight_source = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
 	edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
 
+	G_InitUnitOrders(health_source);
+
 	health_source->svflags |= SVF_MONSTER; mana_source->svflags |= SVF_MONSTER;
 	blight_source->svflags |= SVF_MONSTER; target->svflags |= SVF_MONSTER;
 	UnitAbilities_t static_abilities = { .abilList = "ACnr" };
@@ -1845,6 +1847,8 @@ TEST(wc3_spell, regeneration_aura_filters_mechanical_targets_and_uses_strongest_
 	edict_t *first = make_hero(MAKEFOURCC('h','p','e','a'), 250, 0, 0, 0);
 	edict_t *second = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
 	edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+
+	G_InitUnitOrders(first);
 
 	first->svflags |= SVF_MONSTER; second->svflags |= SVF_MONSTER; target->svflags |= SVF_MONSTER;
 	first->s.player = second->s.player = target->s.player = 0;
@@ -3567,6 +3571,7 @@ TEST(wc3_spell, entangling_roots_alias_uses_own_data_and_hero_duration) {
 
     old = G_SetSLKRows("AbilityData", rows);
     level.time = 1000; caster->s.player = 0; target->s.player = 1;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER; target->targtype = TARG_GROUND;
     target->health.value = target->health.max_value = 100.0f;
     T_ASSERT(test_execute_code(caster, "Aenr", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target)));
@@ -4075,14 +4080,14 @@ TEST(wc3_spell, command_card_cast_clears_stop_guard) {
     target->health.value = 100; target->health.max_value = 500;
     G_SelectEntity(client, caster);
     order_stop(caster);
-    T_ASSERT(caster->movement.guard_state == GUARD_IDLE);
+    T_ASSERT(caster->orders->guard_state == GUARD_IDLE);
 
     G_ClientCommand(clent, 2, button);
     snprintf(number, sizeof(number), "%u", (unsigned)target->s.number);
     G_ClientCommand(clent, 2, select);
 
     T_FEQ(target->health.value, 300, 0.001f);
-    T_ASSERT(caster->movement.guard_state == GUARD_NONE);
+    T_ASSERT(caster->orders->guard_state == GUARD_NONE);
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);
 }
@@ -4809,6 +4814,7 @@ TEST(wc3_spell, unholy_frenzy_accepts_enemy_and_reads_tft_buffid) {
 	((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
 	memset(level.alliances, 0, sizeof(level.alliances));
 	caster->s.player = 0; enemy->s.player = 1;
+	G_InitUnitOrders(caster);
 	caster->svflags |= SVF_MONSTER; enemy->svflags |= SVF_MONSTER;
 	caster->targtype = enemy->targtype = TARG_GROUND;
 	caster->heroabilities[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','u','h','f'), .level = 1);

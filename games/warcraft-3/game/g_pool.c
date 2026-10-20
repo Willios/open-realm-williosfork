@@ -63,7 +63,17 @@ DEFINE_POOL(waygate, Waygate, waygate_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(artillery, Artillery, artillery_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(avatar, Avatar, avatar_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(sleep, Sleep, sleep_t, LIFECYCLE_POOL_CAP)
+DEFINE_POOL(orders, Orders, unitOrders_t, MAX_ENTITIES)
+DEFINE_POOL(movement, Movement, movement_t, MAX_ENTITIES)
+DEFINE_POOL(route, Route, routeCache_t, MAX_ENTITIES)
+DEFINE_POOL(wander, Wander, wander_t, MAX_ENTITIES)
 DEFINE_POOL(channel, Channel, channel_t, LIFECYCLE_POOL_CAP)
+
+/* Live units retain order/guard identity between trips; effects and projectiles do not own it. */
+void G_InitUnitOrders(edict_t *ent) {
+    assert(ent);
+    if (!ent->orders) ent->orders = G_AllocOrders();
+}
 
 void G_PoolsReportPeaks(void) {
 #define REPORT_POOL(member) if (member##_peak) fprintf(stderr, "WC3 pool peak %s=%u/%d\n", #member, member##_peak, (int)(sizeof(member##_slots) / sizeof(member##_slots[0])) - 1)
@@ -93,6 +103,10 @@ void G_PoolsReportPeaks(void) {
     REPORT_POOL(artillery);
     REPORT_POOL(avatar);
     REPORT_POOL(sleep);
+    REPORT_POOL(orders);
+    REPORT_POOL(movement);
+    REPORT_POOL(route);
+    REPORT_POOL(wander);
     REPORT_POOL(channel);
 #undef REPORT_POOL
 }
@@ -126,6 +140,10 @@ void G_PoolsReset(void) {
             g_edicts[i].artillery = NULL;
             g_edicts[i].avatar = NULL;
             g_edicts[i].sleep = NULL;
+            g_edicts[i].orders = NULL;
+            g_edicts[i].movement = NULL;
+            g_edicts[i].route = NULL;
+            g_edicts[i].wander = NULL;
             g_edicts[i].channel = NULL;
         }
     }
@@ -155,6 +173,10 @@ void G_PoolsReset(void) {
     artillery_ready = false; artillery_live = artillery_peak = 0; memset(artillery_slots, 0, sizeof(artillery_slots)); artillery_free = 0;
     avatar_ready = false; avatar_live = avatar_peak = 0; memset(avatar_slots, 0, sizeof(avatar_slots)); avatar_free = 0;
     sleep_ready = false; sleep_live = sleep_peak = 0; memset(sleep_slots, 0, sizeof(sleep_slots)); sleep_free = 0;
+    orders_ready = false; orders_live = orders_peak = 0; memset(orders_slots, 0, sizeof(orders_slots)); orders_free = 0;
+    movement_ready = false; movement_live = movement_peak = 0; memset(movement_slots, 0, sizeof(movement_slots)); movement_free = 0;
+    route_ready = false; route_live = route_peak = 0; memset(route_slots, 0, sizeof(route_slots)); route_free = 0;
+    wander_ready = false; wander_live = wander_peak = 0; memset(wander_slots, 0, sizeof(wander_slots)); wander_free = 0;
     channel_ready = false; channel_live = channel_peak = 0; memset(channel_slots, 0, sizeof(channel_slots)); channel_free = 0;
 }
 
@@ -186,6 +208,10 @@ void G_PoolsReleaseEdict(edict_t *ent) {
     G_FreeArtillery(ent);
     G_FreeAvatar(ent);
     G_FreeSleep(ent);
+    G_FreeOrders(ent);
+    G_FreeMovement(ent);
+    G_FreeRoute(ent);
+    G_FreeWander(ent);
     G_FreeChannel(ent);
 }
 
@@ -235,6 +261,10 @@ TEST(wc3_pools, release_reuses_zeroed_owned_state) {
     CHECK_POOL(artillery, Artillery, artillery_t);
     CHECK_POOL(avatar, Avatar, avatar_t);
     CHECK_POOL(sleep, Sleep, sleep_t);
+    CHECK_POOL(orders, Orders, unitOrders_t);
+    CHECK_POOL(movement, Movement, movement_t);
+    CHECK_POOL(route, Route, routeCache_t);
+    CHECK_POOL(wander, Wander, wander_t);
     CHECK_POOL(channel, Channel, channel_t);
 #undef CHECK_POOL
     G_PoolsReleaseEdict(unit);
@@ -264,6 +294,10 @@ TEST(wc3_pools, release_reuses_zeroed_owned_state) {
     T_NULL(unit->artillery);
     T_NULL(unit->avatar);
     T_NULL(unit->sleep);
+    T_NULL(unit->orders);
+    T_NULL(unit->movement);
+    T_NULL(unit->route);
+    T_NULL(unit->wander);
     T_NULL(unit->channel);
     unit->ancient_root = G_AllocAncientRoot();
     G_PoolsReset();

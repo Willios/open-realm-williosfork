@@ -100,8 +100,8 @@ BZ_ABILITY_PROC(CAbilitySelfDestruct) {
 	uint32_t level;
 	switch (msg) {
     case A_COMMAND:
-        if (!call || !call->client) return false;
-        spell_cmd(call->client);
+        if (!call || !call->entity) return false;
+        spell_cmd(call->entity);
         return true;
     case A_SPELL_APPROACH_RANGE:
         if (code && call) ((abilityCall_t *)call)->spell_approach_range = MAX(0.0f,

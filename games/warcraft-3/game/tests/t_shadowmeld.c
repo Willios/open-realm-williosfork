@@ -515,13 +515,13 @@ TEST(wc3_shadowmeld, hold_position_allows_passive_shadowmeld_without_hide_hold_f
     G_UpdateTimeOfDay();
 
     T_ASSERT(unit_issueimmediateorder(fix.unit, "holdposition"));
-    T_ASSERT(fix.unit->movement.holding_position);
+    T_ASSERT(fix.unit->orders->holding_position);
     T_ASSERT(!fix.unit->shadowmeld || !fix.unit->shadowmeld->hide_order_active);
     S_RunAbilityUpdates(fix.unit);
     T_ASSERT(fix.unit->shadowmeld->fading);
     shadowmeld_tick(fix.unit, 1500);
     T_ASSERT(S_ShadowMeldActive(fix.unit));
-    T_ASSERT(fix.unit->movement.holding_position);
+    T_ASSERT(fix.unit->orders->holding_position);
     T_ASSERT(!S_UnitAbilityEvent(fix.unit, A_NO_ACQUIRE));
 
     shadowmeld_done(&fix);

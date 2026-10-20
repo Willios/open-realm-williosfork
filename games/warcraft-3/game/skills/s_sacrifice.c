@@ -152,7 +152,7 @@ BZ_ABILITY_PROC(CAbilitySacrifice) {
         *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
     if (msg == A_QUEUE_VALIDATE || msg == A_QUEUE_COMPLETE || msg == A_QUEUE_CANCEL) {
         if (!call) return false;
-        producer = call->queue.producer; item = call->queue.item;
+        producer = call->entity; item = call->queue_item;
         if (!item || !item->sacrifice) return false;
         if (msg == A_QUEUE_VALIDATE) return sacrifice_queue_validate(producer, item);
         if (msg == A_QUEUE_COMPLETE) { sacrifice_queue_complete(producer, item); return true; }

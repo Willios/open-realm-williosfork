@@ -64,7 +64,7 @@ static intptr_t SacrificeQueueMessage(edict_t *producer, edict_t *item, abilityM
     abilityitem_t ab = S_AbilityItem(S_SacrificeAbilityCode());
     abilityCall_t call = MAKE(abilityCall_t, .item = &ab);
     if (!ab.ability || !ab.ability->proc) return false;
-    call.queue.producer = producer; call.queue.item = item;
+    call.entity = producer; call.queue_item = item;
     return S_AbilityMessage(producer, msg, &call);
 }
 

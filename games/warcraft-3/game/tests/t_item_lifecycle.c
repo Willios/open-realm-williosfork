@@ -228,7 +228,7 @@ TEST(wc3_item_lifecycle, strength_tome_modifies_strength) {
         unit->hero.str = unit->hero.agi = unit->hero.intel = 10;
         clent->client->menu.ability_code = codes[i][0];
         abilityitem_t item = S_AbilityItem(codes[i][0]);
-        abilityCall_t call = { .item = &item, .client = clent };
+        abilityCall_t call = { .item = &item, .entity = clent };
         T_ASSERT(S_AbilityMessage(clent, A_ITEM_USE, &call));
         T_EQ(unit->hero.str, 10 + (i == 0));
         T_EQ(unit->hero.agi, 10 + (i == 1));
