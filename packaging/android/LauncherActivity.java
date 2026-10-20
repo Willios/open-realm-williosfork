@@ -60,9 +60,8 @@ public class LauncherActivity extends Activity {
         panel.addView(tft);
         setContentView(panel);
         updateStatus();
-        if ((LaunchConfig.CREDITS || getIntent().getBooleanExtra("play", false)) &&
-                (LaunchConfig.CREDITS ? tft : roc).isEnabled())
-            startGame(LaunchConfig.CREDITS || getIntent().getBooleanExtra("tft", false));
+        if (getIntent().getBooleanExtra("play", false) && roc.isEnabled())
+            startGame(getIntent().getBooleanExtra("tft", false));
     }
 
     private void updateStatus() {
@@ -133,11 +132,9 @@ public class LauncherActivity extends Activity {
     private void startGame(boolean expansion) {
         /* A bounded diagnostic run must not affect subsequent Play button launches. */
         final int frames = getIntent().getIntExtra("frames", 0);
-        final int scale = getIntent().getIntExtra("scale", 67);
         final int profile = getIntent().getIntExtra("profile", 0), particles = getIntent().getIntExtra("particles", -1);
         final String map = getIntent().getStringExtra("map");
         getIntent().removeExtra("frames");
-        getIntent().removeExtra("scale");
         getIntent().removeExtra("map");
         getIntent().removeExtra("profile");
         getIntent().removeExtra("particles");
@@ -151,7 +148,6 @@ public class LauncherActivity extends Activity {
                     Intent game = new Intent(this, GameActivity.class);
                     game.putExtra("tft", expansion);
                     game.putExtra("frames", frames);
-                    game.putExtra("scale", scale);
                     game.putExtra("profile", profile);
                     game.putExtra("particles", particles);
                     if (map != null) game.putExtra("map", map);

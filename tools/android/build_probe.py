@@ -25,10 +25,8 @@ def main():
     parser.add_argument("--ndk-version", default="28.2.13676358")
     parser.add_argument("--out")
     parser.add_argument("--game", action="store_true", help="build the full WC3 runtime and MPQ importer")
-    parser.add_argument("--credits", action="store_true", help="build WC3 with automatic TFT final-credits startup and render stats")
     parser.add_argument("--serial", help="install/launch on this adb device; the probe also requires RESULT PASS")
     args = parser.parse_args()
-    args.game = args.game or args.credits
     sdk, sdl, out = (Path(value).resolve() for value in
         (args.sdk, args.sdl, args.out or ROOT / ("build/android/game" if args.game else "build/android/probe")))
     ndk = sdk / "ndk" / args.ndk_version
@@ -57,11 +55,6 @@ def main():
     sources = sorted((sdl / "android-project/app/src/main/java").rglob("*.java"))
     sources.extend((ROOT / "packaging/android" / name) for name in
         (["ArchiveStore.java", "LauncherActivity.java", "GameActivity.java", "ImportTests.java"] if args.game else ["ProbeActivity.java"]))
-    if args.game:
-        launch = out / "LaunchConfig.java"
-        launch.write_text("package org.openrealm.wc3;\nfinal class LaunchConfig {\n"
-                          f"    static final boolean CREDITS = {str(args.credits).lower()};\n}}\n")
-        sources.append(launch)
     # Android's stub LambdaMetafactory lacks the compiler methods; SDK build tools supplies them.
     boot = os.pathsep.join(map(str, (tools / "core-lambda-stubs.jar", android_jar)))
     run([java / "javac", "-source", "8", "-target", "8", "-Xlint:-options", "-bootclasspath", boot,
@@ -95,7 +88,7 @@ def main():
         run([java / "keytool", "-genkeypair", "-keystore", key, "-storepass", "android", "-keypass", "android",
              "-alias", "androiddebugkey", "-dname", "CN=OpenRealm Android Debug", "-keyalg", "RSA",
              "-validity", "10000"])
-    apk = out / ("openrealm-warcraft3-credits.apk" if args.credits else "openrealm-warcraft3.apk" if args.game else "openrealm-probe.apk")
+    apk = out / ("openrealm-warcraft3.apk" if args.game else "openrealm-probe.apk")
     run([tools / "apksigner", "sign", "--ks", key, "--ks-pass", "pass:android", "--out", apk, aligned])
     run([tools / "apksigner", "verify", "--verbose", apk])
     run([tools / "zipalign", "-c", "-P", "16", "4", apk])

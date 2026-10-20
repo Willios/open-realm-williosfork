@@ -121,7 +121,7 @@ static _Noreturn void BZ_TestShaderExit(int code) { shader_test.exitcode = code;
 #define glGetShaderInfoLog BZ_TestShaderLog
 #define glGetProgramInfoLog BZ_TestShaderLog
 #define malloc BZ_TestShaderMalloc
-#define exit BZ_TestShaderExit
+#define Sys_Exit BZ_TestShaderExit
 #include "renderer/r_shader.c"
 static void test_shader_source(GLuint stage, shader_desc_t const *desc, bool vertex, char const *defines) {
     gs_options_t options = R_ShaderOptions(defines);
@@ -152,7 +152,7 @@ static void test_shader_source(GLuint stage, shader_desc_t const *desc, bool ver
 #undef glGetShaderInfoLog
 #undef glGetProgramInfoLog
 #undef malloc
-#undef exit
+#undef Sys_Exit
 
 refImport_t ri;
 void R_ClearEntityCameraParticleScenes(void) {}

@@ -342,7 +342,7 @@ The remaining unresolved areas are:
 - codec seeking is millisecond/stream-time based rather than sample-exact; the consumed-frame snapshot identifies what the mixer heard, but FFmpeg may decode from an earlier seek boundary.
 - the continuously advancing ordinary playback head is reported when tracks are selected and when thematic music snapshots it, not every frame; a save taken during ordinary music can therefore resume from the last reported start/seek rather than the exact current millisecond. A synchronous save-time client query would require an explicit prepare/acknowledge phase and is intentionally not faked.
 - the in-game F10 Options Sound page now reuses the archived local music/SFX preferences; Ambient/Movement/Unit/Subtitles/environment/positional category controls remain disabled until their underlying routing is implemented.
-- builds without `FFMPEG=1` have no compressed **playback** decoder. `GetSoundFileDuration` does not share that limitation because it reads metadata in the game module.
+- builds without `FFMPEG=1` or `BZ_MUSIC_MP3` have no compressed **playback** decoder. `GetSoundFileDuration` does not share that limitation because it reads metadata in the game module.
 
 ## Verification
 

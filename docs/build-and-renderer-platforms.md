@@ -259,11 +259,9 @@ Check `Drawable size`, `GL_RENDERER`, `GL_VERSION`, `MSAA`, `Bone palette`, and 
 
 Homebrew's `sdl2` alias can resolve to `sdl2-compat`, an SDL2 API implemented on SDL3. Inspect the actual symlink
 and dylib, not just the `-lSDL2` linker flag: `readlink /opt/homebrew/lib/libSDL2.dylib` and `sdl2-config --version`.
-For a native SDL2 environment, use an explicitly named formula built from the official SDL2 release source,
-with `SDL_SHARED=ON`, `SDL_STATIC=OFF`, and `SDL_TEST=OFF`. The local installation used here is
-`igor/native-sdl2/sdl2-native` 2.32.10, with its formula under
-`/opt/homebrew/Library/Taps/igor/homebrew-native-sdl2/Formula/sdl2-native.rb`.
-It conflicts with sdl2-compat to prevent silent relinking. Ordinary `brew install sdl2` would select the compatibility
+For a native SDL2 environment, build the [official SDL2 release source](https://github.com/libsdl-org/SDL/releases/tag/release-2.32.10)
+with `SDL_SHARED=ON`, `SDL_STATIC=OFF`, and `SDL_TEST=OFF`, and pass its installation prefix to
+`make HOMEBREW_PREFIX=/path/to/sdl2-prefix`. Ordinary `brew install sdl2` can select the compatibility
 package again. Rebuild every engine/renderer/menu binary after replacing the dylib; old Mach-O install names can
 still point into the removed compatibility keg. No SDL2_image/net/ttf/mixer add-on is required by this engine build.
 
@@ -274,3 +272,8 @@ and model cleanup with intercepted GL buffer/VAO calls in `tests/test_renderer_m
 The SPN fixture loads a real model through `R_LoadModelMDLX`; compiling the loader/buffer sources
 separately bypasses those intercepts and crashes in macOS `glGenBuffers` without a current context.
 Keep their test compilation inside the intercepted translation unit; production builds remain unchanged.
+The shadow target uses the same fixture sources with `USE_SHADOWMAPS`. Keep `tests/test_mdx_geoset.c`
+in its separate `test-mdx-geoset` target: it supplies independent renderer globals and stubs that conflict
+with the model fixture when linked together.
+Fatal shader tests intercept `Sys_Exit`, the renderer's termination boundary, so rejected compile/link
+cases can assert failure without terminating the test runner.

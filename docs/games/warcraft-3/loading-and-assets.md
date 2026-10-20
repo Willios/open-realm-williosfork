@@ -23,14 +23,11 @@ is needed. `make test-mpq-compression` uses generated random bytes in four combi
 of sector/single-unit and normal/fixed key; full, unaligned boundary and tail reads failed
 before the fix and pass afterward. No retail fixture is checked in.
 
-Local evidence: `build/android/honor/loading-capture/frame-03.png`, `Northrend-BotRight.blp`
-(old extraction), `Northrend-fixed.blp`, and `northrend-fixed.png`. BLP's declared JPEG
-header length, not the first mip offset, determines the shared header slice; padding between
+BLP's declared JPEG header length, not the first mip offset, determines the shared header slice; padding between
 the header and first mip is not part of the JPEG. A conventional JPEG viewer interprets the
 four raw BLP bands differently, so compare through the renderer's BLP JPEG band convention.
 After APK replacement, the same Honor loading screen rendered the complete map, borders,
-emblem, text and progress bar without pink/noisy quadrants; see
-`build/android/honor/loading-fixed-capture/frame-17.png`.
+emblem, text and progress bar without pink/noisy quadrants.
 
 ## Loading-screen ownership
 
@@ -76,9 +73,8 @@ The default desktop/dedicated and already-spawned multiplayer behavior remains u
 Regression coverage: `client_loading.acknowledgement_rejects_stale_input_and_sends_begin_once`,
 `client_loading.ready_label_uses_authored_alternate_and_resets`, the server-net ready-wait test and
 `wc3_loading.initial_layout_resolves_campaign_custom_and_melee_art` (including both authored captions).
-Actual repaint/input delivery is checked on the Android framebuffer. The Honor capture
-`build/android/honor/mission-ready-caption.png` shows the sixth chapter and localized “Продолжить игру”
-after transition. The final ordinary-speed run also exercised the interlude's Escape/skip continuation;
+Actual repaint/input delivery was checked on the Android framebuffer: Honor displayed the sixth chapter
+and localized “Продолжить игру” after transition. The ordinary-speed run also exercised the interlude's Escape/skip continuation;
 the preceding accelerated run exercised its natural end.
 
 ### Android interlude continuation and tagged pointers
@@ -189,9 +185,6 @@ the original 512-byte limit even with text shortening. Protocol version 3 expand
 slots. Protocol version 4 removes the slots and their text budget entirely: `svc_loading_screen` carries complete
 native rows, lobby names, and minimap archive references within the engine message limit. Chunking bounds each
 network packet. The core, loading-FDF, and server signon tests cover these contracts.
-
-The local `data/WarsmashModEngine` checkout's `MenuUI.java` binds `LoadingMeleePanel` but keeps it hidden;
-`internalStartMap` populates the custom panel. It is not a complete retail melee-loading implementation.
 
 For an early framebuffer capture, queue `screenshot 2` before `map` in an exec script, then run bounded:
 

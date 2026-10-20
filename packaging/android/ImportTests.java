@@ -72,26 +72,20 @@ public class ImportTests extends Instrumentation {
             startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), diagnostic));
             require(!startup.contains("r_profile") && !startup.contains("r_particles"), "Smoke launch inherited diagnostic overrides");
             startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), launch));
-            require(startup.contains("War3XRegularCreditsIce.w3x") == LaunchConfig.CREDITS, "Wrong APK startup scene");
-            if (LaunchConfig.CREDITS) {
-                require(startup.contains("-tft") && startup.contains("r_stats\n1") && startup.contains("com_maxfps\n0"),
-                    "Credits launch must select TFT and uncapped statistics");
-                require(startup.contains("cl_loading_wait\n0") && startup.contains("sv_wait_for_begin\n0") &&
-                    startup.contains("r_render_scale\n67"), "Credits launch must start without touch at the reference scale");
-                launch.putExtra("scale", 50);
-                startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), launch));
-                require(startup.contains("r_render_scale\n50"), "Credits scale override was lost");
-                launch.putExtra("scale", 101);
-                startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), launch));
-                require(startup.contains("r_render_scale\n67"), "Invalid credits scale must use the reference scale");
-            }
+            require(!startup.contains("+map") && !startup.contains("-tft"), "Normal launch must open the edition's menu");
+            require(!startup.contains("r_render_scale") && !startup.contains("r_stats") && !startup.contains("r_vsync"),
+                "Normal launch must retain the user's rendering preferences");
+            require(startup.contains("com_maxfps\n60") && startup.contains("cl_loading_wait\n1") &&
+                startup.contains("sv_wait_for_begin\n1"), "Normal launch must retain its frame cap and loading acknowledgement");
+            launch.putExtra("tft", true);
+            startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), launch));
+            require(startup.contains("-tft") && !startup.contains("+map"), "TFT launch must open its menu");
             launch.putExtra("map", "Maps/Campaign/Prologue01.w3m");
             startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), launch));
-            require(startup.contains("+map\nMaps/Campaign/Prologue01.w3m") && !startup.contains("War3XRegularCreditsIce.w3x"),
-                "Explicit diagnostic map must override the default scene");
+            require(startup.contains("+map\nMaps/Campaign/Prologue01.w3m"), "Explicit diagnostic map was lost");
             startup = String.join("\n", GameActivity.arguments(getTargetContext().getFilesDir(), getTargetContext().getCacheDir(), new Intent().putExtra("smoke", true)));
             require(startup.contains("+test\nwc3_smoke.*") && !startup.contains("+map") && !startup.contains("-tft"),
-                "Smoke launch must not start a retail credits scene");
+                "Smoke launch must use the fixture without starting a retail map");
             LauncherActivity.installAssets(getTargetContext(), "share");
             File smoke = new File(getTargetContext().getCacheDir(), "engine-smoke");
             ArchiveStore.copy(smoke, "war3.mpq", new FileInputStream(source), fixture.length, LauncherActivity::checkArchive);
@@ -129,7 +123,7 @@ public class ImportTests extends Instrumentation {
             result.putString("result", "PASS");
             result.putString("stream", "MPQ imports: case normalization, known/unknown size, invalid archive, truncation, "
                 + "unsafe filename, interrupted stream, preservation/cleanup PASS; all runtime modules loaded; "
-                + "APK startup arguments, map/scale overrides and smoke isolation PASS; "
+                + "APK startup arguments, diagnostic map and smoke isolation PASS; "
                 + "real SDL_main / server / GetGameAPI startup: 4 smoke tests and clean process exit PASS\n");
             finish(-1, result);
         } catch (Throwable error) {

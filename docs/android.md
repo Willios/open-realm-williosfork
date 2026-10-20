@@ -6,15 +6,15 @@ The first target is Warcraft III on an arm64 Android tablet using SDL2 and GLES3
 `make android-probe` builds a standalone production-shader diagnostic.
 `make android-warcraft3` builds the full Warcraft III runtime and a platform MPQ importer.
 Retail game data is supplied by the user and is never included in either APK.
-See [iPad packaging](https://github.com/corepunch/open-realm/blob/main/packaging/ipad/README.md) for the existing mobile module/source split and
+See [iPad packaging](../packaging/ipad/README.md) for the existing mobile module/source split and
 [renderer platforms](build-and-renderer-platforms.md) for the GLES3 contract.
 
 Keep SDK downloads, AVD images, logs, and screenshots under ignored `build/android/`.
-Run commands from the repository root. Use a Java runtime supported by the installed SDK tools;
-the local macOS setup uses the JBR bundled with PhpStorm:
+Run commands from the repository root. Set `JAVA_HOME` to an installed JDK supported by the SDK tools
+(replace `/path/to/jdk` below with its home directory):
 
 ```sh
-export JAVA_HOME='/Applications/PhpStorm.app/Contents/jbr/Contents/Home'
+export JAVA_HOME=/path/to/jdk
 export ANDROID_HOME="$PWD/build/android/sdk"
 export ANDROID_USER_HOME="$PWD/build/android/user"
 export ANDROID_AVD_HOME="$PWD/build/android/avd"
@@ -91,8 +91,7 @@ The initial Apple Silicon setup booted successfully with emulator 37.2.12 and pl
 `sys.boot_completed=1`, Android release `15`, ABI `arm64-v8a`, display `1280x800`, and page size `4096`.
 SurfaceFlinger reported GLES 3.1 through ANGLE/Vulkan SwiftShader with `-gpu auto`:
 CPU virtualization is accelerated, but graphics in this run uses software rendering.
-A captured screenshot showed the Android launcher. Logs and capture are local ignored artifacts:
-`build/android/emulator.log`, `surfaceflinger.txt`, and `emulator.png`.
+The launcher appeared after boot.
 
 `avdmanager` printed missing `devices.xml` diagnostics for this default image but returned success,
 created the profile, and the emulator subsequently booted. Confirm the generated config and boot status
@@ -111,6 +110,7 @@ Install the additional build prerequisites:
 ```sh
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
   'platforms;android-35' 'build-tools;35.0.1' 'ndk;28.2.13676358'
+mkdir -p build/android/downloads
 curl -fL https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz \
   -o build/android/downloads/SDL2-2.32.10.tar.gz
 shasum -a 256 build/android/downloads/SDL2-2.32.10.tar.gz
@@ -121,9 +121,9 @@ make android-probe-run ANDROID_SERIAL=emulator-5554
 
 The SDL source archive used here hashes to
 `5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165`.
-Java/JBR 25 from the environment above worked. The Java compilation prepends the SDK's
+The Java compilation prepends the SDK's
 `core-lambda-stubs.jar` to `android.jar`: Android's stub `LambdaMetafactory` alone cannot compile
-SDL's Java lambdas. The builder uses Python ZIP support because the PhpStorm JBR lacks the `jar` executable.
+SDL's Java lambdas. The builder uses Python ZIP support without requiring the JDK's `jar` executable.
 SDK Build Tools 35 apksigner emits a Java 25 native-access warning; signing and verification succeed.
 
 The APK supports arm64-v8a, minSdk 26 and targetSdk 35. It contains `libSDL2.so`, `libmain.so` and
@@ -242,7 +242,6 @@ native startup passed 5/5 assertions in 3 smoke tests, and the game process exit
 status 0. The corrected log ended after the test summary without FORTIFY errors.
 APK signature and ZIP checks passed; every LOAD segment of the ten packaged native libraries
 (including the opt-in smoke library) has at least 16 KB alignment. Runtime verification still used 4 KB pages.
-Evidence is retained locally in `build/android/game/import-tests.txt`, `engine-smoke.log` and `launcher.png`.
 
 ### Retail archive verification
 
@@ -270,9 +269,8 @@ Both editions reached their real main menus on the API35 ARM64 emulator at 1280x
 - Both bounded 300-frame checks exited with Android EXIT_SELF/status 0. The menu models emitted a
   missing-valid-Birth-duration warning and used the stable pose; neither run logged a shader failure.
 
-Evidence: `build/android/game/roc-menu.png`, `roc-menu.log`, `roc-open.png`, `tft-menu.png`, `tft-menu.log` and
-`retail-exits.txt`. The observed screenshot counters were roughly 9–14 FPS with SwiftShader software
-graphics; these are not physical Android GPU performance measurements.
+The observed screenshot counters were roughly 9–14 FPS with SwiftShader software graphics;
+these are not physical Android GPU performance measurements.
 
 Reproduce a bounded launch from a stopped app:
 
@@ -282,6 +280,7 @@ Reproduce a bounded launch from a stopped app:
 # For TFT, additionally pass --ez tft true. frames=0 leaves the app open.
 ```
 
+The APK opens the edition picker; it has no generated launch profile or automatic map selection.
 The launcher consumes the diagnostic `frames` extra for a single launch. Subsequent Play
 button launches are unlimited. Previously the extra remained on the launcher's Intent,
 causing every subsequent game to exit normally after the same frame count; on Honor this
@@ -303,9 +302,8 @@ Thrall, terrain, rain and effects. Screenshot counters showed about 52 FPS in th
 and 13 FPS in the opening scene; these are individual observations, not benchmarks.
 Mission completion, audio and touch command behavior were not verified.
 
-Local evidence: `build/android/honor/archive-checksums.txt`, `roc-menu.log`, `roc-menu.png`,
-`current.log` and `current.png`. This establishes initial production rendering on one Mali
-device; the standalone bone-127 pixel probe, Adreno hardware and 16 KB runtime remain untested.
+This establishes initial production rendering on one Mali device; the standalone bone-127 pixel probe,
+Adreno hardware and 16 KB runtime remain untested.
 
 ### Remaining validation and limits
 
@@ -325,8 +323,7 @@ rendering; Android currently requests zero MSAA. This does not reduce simulation
 work, and FPS improvement requires a same-scene device comparison.
 Honor validation: the user selected the popup rows; the fixed build logged 75% as
 1440x900 and a subsequent 67% selection as 1286x804, with UI at 1920x1200. Main-menu
-text/buttons remained sharp and the 3D background rendered. Evidence is under
-`build/android/honor/scale-75-final.log`, `scale-75-final.png` and `scale-config-final.cfg`.
+text/buttons remained sharp and the 3D background rendered.
 The API35 emulator also created a 960x600 view at 75% of its 1280x800 drawable.
 The engine `screenshot` command failed to write its relative `screenshots/` path on Android;
 adb screencap was used for this visual check. Android screenshot storage remains a follow-up.
@@ -337,7 +334,7 @@ The backend uses the existing vendored minimp3 and stereo music mixer, with no r
 assets in the APK. FFmpeg movies and non-MP3 compressed music are not enabled.
 On Honor, the updated APK logged `Music: streaming MP3 Sound\Music\mp3Music\Mainscreen.mp3`,
 Android reported the game's OpenSL ES media player active, and the user confirmed audible
-background music. Evidence: `build/android/honor/music-after.log` and `music-audio.txt`.
+background music.
 
 Broader campaign loading, audio output, save/load and touch gameplay still require verification.
 The intermittent blank-button-label issue above remains open in both editions. APK structural checks, archive-import tests
@@ -354,8 +351,8 @@ remain follow-up work. Quit a game before replacing its archives.
    is not a substitute for physical GPU checks.
 3. Finish import progress/cancellation and recovery from process death.
 4. Add background/foreground timing and audio policy, and graphics resource restoration.
-5. Verify tablet context taps, pan/pinch and non-activating holds (`games/warcraft-3/tablet-controls.md`; documentation follows in this series)
-   on a physical tablet; SDL and game-command tests cover the input contract. Back and software-keyboard flow remain.
+5. Extend physical-tablet input verification beyond the existing touch selection and two-finger pan.
+   Context taps, pinch, long holds, Back and software-keyboard flow remain follow-up work.
 6. Check all native libraries and memory-mapping code on 4 KB and 16 KB page-size devices. In particular,
    investigate `FS_MmapFile`'s `MAP_FIXED` at `base + MMAP_HDR_SIZE` (16 bytes) with a regression test before fixing it.
 
@@ -363,7 +360,10 @@ Full Android gameplay, mobile lifecycle recovery and broader physical GPU valida
 
 ### Direct map diagnostics and loading acknowledgement
 
-The launcher also consumes an optional `map` string extra once. It forwards a restricted map path
+The launcher consumes `frames`, `map`, `profile` and `particles` extras once.
+`profile=1` selects CPU/particle counters and `profile=2` also attempts GPU timing.
+`particles=0/1` disables/enables the particle pass; invalid values and smoke-test launches ignore these overrides.
+An optional `map` string extra selects a map explicitly. It forwards a restricted map path
 to the ordinary `+map` command, allowing bounded on-device checks without navigating campaign menus:
 
 ```sh
@@ -381,93 +381,20 @@ Temporary `com_fast_forward` or debug autoexec files used for diagnostics must b
 The JASS type-retention regression extends `wc3_smoke.*` to four tests / six assertions.
 `ImportTests` requires that full summary and a clean native exit. On Honor, a diagnostic build
 with the old numerical pointer guard failed the enum-copy test (5/6); the fixed VM passes all six assertions and clean-exit checks
-through the same instrumentation path (`build/android/honor/mission-ready-smoke-green.txt`).
-
-## Frozen Throne credits test APK
-
-Build the opt-in retail final-credits scene with the same optimized native modules:
-
-```sh
-JAVA_HOME='/Applications/PhpStorm.app/Contents/jbr/Contents/Home' make android-warcraft3-credits
-```
-
-Output: `build/android/game/openrealm-warcraft3-credits.apk`. The builder's `--credits`
-option implies `--game` and generates a Java `LaunchConfig.CREDITS` constant. It does
-not replace engine defaults or install an autoexec file. A normal `--game` build resets
-that generated constant to false and still produces `openrealm-warcraft3.apk`.
-Both variants use `org.openrealm.wc3` and the same output-directory signing key, so
-installing one replaces the other while preserving imported archives and app data.
-
-With base and expansion archives installed, opening the test APK automatically starts
-`Maps/FrozenThrone/Campaign/War3XRegularCreditsIce.w3x` with `-tft`, 67% 3D scale,
-`r_stats 1`, `r_vsync 0`, `com_maxfps 0`, `cl_loading_wait 0` and `sv_wait_for_begin 0`.
-The original retail JASS controls credits, camera, units, weather and music.
-This is the regular ice-scene ending, not the project's main-menu `menu_credits`
-dialog or the separate `War3XBonusCredits.w3x` map. In the verified classic 1.26a data,
-both credits maps are stored in `war3xlocal.mpq`, not `war3x.mpq`.
-
-For a fresh diagnostic launch, force-stop the previous process first. The launcher
-consumes `frames`, `map`, `scale`, `profile` and `particles` extras for that launch only. `scale` accepts
-50–100 percent and defaults to 67 for missing/invalid values; `map` can select the
-bonus credits or another diagnostic scene. Smoke instrumentation always bypasses
-the credits profile and uses its fixture data. `profile=1` selects CPU/particle counters,
-`profile=2` also attempts GPU timing; `particles=0/1` explicitly disables/enables the
-retained particle pass for an isolation capture. Other values are ignored, and these
-diagnostic overrides are never passed into smoke tests.
-
-```sh
-build/android/sdk/platform-tools/adb -s emulator-5554 install --no-incremental -r \
-  build/android/game/openrealm-warcraft3-credits.apk
-build/android/sdk/platform-tools/adb -s emulator-5554 shell am force-stop org.openrealm.wc3
-build/android/sdk/platform-tools/adb -s emulator-5554 shell am start \
-  -n org.openrealm.wc3/.LauncherActivity --ei frames 2000000 --ei scale 67
-# While the scene is running, save stats and a native-surface screenshot:
-build/android/sdk/platform-tools/adb -s emulator-5554 exec-out run-as org.openrealm.wc3 \
-  cat files/engine.log > build/android/credits-runtime.log
-build/android/sdk/platform-tools/adb -s emulator-5554 exec-out screencap -p \
-  > build/android/credits-scene.png
-```
-
-`com_frame_limit` counts main-loop iterations, including those that do not render.
-At uncapped startup, the 600- and 20,000-iteration checks exited cleanly immediately
-after `G_ClientBegin`, before the first world snapshot/3D frame. The larger diagnostic
-budget reaches the scene; terminate a capture explicitly after its intended time window
-instead of treating that number as rendered frames or seconds. A normal icon launch
-has no diagnostic frame limit.
-
-Verification on October 16, 2026: the API35 ARM64 emulator automatically reached the
-snowy bridge scene, displayed localized credits and animated units, and logged
-`Render scale: 67%, 3D 857x536, UI 1280x800` followed by changing `[R_STATS]` lines.
-Captures are `build/android/credits-scene.png`, `credits-scene-later.png` and
-`credits-runtime.log`. The one-shot `--ei scale 50` launcher override also reached
-the scene and logged 640x400 3D / 1280x800 UI (`credits-scale-50.log` and `.png`).
-Both APK variants passed `ImportTests`, APK signatures/alignment passed, and the
-final desktop `make test` completed successfully using the local SDL prefix.
-Exclude loading statistics and compare matching simulation
-intervals: the authored unit parade and random weather change the scene over time.
-The emulator uses ANGLE/Vulkan SwiftShader; its FPS cannot predict Honor GPU performance.
-`ImportTests` verifies variant startup, map/scale overrides, frame limits and smoke
-isolation before the existing native startup/clean-exit checks. The desktop suite runs
-with `make HOMEBREW_PREFIX="$PWD/build/android/sdl-host" test` in this local environment;
-it needs ordinary local UDP access for networking tests.
-
-The first effect-submission optimization and emulator profile interpretation are in
-WC3 performance (`games/warcraft-3/performance.md#android-credits-profiling-october-2026`; section follows in this series).
+through the same instrumentation path.
 
 ## Honor performance investigation
 
-The October 16, 2026 report is 50–60 FPS in menus and 15–30 FPS in maps at 67% scale.
-`build/android/honor/mission-ready-final-runtime.log` identifies Mali-G52 MC2, GLES 3.2,
-a 1920x1200 drawable, zero MSAA and `r_vsync 0`. Earlier scale logs confirm 1286x804 at
+The October 16, 2026 device observation was 50–60 FPS in menus and 15–30 FPS in maps at 67% scale
+on Mali-G52 MC2, GLES 3.2, with a 1920x1200 drawable, zero MSAA and `r_vsync 0`.
+The render-scale output was 1286x804 at
 67%: about 45% of native pixel count, with native UI. This reduces fragment work, not
-simulation, animation, geometry submission or vertex processing. The local CMake cache
-and `realm_renderer.dir/flags.make` use RelWithDebInfo, `-O2 -g` and `-UNDEBUG`;
+simulation, animation, geometry submission or vertex processing. The builder selects
+RelWithDebInfo; `packaging/android/CMakeLists.txt` keeps `-O2 -g` and `-UNDEBUG`;
 the Java manifest's `debuggable=true` does not mean unoptimized native code.
 
-There is no weighted Honor CPU/GPU profile in these captures. The files
-`build/android/honor/perf-current.log` and `perf-current.png` are empty, and the archived
-Honor runtime logs contain no `[R_STATS]` lines. Do not infer a dominant subsystem from
-menu/game FPS alone or reuse desktop/Linux sample percentages as Android timings.
+These initial observations do not include a weighted Honor CPU/GPU profile. Do not infer a dominant
+subsystem from menu/game FPS alone or reuse desktop/Linux sample percentages as Android timings.
 
 ### Source-confirmed candidates, not measured FPS gains
 
@@ -517,8 +444,8 @@ export ANDROID_SERIAL=DEVICE_SERIAL
 export PATH="$PWD/build/android/sdk/platform-tools:$PATH"
 perf_root="$PWD"
 perf_ndk="$perf_root/build/android/sdk/ndk/28.2.13676358"
-mkdir -p build/android/honor/profile
-cd build/android/honor/profile
+mkdir -p build/android/profile
+cd build/android/profile
 python3 "$perf_ndk/simpleperf/app_profiler.py" -p org.openrealm.wc3 \
   --disable_adb_root --ndk_path "$perf_ndk" \
   -lib "$perf_root/build/android/probe/native" \
@@ -531,9 +458,9 @@ The direct rootless record/report path was verified on Honor (Android 12) on Oct
 ```sh
 adb -s DEVICE_SERIAL push "$perf_ndk/simpleperf/bin/android/arm64/simpleperf" /data/local/tmp/simpleperf
 adb -s DEVICE_SERIAL shell /data/local/tmp/simpleperf record --app org.openrealm.wc3 \
-  -e task-clock:u -f 1000 -g --duration 15 -o /data/local/tmp/credits-cpu.data
-adb -s DEVICE_SERIAL pull /data/local/tmp/credits-cpu.data perf.data
-adb -s DEVICE_SERIAL shell /data/local/tmp/simpleperf report -i /data/local/tmp/credits-cpu.data \
+  -e task-clock:u -f 1000 -g --duration 15 -o /data/local/tmp/openrealm-cpu.data
+adb -s DEVICE_SERIAL pull /data/local/tmp/openrealm-cpu.data perf.data
+adb -s DEVICE_SERIAL shell /data/local/tmp/simpleperf report -i /data/local/tmp/openrealm-cpu.data \
   --children --sort comm,dso,symbol > report.txt
 ```
 
@@ -543,41 +470,11 @@ call-site resolution. The `app_profiler.py` helper above additionally copies sym
 its full workflow was exercised on the emulator, while the direct commands were used on Honor.
 Inspect the native `org.openrealm.wc3:game` process separately from the Java launcher and audio
 threads. CPU samples alone cannot measure GPU execution or time blocked in presentation.
-The whole game-loop Honor profile (`games/warcraft-3/performance.md#whole-game-loop-cpu-and-scheduler-profile-october-17`; section follows in this series)
-combines matching `-O2 -g` symbols, all-thread sampling and a separate
-switch/wakeup/EGL trace. It records the distinction between CPU execution,
-runnable delay, blocked time and inclusive function percentages.
-The parallel pose probe (`games/warcraft-3/performance.md#parallel-pose-feasibility-on-honor-october-17`; section follows in this series)
-compares isolated CPU work across lanes and CPU placements; its throughput
-numbers are not game FPS or an application thread-affinity policy.
-The Android MDX worker implementation (`games/warcraft-3/performance.md#parallel-mdx-preparation-on-android-october-18`; section follows in this series)
-documents current defaults, cache ownership, submission order and the separate
-first-fight comparisons used for game acceptance.
-The effect geometry modes (`games/warcraft-3/performance.md#effect-geometry-modes-and-retained-experiments-october-18`; section follows in this series)
-document `r_mdx_effect_instancing`: 0 retains original eligibility, 1 expands
-eligibility with normal palette selection, and Android's default 2 combines
-expanded eligibility with uniform packets. The no-gain mode remains available
-under the experiment retention rule (`performance-experiments.md`; documentation follows in this series).
 The Honor extension log advertises `GL_EXT_disjoint_timer_query`, but extension presence
 does not establish valid timings. The current optional asynchronous profiler rejects
 disjoint and implausible results; this Honor driver has returned invalid durations.
-See CPU/GPU diagnostics (`renderer-backend.md#cpugpu-frame-diagnostics`; section follows in this series) for the contract.
-
-The bounded capture helper preserves imported archives, performs a fresh launch, warms
-up from `G_ClientBegin`, records the requested window and force-stops afterward:
-
-```sh
-python3 tools/android/measure_credits.py --serial DEVICE_SERIAL \
-  --apk build/android/game/openrealm-warcraft3-credits.apk \
-  --scale 67 --profile 1 --warmup 40 --duration 15 --out build/android/captures/run67
-```
-
-Use fresh output directories. Compare `--scale 100/67/50`, `--particles 0` and
-`--profile 0/1/2` one variable at a time. Logs, screenshot, battery state, APK hash
-when installed, individual windows, medians and sample-weighted valid GPU means are
-saved under `--out`. The helper passes a large finite frame limit because the engine
-counts main-loop iterations rather than rendered frames, and explicitly stops after
-capture. It does not leave the game running; launch the normal 67% credits afterward.
+`r_profile 1` enables CPU/particle counters; `r_profile 2` also attempts GPU timing.
+The implementation is in `renderer/r_profile.c`; use `make test-renderer-view test-renderer-frame` for its automated checks.
 
 Before a capture that changes user files, back up both their bytes and whether
 each optional file exists. Check presence with `adb shell run-as org.openrealm.wc3
@@ -615,96 +512,9 @@ its raw `averageFPS`; do not clear prior diagnostics. `--timestats -enable` /
 `-disable` control collection. The `run-as ... taskset -p ...` scheduler call
 returns permission errors on this Honor, and MTK GPU frequency/utilization
 files under `/sys/kernel/ged/hal/` and `/proc/gpufreq/` are also unreadable.
-The trace's CPU-frequency events and scheduler slices remain usable. See the
-200-actor measurements (`games/warcraft-3/performance.md#honor-200-actor-performance`; section follows in this series).
+The trace's CPU-frequency events and scheduler slices remain usable.
 
 On this Honor, the native process working directory is `/`; the renderer's
 relative `screenshots/shotNNNN.jpg` write fails there. Physical framebuffer QA
 therefore used `adb exec-out screencap -p` after the measured window. Do not
 include screenshot/readback time in the FPS measurement.
-
-## Optimization build policy and exact fog cache
-
-During optimization, build only the test/profile artifacts needed by the current
-experiment. Ordinary/distribution builds require an explicit user request; do
-not add them as a routine finishing step. Reuse a suitable existing APK for
-comparisons. This user preference is also recorded in `AGENTS.md`.
-
-The October 18 exact sight-cache trial exposes `wc3_fow_cache` (Android default
-`1`, other platforms `0`) and `wc3_fow_stats`. The independent final test-APK
-B/D/D/B capture gives 17.985 → 18.911 FPS at 67% render on the mixed 200-starting-unit
-first combat. Its code, tests and on/off paths are retained. See
-measured results (`games/warcraft-3/performance.md#exact-sight-footprint-reuse-on-honor-october-18`; section follows in this series)
-and the fog cache contract (`games/warcraft-3/fog-and-cinematics.md#exact-sight-footprint-cache`; section follows in this series).
-
-The subsequent MDX submission experiment is opt-in: `set r_mdx_submit_cache 0`
-keeps the original shared stream, `1` selects per-model matrix streams, and `2`
-also selects persistent instance VAOs. It defaults to 0 on all platforms. Six
-Honor windows show only a small improvement (18.371 -> 18.828 FPS for mode 1;
-18.731 for mode 2); a separate profile still attributes about 25.6% of main
-userspace CPU to the Mali driver. The preceding working APK is restored after
-these tests. See submission and concurrency findings (`games/warcraft-3/performance.md#mdx-submission-bindings-and-concurrency-audit-october-18`; section follows in this series).
-
-The independent CPU packet trial uses `r_mdx_packet_prepare 0/1/2`: original
-on-demand work, owner-prepared packets, or preparation inside existing pose jobs.
-It initially defaults to 0. `MDX_POSE` reports `packets`, `worker_packets`,
-`packet_hits` and `packet_misses`; mode 2 must show worker packets before claiming
-parallel use. GL submission and emitter/RNG updates remain on the owner. Six
-same-APK Honor windows give 18.653 FPS original, 19.115 owner-prepared and
-18.967 parallel: parallel preparation has no demonstrated FPS advantage over
-the owner control. The comparison used default 0 and restored the preceding
-APK/settings. At the owner's subsequent request, the Android build now defaults
-to **2** while other platforms remain at 0. `set r_mdx_packet_prepare 0` disables
-the new preparation; mode 1 remains available. The ordinary Android launcher
-keeps its normal startup flow, without a forced test map or credits scene.
-See packet preparation (`games/warcraft-3/performance.md#parallel-draw-packet-preparation-october-18`; section follows in this series)
-for the bounded arena, test coverage and measurements.
-
-The larger-packet trial adds `r_mdx_palette_ubo 0/1/2`: existing
-transport, UBO with the original 128-matrix packet cap, or UBO with a queried
-larger cap (1,024 on Honor). It preserves exact animation/depth math and uses
-Android's current CPU packet mode 2. `MDX_BATCH block_packets/bone_limit` prove
-activation. A standalone EGL readback of the production shader/upload passes
-on Mali at palette indices 64, 129 and 194. See the larger-packet trial (`games/warcraft-3/performance.md#larger-uniform-block-palette-packets-october-18`; section follows in this series)
-for the measured comparison, limitations and restoration record.
-
-The six-window same-APK comparison gives 18.585 FPS original, 18.865 with a
-128-matrix UBO control and 19.336 with 1,024 matrices (+4.04% from original).
-Median draw calls drop about 13.65%. The trial initially defaulted to 0; the
-owner's subsequent instruction to enable beneficial optimizations changes the
-Android source default to **2**, with other platforms staying at **0**.
-`set r_mdx_palette_ubo 0` retains the original transport. This modest gain does
-not meet 40 FPS. The preceding requested working APK and original
-Honor settings, campaign progress and save hashes were restored after testing.
-No additional APK build/install accompanied that source-default activation while
-the device was in active gameplay; the next requested/test-required Android
-package would include it. See the activation record (`$OPENREALM_EXPERIMENTS_DIR/warcraft-3/optimization-archive/mdx-wide-batches-enabled-20261018/README.md`, external archive).
-
-The subsequent owner-authorized October 18 profile reuses the existing measured
-`aa0c9bfb…` APK with an explicit `r_mdx_palette_ubo 2`; no APK rebuild is needed.
-Its separate unprofiled first combat gives 20.397 FPS at 67% render. Two
-20-second, 500-Hz userspace CPU profiles agree on roughly 35% server / 65% client
-and 23–24% Mali driver leaf CPU on the main thread. A separate complete scheduler
-trace shows 78.25% running and about 8.99 ms/swap blocked inside EGL, which is
-not a GPU timer. See the profile and concrete next targets (`games/warcraft-3/performance.md#honor-profile-after-larger-packets-october-18`; section follows in this series)
-and raw evidence/recipes (`$OPENREALM_EXPERIMENTS_DIR/warcraft-3/optimization-archive/post-wide-profile-20261018/README.md`, external archive).
-The tested APK now remains installed with mode 2 saved in the original config;
-all other backed-up settings, campaign progress and save/checkpoint hashes are
-restored. The ordinary launcher is open without a forced benchmark process.
-
-The next CPU-work trial adds independent `wc3_ability_cache`,
-`wc3_visibility_fast` and `r_splat_cache` switches. The first two now default
-to 1 on Android after correctness checks, a bounded production-query benchmark
-and a same-APK 19.272 → 20.302 FPS (+5.34%) paired combat comparison at 67% render.
-Other platforms retain 0. The splat cache remains 0 everywhere: its separate
-comparison regresses about 2.30%, and the full variant is preserved.
-This does not reach 40 FPS or establish a first-mission/100%-render gain.
-
-Only game and renderer libraries are replaced in the reused Java/assets test
-APK `338c5e3d…`; there is no ordinary packaging pass. The measured APK compiled
-the new defaults as 0, and explicit settings select each comparison. It remains
-installed with ability/visibility saved as 1 in the original config, existing
-palette mode 2 retained, and the test-only startup map/bindings/profiling removed.
-All current save/checkpoint hashes and the other backed-up files are verified.
-See contracts, all windows and CPU evidence (`games/warcraft-3/performance.md#ability-visibility-and-splat-cpu-work-october-18`; section follows in this series)
-and the complete retained trial (`$OPENREALM_EXPERIMENTS_DIR/warcraft-3/optimization-archive/cpu-work-families-20261018/README.md`, external archive).

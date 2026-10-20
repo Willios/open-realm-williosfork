@@ -23,30 +23,24 @@ public class GameActivity extends SDLActivity {
         return arguments(getFilesDir(), getCacheDir(), getIntent());
     }
 
-    /* Both APK variants use ordinary engine commands; smoke launches stay independent of retail scenes. */
+    /* Normal play waits for fresh loading input; smoke launches use their own fixture data. */
     static String[] arguments(File files, File cache, Intent intent) {
-        boolean smoke = intent.getBooleanExtra("smoke", false), credits = LaunchConfig.CREDITS && !smoke;
+        boolean smoke = intent.getBooleanExtra("smoke", false);
         ArrayList<String> args = new ArrayList<>(Arrays.asList("-data", new File(files, "data").getAbsolutePath(),
-            "+set", "com_maxfps", credits ? "0" : "60", "+set", "vid_native", "1", "+set", "vid_fullscreen", "1",
-            "+set", "cl_loading_wait", credits ? "0" : "1", "+set", "sv_wait_for_begin", credits ? "0" : "1"));
+            "+set", "com_maxfps", "60", "+set", "vid_native", "1", "+set", "vid_fullscreen", "1",
+            "+set", "cl_loading_wait", "1", "+set", "sv_wait_for_begin", "1"));
         if (smoke) {
             args.set(1, new File(cache, "engine-smoke").getAbsolutePath());
             args.addAll(Arrays.asList("+dedicated", "1", "+test", "wc3_smoke.*"));
         }
-        if (credits || intent.getBooleanExtra("tft", false)) args.add("-tft");
+        if (intent.getBooleanExtra("tft", false)) args.add("-tft");
         if (!smoke) {
             int profile = intent.getIntExtra("profile", 0), particles = intent.getIntExtra("particles", -1);
             if (profile >= 1 && profile <= 2) args.addAll(Arrays.asList("+set", "r_profile", Integer.toString(profile)));
             if (particles == 0 || particles == 1) args.addAll(Arrays.asList("+set", "r_particles", Integer.toString(particles)));
         }
-        if (credits) {
-            int scale = intent.getIntExtra("scale", 67);
-            if (scale < 50 || scale > 100) scale = 67;
-            args.addAll(Arrays.asList("+set", "r_stats", "1", "+set", "r_vsync", "0", "+set", "r_render_scale", Integer.toString(scale)));
-        }
         int frames = intent.getIntExtra("frames", 0);
         String map = intent.getStringExtra("map");
-        if (credits && map == null) map = "Maps/FrozenThrone/Campaign/War3XRegularCreditsIce.w3x";
         if (map != null && map.matches("[A-Za-z0-9_./\\\\ ()-]+"))
             args.addAll(Arrays.asList("+map", map));
         if (frames > 0) args.addAll(Arrays.asList("+com_frame_limit", Integer.toString(frames)));

@@ -326,10 +326,8 @@ android-probe:
 android-probe-run:
 	python3 tools/android/build_probe.py --serial $(or $(ANDROID_SERIAL),emulator-5554)
 
-.PHONY: android-warcraft3 android-warcraft3-run android-warcraft3-credits
+.PHONY: android-warcraft3 android-warcraft3-run
 android-warcraft3:
 	python3 tools/android/build_probe.py --game
 android-warcraft3-run:
 	python3 tools/android/build_probe.py --game --serial $(or $(ANDROID_SERIAL),emulator-5554)
-android-warcraft3-credits:
-	python3 tools/android/build_probe.py --credits
