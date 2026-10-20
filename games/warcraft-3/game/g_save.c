@@ -129,7 +129,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 98 persists legacy campaign-menu race and scripted explosion state. */
 /* Version 99 persists timed full-map visibility deadlines. */
 /* Version 100 retains VM-owned item pools rather than dropping them as unknown host handles. */
-static uint32_t const save_version = 100;
+/* Version 101 removes derived attack cooldown fields; only the simulation deadline is persisted. */
+static uint32_t const save_version = 101;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -938,8 +939,6 @@ field_t edict_fields[] = {
     F(edict_s, projectile_attack_type, F_INT),
     F(edict_s, projectile_reflected, F_INT),
     F(edict_s, collision, F_FLOAT),
-    F(edict_s, attack_cooldown_active, F_INT),
-    F(edict_s, attack_cooldown_remaining, F_FLOAT),
     F(edict_s, attack_cooldown_end_time, F_INT),
     F(edict_s, attack_backswing_end_time, F_INT),
     F(edict_s, unitinfo, F_STRUCT, 1, unit_info_fields),
@@ -2983,8 +2982,6 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     edict_t *goal = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 64);
     int const index = unit - g_edicts, goal_index = goal - g_edicts;
-    unit->attack_cooldown_active = true;
-    unit->attack_cooldown_remaining = 17.5f;
     unit->attack_cooldown_end_time = 12000;
     unit->attack_backswing_end_time = 9000;
     unit->attack_target_spawn_time = goal->spawn_time;
@@ -2999,7 +2996,7 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     unit->movement.wisp_egress_target_valid = true;
     unit->unitinfo.PropWindow = 0.0f;
     T_ASSERT(WriteGame(filename));
-    unit->attack_cooldown_active = false;
+    unit->attack_cooldown_end_time = G_Time();
     unit->movement.cargo_unload_pending = false;
     unit->movement.cargo_unload_goal = NULL;
     unit->movement.wisp_egress_tree = NULL;
@@ -3009,8 +3006,7 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + index;
     goal = g_edicts + goal_index;
-    T_ASSERT(unit->attack_cooldown_active);
-    T_FEQ(unit->attack_cooldown_remaining, 17.5f, 0.001f);
+    T_ASSERT((int32_t)(unit->attack_cooldown_end_time - G_Time()) > 0);
     T_EQ(unit->attack_cooldown_end_time, 12000);
     T_EQ(unit->attack_backswing_end_time, 9000);
     T_EQ(unit->attack_target_spawn_time, goal->spawn_time);

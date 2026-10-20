@@ -710,15 +710,18 @@ static void attack_retreat_from_target(edict_t *ent) {
 /* RngBuff applies until the simulation-time deadline, even while another
  * ability owns the unit's think callback. */
 static bool attack_is_cooling_down(edict_t const *ent) {
-    return ent && ent->attack_cooldown_active &&
+    return ent && ent->attack_cooldown_end_time &&
         (int32_t)(ent->attack_cooldown_end_time - G_Time()) > 0;
+}
+
+/* Recovery animation waits use seconds; derive them only when needed from simulation milliseconds. */
+static float attack_cooldown_remaining(edict_t const *ent) {
+    return attack_is_cooling_down(ent) ? (ent->attack_cooldown_end_time - G_Time()) / 1000.0f : 0.0f;
 }
 
 static void attack_set_cooldown(edict_t *ent, float seconds) {
     uint32_t duration = (uint32_t)ceilf(MAX(0.0f, seconds) * 1000.0f);
     ent->attack_cooldown_end_time = G_Time() + duration;
-    ent->attack_cooldown_remaining = duration / 1000.0f;
-    ent->attack_cooldown_active = duration != 0;
 }
 
 /* Centralize attack-range geometry so buffered cooldown range and true firing
@@ -763,18 +766,12 @@ bool S_AttackCanAutoAcquire(edict_t const *attacker, edict_t const *target) {
     return true;
 }
 
-/* Refresh the compatibility remaining field from the authoritative deadline;
- * advancing simulation time does not depend on this ability's think callback. */
+/* Weapon cooldown advances independently of the owning think callback; recovery remains move-local. */
 static bool attack_cooldown_elapsed(edict_t *ent, bool tick_recovery) {
     float const step = FRAMETIME / 1000.0f;
-    if (ent->attack_cooldown_active) {
-        int32_t remaining = (int32_t)(ent->attack_cooldown_end_time - G_Time());
-        ent->attack_cooldown_remaining = MAX(0.0f, remaining / 1000.0f);
-        if (remaining <= 0) ent->attack_cooldown_active = false;
-    }
     if (tick_recovery)
         ent->wait = MAX(0.0f, ent->wait - step);
-    return !ent->attack_cooldown_active && ent->wait <= 0.0f;
+    return !attack_is_cooling_down(ent) && ent->wait <= 0.0f;
 }
 
 static void ai_melee_cooldown(edict_t *ent) {
@@ -847,7 +844,7 @@ static void ai_attack_walk(edict_t *ent) {
         attack_retreat_from_target(ent);
     } else {
         if (!cooldown_ready) {
-            ent->wait = MAX(ent->wait, ent->attack_cooldown_remaining);
+            ent->wait = MAX(ent->wait, attack_cooldown_remaining(ent));
             if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY)
                 unit_setmove(ent, &attack_move_ranged_cooldown);
             else
@@ -888,11 +885,7 @@ static void order_attack_internal(edict_t *self, edict_t *target, bool retaliati
     self->attack_target_spawn_time = target->spawn_time;
     /* Birth and other non-attack moves can leave a long wait on the unit.
      * Preserve waits only while an authored weapon cooldown is still active. */
-    if (!attack_is_cooling_down(self)) {
-        self->attack_cooldown_active = false;
-        self->attack_cooldown_remaining = 0.0f;
-        self->wait = 0.0f;
-    }
+    if (!attack_is_cooling_down(self)) self->wait = 0.0f;
     attack_walk(self);
 }
 
@@ -945,8 +938,7 @@ void attack_melee_cooldown(edict_t *self) {
         attack_set_backswing_deadline(self);
     }
     unit_setmove(self, &attack_move_melee_cooldown);
-    self->wait = MAX(self->attack_cooldown_remaining,
-                     attack_backswing_remaining(self));
+    self->wait = MAX(attack_cooldown_remaining(self), attack_backswing_remaining(self));
     /* The next swing must satisfy both authored gates: weapon cooldown from
      * swing start and backswing after damage point.  If both have already
      * elapsed, transition explicitly instead of parking on wait==0. */
@@ -970,8 +962,7 @@ void attack_ranged_cooldown(edict_t *self) {
         attack_set_backswing_deadline(self);
     }
     unit_setmove(self, &attack_move_ranged_cooldown);
-    self->wait = MAX(self->attack_cooldown_remaining,
-                     attack_backswing_remaining(self));
+    self->wait = MAX(attack_cooldown_remaining(self), attack_backswing_remaining(self));
     if (self->wait <= 0.0f) attack_ranged(self);
 }
 

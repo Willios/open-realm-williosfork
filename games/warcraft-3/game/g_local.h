@@ -373,6 +373,7 @@ typedef enum {
     WC3_PLAYER_SCORE_COUNT
 } WC3PLAYERSCORE;
 
+/* JASS event ABI numbers: reserved/unsupported events must retain their numeric slots. */
 typedef enum {
     EVENT_GAME_VICTORY = 0,
     EVENT_GAME_END_LEVEL = 1,
@@ -634,6 +635,7 @@ struct client_s {
     bool commands_dirty; /* authoritative command availability changed; rebuild after simulation */
     bool selection_dirty; /* JASS selection changed; synchronize once after simulation */
     bool presentation_dirty; /* dialogue/interface/selected-portrait state changed; flush svc_layout after simulation */
+    /* Live JASS player state: g_spawn initializes it; natives, XP, HUD and save/load consume it. */
     struct {
         uint32_t race_pref, controller;
         uint8_t tax[MAX_PLAYERS][PLAYERSTATE_LUMBER_GATHERED + 1];
@@ -667,6 +669,7 @@ struct client_s {
     menu_t menu;
     bool cursor_signal; /* transient locked overlay; preserves the underlying command menu */
     bool cursor_missing_reported; /* bounded missing-skin diagnostic; derived presentation state */
+    /* Game-authored camera: g_main/JASS interpolate fields, pan and controllers independently. */
     struct clientCamera_s {
         camerasetup_t state;
         camerasetup_t old_state;
@@ -681,8 +684,8 @@ struct client_s {
         vec3_t orient_eye;       /* fixed camera source captured by SetCameraOrientController */
         bool pan_active;         /* scripted PanCameraTo target movement */
         uint32_t pan_start_time; /* independent from scalar field interpolation */
-        vec2_t pan_start;
-        vec2_t pan_destination;
+        vec2_t pan_start;       /* captured origin of the timed scripted pan */
+        vec2_t pan_destination; /* absolute endpoint; pan_rate remains independent continuous motion */
         vec2_t pan_rate;         /* world units per second: X=strafe, Y=forward */
         /* CameraSet*Noise[Ex] parameters. The game evaluates them every server frame into
          * ps.viewoffset/ps.eyeoffset; the client never sees magnitude, velocity or vertOnly. */
@@ -855,6 +858,7 @@ typedef enum {
     STATUS_REMOVE_SCRIPT
 } status_remove_reason_t;
 
+/* Distinct ability lifecycle phases and queries; each case below states its dispatch contract. */
 typedef enum {
     A_INIT,             /* InitAbilities: initialize shared data from call->classname. */
     A_COMMAND,          /* Command card: begin the ability through call->client; return handled. */
@@ -925,6 +929,8 @@ typedef enum {
     ABILITY_ORDER_ACCEPTED,
 } abilityOrderResult_t;
 
+/* Synchronous, message-tagged ability payload. Named union members overlap;
+ * abilityMsg_t selects the valid member, preserving types without pointer casts. */
 struct ability_call_s {
     abilityitem_t const *item;
     edict_t *source_item; /* inventory item that initiated an asynchronous item spell, if any */
@@ -943,7 +949,7 @@ struct ability_call_s {
         struct { edict_t *target; cstring_t order; } issued_target_order; /* A_ISSUED_TARGET_ORDER */
         edict_t *attacker; /* A_DAMAGED */
         edict_t *move_target; /* A_MOVE_START */
-        cstring_t classname;
+        cstring_t classname; /* A_INIT registry class name, not the item rawcode */
         uint32_t level;
         bool enabled;
         struct { edict_t *producer; edict_t *item; } queue; /* A_QUEUE_*: owning producer and queued item. */
@@ -1888,7 +1894,7 @@ struct edict_s {
     unsummon_t *unsummon;
     uint32_t spawn_time;
     uint32_t summon_ability; /* ability rawcode that created this summoned unit; 0 for ordinary units */
-    /* Awan owns autonomous decisions, but ordinary Move owns the actual route. */
+    /* Awan owns idle decisions even while standing; ordinary Move owns the actual route. */
     uint32_t wander_next_time;
     uint32_t wander_random_state;
     edict_t *wander_goal; /* active move, only when owned by Awan */
@@ -2051,7 +2057,8 @@ struct edict_s {
     bool animation_override; /* JASS presentation animation may advance while gameplay is paused */
     /* Warcraft Required Animation Names (UnitProfile.animProps/uani) plus
      * AddUnitAnimationProperties mutations. The request is retained separately
-     * so a property change can reselect the same logical animation family. */
+     * so a property change can reselect the same logical animation family.
+     * Owned names survive JASS caller strings and deferred model/animation resolution. */
     char animation_request[WC3_ANIMATION_REQUEST_SIZE];
     char queued_animation[WC3_ANIMATION_REQUEST_SIZE]; /* JASS follow-up to an authored destructable clip */
     char animation_props[WC3_ANIMATION_PROPERTIES_SIZE];
@@ -2062,9 +2069,7 @@ struct edict_s {
     umove_t *currentmove;
     unitRace_t race;
     float wait;
-    bool attack_cooldown_active;
-    float attack_cooldown_remaining;
-    uint32_t attack_cooldown_end_time;
+    uint32_t attack_cooldown_end_time; /* simulation ms; weapon gate survives replacement orders */
     uint32_t attack_backswing_end_time;
     unitInfo_t unitinfo;
     unitAttack_t attack1;

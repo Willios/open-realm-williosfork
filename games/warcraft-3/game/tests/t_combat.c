@@ -2227,7 +2227,7 @@ TEST(wc3_combat, attack_recovery_respects_cooldown_and_backswing) {
     attack_melee_cooldown(u);
     T_FEQ(u->wait, 1.2f, 0.001f);   /* cooldown - damagePoint wins */
 
-    u->attack_cooldown_active = false;
+    u->attack_cooldown_end_time = G_Time();
     u->attack1.cooldown = 1.0f;
     u->attack1.damagePoint = 0.5f;
     u->attack1.backswingPoint = 0.8f;
@@ -2236,7 +2236,7 @@ TEST(wc3_combat, attack_recovery_respects_cooldown_and_backswing) {
 
     /* If cooldown has elapsed by damage point but backswing remains, the
      * attack still cannot begin its next swing before backswing completes. */
-    u->attack_cooldown_active = false;
+    u->attack_cooldown_end_time = G_Time();
     u->attack1.cooldown = 0.4f;
     u->attack1.damagePoint = 0.5f;
     u->attack1.backswingPoint = 0.2f;
@@ -2290,9 +2290,7 @@ TEST(wc3_combat, cooldown_range_buffer_holds_then_chases_at_ready_time) {
     T_STREQ(attacker->currentmove->animation, "stand ready");
 
     attacker->wait = FRAMETIME / 1000.0f;
-    attacker->attack_cooldown_remaining = FRAMETIME / 1000.0f;
     attacker->attack_cooldown_end_time = G_Time();
-    attacker->attack_cooldown_active = true;
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "walk");
 }
@@ -2316,7 +2314,7 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_swing_cooldown) {
     order_attack(attacker, target);
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "attack");
-    T_ASSERT(attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
     swing_cooldown_end = attacker->attack_cooldown_end_time;
 
     /* Commit a real hit at damage point while a finite animation remains
@@ -2336,8 +2334,8 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_swing_cooldown) {
     T_STREQ(attacker->currentmove->animation, "stand ready");
     T_FEQ(attacker->s.origin2.x, origin.x, 0.001f);
     T_EQ(attacker->attack_cooldown_end_time, swing_cooldown_end);
-    T_ASSERT(attacker->attack_cooldown_active);
-    T_ASSERT(attacker->attack_cooldown_remaining < 0.5f);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) < 500);
 
     /* The same target becomes too far for the buffer, so chase begins. */
     target->s.origin2.x = 150.0f;
@@ -2349,8 +2347,7 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_swing_cooldown) {
     target->s.origin2.x = 130.0f;
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "stand ready");
-    T_ASSERT(attacker->attack_cooldown_active);
-    T_ASSERT(attacker->attack_cooldown_remaining > 0.0f);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
     T_EQ(attacker->attack_cooldown_end_time, swing_cooldown_end);
 }
 
@@ -2381,12 +2378,12 @@ TEST(wc3_combat, attack_animation_end_does_not_restart_expired_swing_cooldown) {
      * ends. Recovery must still recognize the move as an existing swing. */
     level.time = swing_cooldown_end + 100;
     attacker->currentmove->think(attacker);
-    T_ASSERT(!attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) <= 0);
     level.time = swing_cooldown_end + 200;
     attacker->currentmove->endfunc(attacker);
 
     T_EQ(attacker->attack_cooldown_end_time, swing_cooldown_end);
-    T_ASSERT(!attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) <= 0);
     T_STREQ(attacker->currentmove->animation, "stand ready");
     T_FEQ(attacker->wait, 0.2f, 0.01f);
 }
@@ -2564,13 +2561,13 @@ TEST(wc3_combat, canceled_windup_cooldown_survives_chase_and_reacquisition) {
     target->s.origin2.x = 180.0f;
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "walk");
-    T_ASSERT(attacker->attack_cooldown_remaining > 0.0f);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
 
     target->s.origin2.x = 80.0f;
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "stand ready");
     T_ASSERT(attacker->wait > 0.0f);
-    T_ASSERT(attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
 }
 
 TEST(wc3_combat, canceled_windup_cooldown_advances_after_attack_order_is_replaced) {
@@ -2590,16 +2587,29 @@ TEST(wc3_combat, canceled_windup_cooldown_advances_after_attack_order_is_replace
     target->s.origin2.x = 180.0f;
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "walk");
-    T_ASSERT(attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
 
     vec2_t const replacement = { 240.0f, 0.0f };
     T_ASSERT(unit_issueorder(attacker, "move", &replacement));
     T_ASSERT(attacker->currentmove->proc != CAbilityAttack);
-    level.time += 1100;
+    uint32_t const deadline = attacker->attack_cooldown_end_time;
+    level.time = deadline - 1;
+    target->s.origin2.x = 80.0f;
+    order_attack(attacker, target);
+    attacker->currentmove->think(attacker);
+    T_STREQ(attacker->currentmove->animation, "stand ready");
+    T_EQ(attacker->attack_cooldown_end_time, deadline);
+    /* Reissuing at expiry clears the replaced move's wait, as ordinary orders do. */
+    level.time = deadline;
+    target->s.origin2.x = 180.0f;
     order_attack(attacker, target);
     attacker->currentmove->think(attacker);
     T_STREQ(attacker->currentmove->animation, "walk");
-    T_ASSERT(!attacker->attack_cooldown_active);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) <= 0);
+    target->s.origin2.x = 80.0f;
+    attacker->currentmove->think(attacker);
+    T_STREQ(attacker->currentmove->animation, "attack");
+    T_ASSERT(attacker->attack_cooldown_end_time > deadline);
 }
 
 TEST(wc3_combat, backswing_still_blocks_attack_after_cooldown_during_chase) {
@@ -2631,7 +2641,6 @@ TEST(wc3_combat, attack_chase_cooldown_and_target_survive_save_load) {
     cstring_t filename = Test_TempPath("attack-chase-cooldown.bin");
     edict_t *attacker;
     edict_t *target;
-    float const cooldown_remaining = 0.73f;
 
     setup_test_world();
     reset_entities();
@@ -2648,8 +2657,6 @@ TEST(wc3_combat, attack_chase_cooldown_and_target_survive_save_load) {
     target->targtype = TARG_GROUND;
     T_ASSERT(S_OrderAttack(attacker, target));
     T_EQ(attacker->attack_target_spawn_time, target->spawn_time);
-    attacker->attack_cooldown_active = true;
-    attacker->attack_cooldown_remaining = cooldown_remaining;
     attacker->attack_cooldown_end_time = G_Time() + 730;
 
     T_ASSERT(WriteGame(filename));
@@ -2657,8 +2664,6 @@ TEST(wc3_combat, attack_chase_cooldown_and_target_survive_save_load) {
         int const attacker_index = (int)(attacker - g_edicts);
         int const target_index = (int)(target - g_edicts);
         attacker->goalentity = NULL;
-        attacker->attack_cooldown_active = false;
-        attacker->attack_cooldown_remaining = 0.0f;
         attacker->attack_cooldown_end_time = 0;
         T_ASSERT(ReadGame(filename));
 
@@ -2669,8 +2674,8 @@ TEST(wc3_combat, attack_chase_cooldown_and_target_survive_save_load) {
     T_EQ(attacker->attack_target_spawn_time, target->spawn_time);
     T_ASSERT(attacker->currentmove != NULL);
     T_ASSERT(attacker->currentmove && attacker->currentmove->proc == CAbilityAttack);
-    T_ASSERT(attacker->attack_cooldown_active);
-    T_FEQ(attacker->attack_cooldown_remaining, cooldown_remaining, 0.001f);
+    T_ASSERT((int32_t)(attacker->attack_cooldown_end_time - G_Time()) > 0);
+    T_EQ(attacker->attack_cooldown_end_time - G_Time(), 730);
     remove(filename);
 }
 
