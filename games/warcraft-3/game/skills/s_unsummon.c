@@ -4,9 +4,9 @@
 
 static void unsummon_remove_status(edict_t *building) {
     if (!building) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        if (building->abilstatus[i].level && building->abilstatus[i].code == ID_UNSUMMON_BUFF)
-            unit_removestatus(building, building->abilstatus + i, STATUS_REMOVE_SCRIPT);
+    FOR_LOOP(i, building->unit_state ? MAX_UNIT_STATUSES : 0) {
+        if (building->unit_state->statuses[i].level && building->unit_state->statuses[i].code == ID_UNSUMMON_BUFF)
+            unit_removestatus(building, building->unit_state->statuses + i, STATUS_REMOVE_SCRIPT);
     }
     G_InvalidateUnitInfoPanel(building);
 }

@@ -212,10 +212,14 @@ TEST(wc3_movement, harvest_command_button_toggles_to_return_resources_ui) {
     T_EQ(button.y, 2);
 
     S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 7);
+    T_NOT_NULL(worker->harvest);
+    T_EQ(worker->harvest->gold, 7);
+    T_EQ(worker->harvest->lumber, 0);
     T_ASSERT(G_BuildCommandButton(worker, "Ahar", false, 0, &button));
     T_STREQ(button.tooltip, "Return Resources");
 
     S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 0);
+    T_NULL(worker->harvest);
     T_ASSERT(G_BuildCommandButton(worker, "Ahar", false, 0, &button));
     T_STREQ(button.tooltip, "Gather");
 }
@@ -253,7 +257,7 @@ TEST(wc3_movement, ghoul_ahrl_smart_uses_lumber_only_harvest_data) {
     worker->wait = FRAMETIME / 1000.0f;
     worker->currentmove->think(worker);
     T_FEQ(tree->health.value, 97.0f, 0.001f);
-    T_EQ(worker->harvested_lumber, 5);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 5);
 
     HARVEST_RANGE = saved_range;
     HARVEST_TREE_DAMAGE = saved_damage;
@@ -691,7 +695,7 @@ TEST(wc3_movement, worker_resource_gold_return_targets_near_side_edge) {
 
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->harvested_gold = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 10);
     worker->s.renderfx |= RF_HAS_GOLD;
     worker->orders->resource_goal = mine;
     hall->collision = 64.0f;
@@ -789,7 +793,7 @@ TEST(wc3_movement, worker_resource_gold_deposits_at_near_side_route_endpoint) {
 
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->harvested_gold = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 10);
     worker->s.renderfx |= RF_HAS_GOLD;
     hall->collision = 64.0f;
     hall->s.model = 1;
@@ -819,7 +823,7 @@ TEST(wc3_movement, worker_resource_gold_deposits_at_near_side_route_endpoint) {
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold + 10);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
 
     hall->pathtex = NULL;
@@ -867,7 +871,7 @@ TEST(wc3_movement, worker_resource_lumber_deposits_at_near_side_route_endpoint) 
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_LUMBER], old_lumber + 10);
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
 
     mill->pathtex = NULL;
@@ -965,7 +969,7 @@ TEST(wc3_movement, gold_worker_enters_large_mine_footprint) {
     }
 
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
 }
@@ -1014,7 +1018,7 @@ TEST(wc3_movement, gold_worker_enters_mine_with_blocked_pathing_footprint) {
     worker->currentmove->think(worker);
 
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
     gi.MemFree(mine_pathtex);
@@ -1066,7 +1070,7 @@ TEST(wc3_movement, gold_worker_static_blocked_edge_does_not_fake_mine_entry) {
     }
 
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
     T_ASSERT(worker->goalentity == mine);
     T_STREQ(worker->currentmove->animation, "walk");
     G_SetSLKRows("AbilityData", old_abilities);
@@ -1114,7 +1118,7 @@ TEST(wc3_movement, gold_worker_enters_at_pathing_footprint_corner) {
     worker->currentmove->think(worker);
 
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
     gi.MemFree(mine_pathtex);
@@ -1125,7 +1129,7 @@ TEST(wc3_movement, gold_worker_enters_at_pathing_footprint_corner) {
 TEST(wc3_movement, lumber_final_chop_fells_tree) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 10.0f);
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     msgTrace_t trace = {0};
     T_ASSERT(G_SubscribeMessage(trace_message, &trace));
     HARVEST_RANGE = 64.0f;
@@ -1139,7 +1143,7 @@ TEST(wc3_movement, lumber_final_chop_fells_tree) {
     G_UnsubscribeMessage(trace_message, &trace);
 
     T_FEQ(tree->health.value, 0.0f, 0.01f);
-    T_FEQ(worker->harvested_lumber, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->lumber : 0), 10.0f, 0.01f);
     T_ASSERT(tree->svflags & SVF_DEADMONSTER);
     T_STREQ(tree->currentmove->animation, "death");
     T_EQ(trace.count, 4);
@@ -1275,7 +1279,7 @@ TEST(wc3_movement, lumber_same_tree_worker_routes_around_chopper) {
 
     chopper->collision = follower->collision = 16.0f;
     chopper->unitinfo.MoveSpeed = follower->unitinfo.MoveSpeed = 190.0f;
-    chopper->attack1.damagePoint = follower->attack1.damagePoint = 0.01f;
+    chopper->unit_state->attack1.damagePoint = follower->unit_state->attack1.damagePoint = 0.01f;
     chopper->s.model = follower->s.model = 1;
     tree->collision = 0.0f;
     gi.LinkEntity(chopper);
@@ -1407,7 +1411,7 @@ TEST(wc3_movement, lumber_unreachable_clicked_tree_retargets_reachable_edge_tree
 
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     edge->collision = interior->collision = 0.0f;
 
     /* Seven blocked rows/columns model a dense forest around the clicked
@@ -1466,7 +1470,7 @@ TEST(wc3_movement, lumber_tree_dying_during_approach_retargets_immediately) {
 TEST(wc3_movement, lumber_worker_takes_ten_swings_per_trip) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 500.0f);
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     tree->pain = test_tree_pain; tree->die = test_tree_die;
     tree_pained = 0; tree_died = false;
     HARVEST_RANGE = 64.0f; HARVEST_TREE_DAMAGE = 1.0f;
@@ -1478,7 +1482,7 @@ TEST(wc3_movement, lumber_worker_takes_ten_swings_per_trip) {
     worker->currentmove->think(worker); /* ai_chop: lumber=1, tree-=1 */
     /* Cycle through cooldown+swing until capacity fills; expect exactly 9 more chops. */
     FOR_LOOP(i, 15) {
-        if (worker->harvested_lumber >= HARVEST_LUMBER_CAPACITY) break;
+        if ((worker->harvest ? worker->harvest->lumber : 0) >= HARVEST_LUMBER_CAPACITY) break;
         harvest_cooldown(worker);           /* anim end: <cap → cooldown state */
         worker->wait = 0.01f;
         worker->currentmove->think(worker); /* ai_cooldown → harvest_swing */
@@ -1486,7 +1490,7 @@ TEST(wc3_movement, lumber_worker_takes_ten_swings_per_trip) {
         worker->currentmove->think(worker); /* ai_chop */
     }
     T_EQ(tree_pained, 10);
-    T_FEQ(worker->harvested_lumber, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->lumber : 0), 10.0f, 0.01f);
     T_FEQ(tree->health.value, 490.0f, 0.01f);
     T_ASSERT(!tree_died);
 }
@@ -1497,7 +1501,7 @@ TEST(wc3_movement, lumber_final_chop_clamps_to_capacity) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 100.0f);
 
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     HARVEST_RANGE = 64.0f;
     HARVEST_TREE_DAMAGE = 10.0f;
     HARVEST_LUMBER_CAPACITY = 25.0f;
@@ -1515,7 +1519,7 @@ TEST(wc3_movement, lumber_final_chop_clamps_to_capacity) {
         }
     }
 
-    T_EQ(worker->harvested_lumber, 25);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 25);
     T_FEQ(tree->health.value, 70.0f, 0.01f);
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
 }
@@ -1526,7 +1530,7 @@ TEST(wc3_movement, lumber_invulnerable_tree_does_not_award_lumber) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 100.0f);
 
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     G_SetUnitFlag(tree, UNIT_FLAG_INVULNERABLE, true);
     HARVEST_RANGE = 64.0f;
     HARVEST_TREE_DAMAGE = 10.0f;
@@ -1536,7 +1540,7 @@ TEST(wc3_movement, lumber_invulnerable_tree_does_not_award_lumber) {
     worker->wait = 0.01f;
     worker->currentmove->think(worker);
 
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
     T_FEQ(tree->health.value, 100.0f, 0.01f);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
 }
@@ -1547,8 +1551,8 @@ TEST(wc3_movement, lumber_chop_replaces_gold_carry_state) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 100.0f);
 
-    worker->attack1.damagePoint = 0.01f;
-    worker->harvested_gold = 7;
+    worker->unit_state->attack1.damagePoint = 0.01f;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 7);
     worker->s.renderfx |= RF_HAS_GOLD;
     HARVEST_RANGE = 64.0f;
     HARVEST_TREE_DAMAGE = 1.0f;
@@ -1559,8 +1563,8 @@ TEST(wc3_movement, lumber_chop_replaces_gold_carry_state) {
     worker->wait = 0.01f;
     worker->currentmove->think(worker);
 
-    T_EQ(worker->harvested_gold, 0);
-    T_EQ(worker->harvested_lumber, 1);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 1);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
 }
@@ -1572,20 +1576,20 @@ TEST(wc3_movement, lumber_smart_click_resumes_partial_trip) {
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 100.0f);
 
     worker->data.UnitAbilities = &harvest_abilities;
-    worker->attack1.damagePoint = 0.01f;
-    worker->harvested_lumber = 3;
+    worker->unit_state->attack1.damagePoint = 0.01f;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 3);
     worker->s.renderfx |= RF_HAS_LUMBER;
     HARVEST_RANGE = 64.0f;
     HARVEST_TREE_DAMAGE = 1.0f;
     HARVEST_LUMBER_CAPACITY = 10.0f;
 
     T_ASSERT(unit_issuetargetorder(worker, "smart", tree));
-    T_EQ(worker->harvested_lumber, 3);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 3);
     worker->currentmove->think(worker);
     worker->wait = 0.01f;
     worker->currentmove->think(worker);
 
-    T_EQ(worker->harvested_lumber, 4);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 4);
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
 }
 
@@ -1597,22 +1601,22 @@ TEST(wc3_movement, lumber_smart_click_gold_mine_switches_on_gold_pickup) {
     slkTestData_t *rows, *old_abilities = install_goldmine_test_data(&rows);
 
     worker->data.UnitAbilities = &harvest_abilities;
-    worker->harvested_lumber = 5;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 5);
     worker->s.renderfx |= RF_HAS_LUMBER;
     setup_test_goldmine(mine, &test_goldmine_cap1, 100);
     HARVEST_GOLD_CAPACITY = 10.0f;
 
     T_ASSERT(unit_issuetargetorder(worker, "smart", mine));
-    T_EQ(worker->harvested_lumber, 5);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 5);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
 
     harvestgold_minegold(worker);
     harvestgold_walkback(worker);
 
-    T_EQ(worker->harvested_lumber, 0);
-    T_EQ(worker->harvested_gold, 10);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 10);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);
     G_SetSLKRows("AbilityData", old_abilities);
@@ -1626,23 +1630,23 @@ TEST(wc3_movement, gold_smart_click_tree_switches_on_successful_chop) {
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 100.0f);
 
     worker->data.UnitAbilities = &harvest_abilities;
-    worker->attack1.damagePoint = 0.01f;
-    worker->harvested_gold = 7;
+    worker->unit_state->attack1.damagePoint = 0.01f;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 7);
     worker->s.renderfx |= RF_HAS_GOLD;
     HARVEST_RANGE = 64.0f;
     HARVEST_TREE_DAMAGE = 1.0f;
     HARVEST_LUMBER_CAPACITY = 10.0f;
 
     T_ASSERT(unit_issuetargetorder(worker, "smart", tree));
-    T_EQ(worker->harvested_gold, 7);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 7);
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);
     worker->currentmove->think(worker);
-    T_EQ(worker->harvested_gold, 7);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 7);
     worker->wait = 0.01f;
     worker->currentmove->think(worker);
 
-    T_EQ(worker->harvested_gold, 0);
-    T_EQ(worker->harvested_lumber, 1);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 1);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
 }
@@ -1658,7 +1662,7 @@ TEST(wc3_movement, gold_smart_click_gold_mine_visits_mine_then_returns_and_resum
     uint32_t const old_gold = game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD];
 
     worker->data.UnitAbilities = &harvest_abilities;
-    worker->harvested_gold = 7;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 7);
     worker->s.renderfx |= RF_HAS_GOLD;
     hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
@@ -1667,7 +1671,7 @@ TEST(wc3_movement, gold_smart_click_gold_mine_visits_mine_then_returns_and_resum
     T_ASSERT(unit_issuetargetorder(worker, "smart", mine));
     T_ASSERT(worker->goalentity == mine);
     T_ASSERT(worker->orders->resource_goal == mine);
-    T_EQ(worker->harvested_gold, 7);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 7);
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold);
 
     /* Reaching the clicked mine redirects the existing load without entering
@@ -1675,8 +1679,8 @@ TEST(wc3_movement, gold_smart_click_gold_mine_visits_mine_then_returns_and_resum
     worker->currentmove->think(worker);
     T_ASSERT(worker->goalentity == hall);
     T_ASSERT(worker->orders->resource_goal == mine);
-    T_EQ(worker->harvested_gold, 7);
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 7);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
     T_ASSERT(!S_GoldMineWorkerIsInside(worker));
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold);
 
@@ -1684,7 +1688,7 @@ TEST(wc3_movement, gold_smart_click_gold_mine_visits_mine_then_returns_and_resum
      * the worker position, then the original clicked mine becomes the goal. */
     worker->currentmove->think(worker);
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold + 7);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(worker->goalentity == mine);
     T_ASSERT(worker->orders->resource_goal == mine);
     T_STREQ(worker->currentmove->animation, "walk");
@@ -1783,7 +1787,7 @@ TEST(wc3_movement, gold_return_prefers_direct_footprint_edge_lane) {
 
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->harvested_gold = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 10);
     worker->s.renderfx |= RF_HAS_GOLD;
     worker->orders->resource_goal = mine;
     hall->collision = 64.0f;
@@ -1832,7 +1836,7 @@ TEST(wc3_movement, gold_return_reselects_footprint_edge_after_displacement) {
 
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->harvested_gold = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 10);
     worker->s.renderfx |= RF_HAS_GOLD;
     worker->orders->resource_goal = mine;
     hall->collision = 64.0f;
@@ -1899,7 +1903,7 @@ TEST(wc3_movement, gold_return_holds_while_shared_route_is_pending) {
     worker->collision = 16.0f;
     worker->unitinfo.MoveSpeed = 190.0f;
     worker->s.angle = 0.0f; /* stale facing points east, away from hall */
-    worker->harvested_gold = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 10);
     worker->s.renderfx |= RF_HAS_GOLD;
     worker->orders->resource_goal = mine;
     hall->collision = 64.0f;
@@ -2180,8 +2184,8 @@ TEST(wc3_movement, smart_attackable_wall_targets_gate) {
     gi.unicast = movement_noop_unicast;
     attacker = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0.0f, 0.0f);
     attacker->stand = unit_stand;
-    attacker->attack1.type = ATK_NORMAL;
-    attacker->attack1.targetsAllowed = WC3_TARGET_FLAG_WALL;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_WALL;
     unit_stand(attacker);
     gate = make_smart_destructable(256.0f, 64.0f, &gate_data, TARG_WALL);
     G_SelectEntity(client, attacker);
@@ -2215,9 +2219,9 @@ TEST(wc3_movement, attacking_unreachable_gate_keeps_gate_at_authored_position) {
         .min = {0.0f, 0.0f}, .max = {512.0f, 512.0f}));
     attacker->collision = 16.0f;
     attacker->unitinfo.MoveSpeed = 80.0f;
-    attacker->attack1.type = ATK_NORMAL;
-    attacker->attack1.targetsAllowed = WC3_TARGET_FLAG_WALL;
-    attacker->attack1.range = 64.0f;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_WALL;
+    attacker->unit_state->attack1.range = 64.0f;
     gi.LinkEntity(attacker);
 
     T_ASSERT(S_OrderAttack(attacker, gate));
@@ -2277,9 +2281,9 @@ TEST(wc3_movement, group_smart_attack_keeps_unreachable_member_on_its_side_of_wa
         unit->movetype = MOVETYPE_STEP;
         unit->unitinfo.MoveSpeed = 80.0f;
         unit->collision = 16.0f;
-        unit->attack1.type = ATK_NORMAL;
-        unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
-        unit->attack1.range = 48.0f;
+        unit->unit_state->attack1.type = ATK_NORMAL;
+        unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+        unit->unit_state->attack1.range = 48.0f;
         unit->stand = unit_stand;
         unit_stand(unit);
         G_SelectEntity(clent->client, unit);
@@ -2383,8 +2387,8 @@ TEST(wc3_movement, smart_walkable_debris_keeps_entity_attack_precedence) {
     unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0.0f, 0.0f);
     unit->stand = unit_stand;
     unit_stand(unit);
-    unit->attack1.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = 256u; /* debris */
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = 256u; /* debris */
     debris = make_smart_destructable(256.0f, 64.0f, &debris_data, TARG_DEBRIS);
     G_SelectEntity(client, unit);
     snprintf(debris_number, sizeof(debris_number), "%u", (unsigned)debris->s.number);
@@ -2407,7 +2411,7 @@ TEST(wc3_movement, lumber_full_worker_returns_before_new_chop) {
 
     hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
     HARVEST_LUMBER_CAPACITY = 10.0f;
 
@@ -2416,7 +2420,7 @@ TEST(wc3_movement, lumber_full_worker_returns_before_new_chop) {
     T_ASSERT(worker->orders->resource_goal == tree);
     T_ASSERT(worker->goalentity == hall);
     T_STREQ(worker->currentmove->animation, "walk");
-    T_EQ(worker->harvested_lumber, 10);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 10);
 }
 
 /* The capacity-filling chop must fell the tree before return starts.  After
@@ -2426,7 +2430,7 @@ TEST(wc3_movement, lumber_lethal_trip_fells_then_selects_next_tree) {
     setup_test_world();
     edict_t *worker = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0.0f, 0.0f);
     worker->movetype = MOVETYPE_STEP; worker->stand = unit_stand; worker->die = unit_die;
-    worker->collision = 0.0f; worker->attack1.damagePoint = 0.01f;
+    worker->collision = 0.0f; worker->unit_state->attack1.damagePoint = 0.01f;
     edict_t *tree1 = make_harvest_tree(20.0f, 0.0f, 10.0f);
     tree1->s.model = G_RegisterModel("Doodads\\Terrain\\LordaeronTree\\LordaeronTree0.mdx");
     edict_t *tree2 = make_harvest_tree(30.0f, 0.0f, 500.0f);
@@ -2481,7 +2485,7 @@ TEST(wc3_movement, lumber_deposit_without_live_tree_stops) {
     edict_t *worker = make_moving_unit(0.0f, 0.0f);
     edict_t *tree = make_harvest_tree(20.0f, 0.0f, 1.0f);
     edict_t *hall = alloc_test_unit(MAKEFOURCC('h','t','o','w'), 0.0f, 0.0f);
-    worker->attack1.damagePoint = 0.01f;
+    worker->unit_state->attack1.damagePoint = 0.01f;
     hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     HARVEST_RANGE = 64.0f; HARVEST_TREE_DAMAGE = 1.0f; HARVEST_LUMBER_CAPACITY = 1.0f;
@@ -2508,14 +2512,14 @@ TEST(wc3_movement, lumber_manual_return_without_tree_stops) {
     edict_t *hall = alloc_test_unit(MAKEFOURCC('h','t','o','w'), 0.0f, 0.0f);
     hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
-    worker->harvested_lumber = 1;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 1);
     worker->s.renderfx |= RF_HAS_LUMBER;
     harvest_walkback(worker);
     worker->currentmove->think(worker);
 
     T_ASSERT(worker->goalentity == NULL);
     T_ASSERT(worker->orders->resource_goal == NULL);
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
     T_STREQ(worker->currentmove->animation, "stand");
 }
 
@@ -2531,7 +2535,7 @@ TEST(wc3_movement, lumber_dead_previous_tree_searches_near_old_tree) {
     hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     old_tree->health.value = 0.0f;
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
     worker->orders->resource_goal = old_tree;
     HARVEST_SEARCH_RANGE = 1000.0f;
@@ -2542,7 +2546,7 @@ TEST(wc3_movement, lumber_dead_previous_tree_searches_near_old_tree) {
     T_ASSERT(worker->goalentity == forest_tree);
     T_ASSERT(worker->orders->resource_goal == forest_tree);
     T_ASSERT(worker->goalentity != dropoff_tree);
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
 }
 
 /* Wisps do not use the normal chop/carry/drop-off loop. Awha attaches to a
@@ -2574,7 +2578,7 @@ TEST(wc3_movement, wisp_harvest_persists_and_credits_periodic_lumber) {
     wisp->currentmove->think(wisp); /* first periodic credit */
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_LUMBER], old_lumber + 9);
     T_ASSERT(wisp->inuse && !M_IsDead(wisp));
-    T_EQ(wisp->harvested_lumber, 0);
+    T_EQ((wisp->harvest ? wisp->harvest->lumber : 0), 0);
     T_FEQ(tree->health.value, 100.0f, 0.001f);
     T_FEQ(wisp->wait, 1.0f, 0.001f);
 
@@ -2941,12 +2945,12 @@ TEST(wc3_movement, lumber_smart_click_returns_to_clicked_dropoff) {
     hall->s.player = mill->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     make_live_dropoff(mill, &return_lumber_abilities);
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
 
     T_ASSERT(unit_issuetargetorder(worker, "smart", mill));
     T_ASSERT(worker->goalentity == mill);
-    T_EQ(worker->harvested_lumber, 10);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 10);
 }
 
 /* A large Town Hall footprint can block the next step before the old +5u
@@ -2962,7 +2966,7 @@ TEST(wc3_movement, lumber_return_deposits_at_next_step_contact) {
     hall->collision = 192.0f; hall->s.model = 1; hall->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     gi.LinkEntity(worker); gi.LinkEntity(tree); gi.LinkEntity(hall);
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
     worker->orders->resource_goal = tree;
 
@@ -2973,8 +2977,8 @@ TEST(wc3_movement, lumber_return_deposits_at_next_step_contact) {
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_LUMBER], old_lumber + 10);
-    T_EQ(worker->harvested_lumber, 0);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
     T_ASSERT(worker->goalentity == tree);
@@ -3014,7 +3018,7 @@ TEST(wc3_movement, lumber_return_deposits_at_dropoff_footprint_corner) {
         .min = {-1024.0f, -1024.0f},
         .max = { 1024.0f,  1024.0f}));
 
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
     worker->orders->resource_goal = tree;
     harvest_walkback(worker);
@@ -3028,7 +3032,7 @@ TEST(wc3_movement, lumber_return_deposits_at_dropoff_footprint_corner) {
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_LUMBER], old_lumber + 10);
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(worker->goalentity == tree);
     gi.MemFree(mill_pathtex);
@@ -3063,7 +3067,7 @@ TEST(wc3_movement, lumber_return_reaches_blocked_townhall_footprint) {
         .min = {-1024.0f, -1024.0f},
         .max = { 1024.0f,  1024.0f}));
 
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
     worker->orders->resource_goal = tree;
     harvest_walkback(worker);
@@ -3071,11 +3075,11 @@ TEST(wc3_movement, lumber_return_reaches_blocked_townhall_footprint) {
     FOR_LOOP(i, 80) {
         worker->currentmove->think(worker);
         CM_ProcessPathJobs(65536);
-        if (!worker->harvested_lumber) break;
+        if (!(worker->harvest ? worker->harvest->lumber : 0)) break;
     }
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_LUMBER], old_lumber + 10);
-    T_EQ(worker->harvested_lumber, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(worker->goalentity == tree);
 }
@@ -3166,7 +3170,7 @@ TEST(wc3_movement, trained_unit_completion_preserves_remaining_queue) {
     first->health.max_value = second->health.max_value = 100.0f;
     first->health.value = 100.0f;
     second->health.value = 0.0f;
-    first->training = second->training = true;
+    G_SetUnitFlag(first, UNIT_FLAG_TRAINING, true); G_SetUnitFlag(second, UNIT_FLAG_TRAINING, true);
     first->s.renderfx |= RF_HIDDEN;
     second->s.renderfx |= RF_HIDDEN;
     first->build = second;
@@ -3176,9 +3180,9 @@ TEST(wc3_movement, trained_unit_completion_preserves_remaining_queue) {
 
     T_ASSERT(producer->build == second);
     T_NULL(first->build);
-    T_ASSERT(!first->training);
+    T_ASSERT(!G_UnitHasFlag(first, UNIT_FLAG_TRAINING));
     T_ASSERT(!(first->s.renderfx & RF_HIDDEN));
-    T_ASSERT(second->training);
+    T_ASSERT(G_UnitHasFlag(second, UNIT_FLAG_TRAINING));
     T_ASSERT(second->s.renderfx & RF_HIDDEN);
     T_FEQ(second->health.value, 0.0f, 0.01f);
     T_EQ(first->food->used, 2);
@@ -3229,13 +3233,13 @@ TEST(wc3_movement, lumber_return_prefers_nearer_lumber_mill) {
     hall->s.player = mill->s.player = worker->s.player;
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     make_live_dropoff(mill, &return_lumber_abilities);
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
 
     harvest_walkback(worker);
 
     T_ASSERT(worker->goalentity == mill);
-    T_FEQ(worker->harvested_lumber, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->lumber : 0), 10.0f, 0.01f);
 }
 
 /* Return Resources is unavailable while a structure is under construction.
@@ -3250,14 +3254,14 @@ TEST(wc3_movement, lumber_return_skips_unfinished_lumber_mill) {
     make_live_dropoff(mill, &return_lumber_abilities);
     if (!mill->construction) mill->construction = G_AllocConstruction();
     assert(mill->construction);
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
 
     T_ASSERT(!S_CanReturnResourceAt(worker, mill, RETURN_RESOURCE_LUMBER));
     harvest_walkback(worker);
 
     T_ASSERT(worker->goalentity == hall);
-    T_FEQ(worker->harvested_lumber, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->lumber : 0), 10.0f, 0.01f);
 
     G_FreeConstruction(mill);
     T_ASSERT(S_CanReturnResourceAt(worker, mill, RETURN_RESOURCE_LUMBER));
@@ -3280,7 +3284,7 @@ TEST(wc3_movement, gold_return_skips_unfinished_town_hall) {
     T_ASSERT(S_FindNearestResourceDropoff(worker, RETURN_RESOURCE_GOLD) == complete_hall);
     T_ASSERT(harvest_gold_return_to(worker, S_FindNearestResourceDropoff(worker, RETURN_RESOURCE_GOLD)));
     T_ASSERT(worker->goalentity == complete_hall);
-    T_EQ(worker->harvested_gold, 10);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 10);
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);
 
     G_FreeConstruction(unfinished_hall);
@@ -3298,7 +3302,7 @@ TEST(wc3_movement, lumber_return_retargets_after_lumber_mill_dies) {
     make_live_dropoff(hall, &return_gold_lumber_abilities);
     make_live_dropoff(mill, &return_lumber_abilities);
     worker->unitinfo.MoveSpeed = 190.0f;
-    worker->harvested_lumber = 10;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 10);
     worker->s.renderfx |= RF_HAS_LUMBER;
 
     harvest_walkback(worker);
@@ -3307,7 +3311,7 @@ TEST(wc3_movement, lumber_return_retargets_after_lumber_mill_dies) {
     worker->currentmove->think(worker);
 
     T_ASSERT(worker->goalentity == hall);
-    T_FEQ(worker->harvested_lumber, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->lumber : 0), 10.0f, 0.01f);
     T_ASSERT(worker->s.renderfx & RF_HAS_LUMBER);
 }
 
@@ -3336,7 +3340,7 @@ TEST(wc3_movement, gold_worker_deposits_and_resumes_mining) {
     G_UnsubscribeMessage(trace_message, &trace);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold + 10);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
     T_ASSERT(worker->orders->resource_goal == mine);
     T_EQ(trace.count, 5);
@@ -3368,15 +3372,15 @@ TEST(wc3_movement, gold_pickup_replaces_lumber_carry_state) {
     setup_test_goldmine(mine, &test_goldmine_cap1, 100);
     gi.LinkEntity(mine);
     HARVEST_GOLD_CAPACITY = 10.0f;
-    worker->harvested_lumber = 5;
+    S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 5);
     worker->s.renderfx |= RF_HAS_LUMBER;
     worker->goalentity = worker->orders->resource_goal = mine;
 
     harvestgold_minegold(worker);
     harvestgold_walkback(worker);
 
-    T_EQ(worker->harvested_lumber, 0);
-    T_EQ(worker->harvested_gold, 10);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 10);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);
     G_SetSLKRows("AbilityData", old_abilities);
@@ -3409,8 +3413,8 @@ TEST(wc3_movement, gold_return_deposits_at_next_step_contact) {
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold + 10);
-    T_EQ(worker->harvested_lumber, 0);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_LUMBER));
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
     T_ASSERT(worker->goalentity == mine);
@@ -3466,7 +3470,7 @@ TEST(wc3_movement, gold_return_deposits_at_townhall_footprint_corner) {
     worker->currentmove->think(worker);
 
     T_EQ(game.clients[0].ps.stats[PLAYERSTATE_RESOURCE_GOLD], old_gold + 10);
-    T_EQ(worker->harvested_gold, 0);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 0);
     T_ASSERT(!(worker->s.renderfx & RF_HAS_GOLD));
     T_ASSERT(worker->goalentity == mine);
     G_SetSLKRows("AbilityData", old_abilities);
@@ -3494,7 +3498,7 @@ TEST(wc3_movement, gold_return_rejects_nearer_lumber_only_dropoff) {
     harvestgold_walkback(worker);
 
     T_ASSERT(worker->goalentity == hall);
-    T_FEQ(worker->harvested_gold, 10.0f, 0.01f);
+    T_FEQ((worker->harvest ? worker->harvest->gold : 0), 10.0f, 0.01f);
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
@@ -4133,7 +4137,7 @@ TEST(wc3_movement, unit_does_not_overshoot_goal) {
 TEST(wc3_movement, rooted_point_order_keeps_travel_absent) {
     edict_t *unit = make_moving_unit(0, 0);
     vec2_t destination = {100, 100};
-    unit->abilstatus[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
+    unit->unit_state->statuses[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
     T_NULL(unit->movement);
     T_ASSERT(!G_IssueUnitPointOrder(unit, "move", &destination, false, 0, 100));
     T_NULL(unit->movement);
@@ -4145,7 +4149,7 @@ TEST(wc3_movement, rooted_selected_order_keeps_travel_absent) {
     edict_t *clent = &g_edicts[0];
     vec2_t destination = {100, 100};
     unit->selected = 1 << clent->client->ps.number;
-    unit->abilstatus[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
+    unit->unit_state->statuses[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
     T_NULL(unit->movement);
     T_ASSERT(!move_selectlocation(clent, &destination));
     T_NULL(unit->movement);
@@ -4331,9 +4335,9 @@ TEST(wc3_movement, attack_chase_progresses_with_captured_tower_corridor) {
     attacker->class_id = MAKEFOURCC('h','f','o','o');
     attacker->s.player = 0;
     attacker->collision = 31.0f;
-    attacker->attack1.type = ATK_NORMAL;
-    attacker->attack1.range = 100.0f;
-    attacker->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.range = 100.0f;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
 
     tower = alloc_test_unit(MAKEFOURCC('h','c','t','w'), tower_pos.x, tower_pos.y);
     tower->s.player = 0;
@@ -4381,7 +4385,7 @@ TEST(wc3_movement, attack_chase_progresses_with_captured_tower_corridor) {
     T_ASSERT(Vector2_distance(&attacker->s.origin2, &target->s.origin2) < start_distance - 1000.0f);
     T_ASSERT(attacker->goalentity == target);
     T_ASSERT(Vector2_distance(&attacker->s.origin2, &target->s.origin2) <=
-        attacker->attack1.range + attacker->collision + target->collision + 16.0f);
+        attacker->unit_state->attack1.range + attacker->collision + target->collision + 16.0f);
 }
 
 TEST(wc3_movement, attack_chase_waits_through_competing_route_jobs_then_resumes) {
@@ -4407,9 +4411,9 @@ TEST(wc3_movement, attack_chase_waits_through_competing_route_jobs_then_resumes)
     attacker->s.player = 0;
     attacker->collision = 31.0f;
     attacker->unitinfo.MoveSpeed = 300.0f;
-    attacker->attack1.type = ATK_NORMAL;
-    attacker->attack1.range = 100.0f;
-    attacker->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.range = 100.0f;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
 
     target = alloc_test_unit(MAKEFOURCC('h','c','t','w'), target_pos.x, target_pos.y);
     target->s.player = 1;
@@ -4572,11 +4576,11 @@ TEST(wc3_movement, gold_worker_stops_when_no_townhall) {
     /* Drive until harvested_gold is set (harvestgold_walkback fired). */
     FOR_LOOP(i, 100) {
         worker->currentmove->think(worker);
-        if (worker->harvested_gold > 0) break;
+        if ((worker->harvest ? worker->harvest->gold : 0) > 0) break;
     }
     G_UnsubscribeMessage(trace_message, &trace);
 
-    T_ASSERT(worker->harvested_gold > 0);           /* gold carried, not deposited */
+    T_ASSERT((worker->harvest ? worker->harvest->gold : 0) > 0);           /* gold carried, not deposited */
     T_ASSERT(worker->s.renderfx & RF_HAS_GOLD);     /* visual bag still on worker */
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));    /* not inside mine */
     T_STREQ(worker->currentmove->animation, "stand");
@@ -4609,7 +4613,7 @@ TEST(wc3_movement, gold_mine_queues_second_worker_when_at_capacity) {
         if (worker1->s.renderfx & RF_HIDDEN) break;
     }
     T_ASSERT(worker1->s.renderfx & RF_HIDDEN);
-    T_EQ((int)mine->peonsinside, 1);
+    T_EQ((int)(mine->goldmine ? mine->goldmine->occupants : 0), 1);
 
     /* Worker2: wire and place at the mine entrance so it reaches immediately. */
     edict_t *worker2 = alloc_test_unit(MAKEFOURCC('h','p','e','a'),
@@ -4628,13 +4632,13 @@ TEST(wc3_movement, gold_mine_queues_second_worker_when_at_capacity) {
     worker2->currentmove->think(worker2); /* immediately at mine — enters wait state */
 
     T_ASSERT(!(worker2->s.renderfx & RF_HIDDEN));   /* waiting outside */
-    T_EQ((int)mine->peonsinside, 1);                /* still only worker1 */
+    T_EQ((int)(mine->goldmine ? mine->goldmine->occupants : 0), 1);                /* still only worker1 */
     T_STREQ(worker2->currentmove->animation, "stand");
 
     /* Worker1 exits; harvestgold_walkback wakes worker2 in the same call. */
     worker1->currentmove->think(worker1);
     T_ASSERT(worker2->s.renderfx & RF_HIDDEN);   /* worker2 now inside */
-    T_EQ((int)mine->peonsinside, 1);             /* worker1 left (−1) worker2 entered (+1) */
+    T_EQ((int)(mine->goldmine ? mine->goldmine->occupants : 0), 1);             /* worker1 left (−1) worker2 entered (+1) */
     T_ASSERT(!(worker1->s.renderfx & RF_HIDDEN));/* worker1 exited */
     T_ASSERT(worker1->s.renderfx & RF_HAS_GOLD); /* worker1 carrying gold */
     T_EQ(mine->resources, 90);
@@ -4657,7 +4661,7 @@ TEST(wc3_movement, gold_mine_stock_capacity_never_exceeds_one_with_six_workers) 
         edict_t *worker = add_gold_worker(150.0f + (float)i, 0.0f);
         worker->goalentity = worker->orders->resource_goal = mine;
         harvestgold_minegold(worker);
-        T_ASSERT(mine->peonsinside <= 1);
+        T_ASSERT((mine->goldmine ? mine->goldmine->occupants : 0) <= 1);
         if (i == 0) {
             T_ASSERT(S_GoldMineWorkerIsInside(worker));
             T_ASSERT(worker->s.renderfx & RF_HIDDEN);
@@ -4667,7 +4671,7 @@ TEST(wc3_movement, gold_mine_stock_capacity_never_exceeds_one_with_six_workers) 
             T_STREQ(worker->currentmove->animation, "stand");
         }
     }
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
 
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
@@ -4706,8 +4710,8 @@ TEST(wc3_movement, gold_mines_keep_independent_custom_capacity_duration_and_gold
     harvestgold_minegold(d);
     harvestgold_minegold(e);
 
-    T_EQ(mine1->peonsinside, 1);
-    T_EQ(mine2->peonsinside, 2);
+    T_EQ((mine1->goldmine ? mine1->goldmine->occupants : 0), 1);
+    T_EQ((mine2->goldmine ? mine2->goldmine->occupants : 0), 2);
     T_FEQ(c->wait, 2.0f, 0.001f);
     T_ASSERT(!S_GoldMineWorkerIsInside(b));
     T_ASSERT(!S_GoldMineWorkerIsInside(e));
@@ -4731,33 +4735,33 @@ TEST(wc3_movement, gold_miner_inside_is_non_orderable_and_unregisters_once) {
     HARVEST_GOLD_CAPACITY = 10.0f;
 
     harvestgold_minegold(worker);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     T_ASSERT(strstr(mine->animation_props, "work") != NULL);
     T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(S_GoldMineWorkerIsInside(worker));
     harvestgold_minegold(worker);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     T_ASSERT(!unit_issueimmediateorder(worker, "stop"));
     T_ASSERT(!unit_issueorder(worker, "move", &point));
     T_ASSERT(!unit_issuetargetorder(worker, "attack", mine));
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
 
     harvestgold_walkback(worker);
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
     T_ASSERT(strstr(mine->animation_props, "work") == NULL);
     T_ASSERT(!S_GoldMineWorkerIsInside(worker));
     T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_EQ(worker->harvested_gold, 10);
+    T_EQ((worker->harvest ? worker->harvest->gold : 0), 10);
     harvestgold_walkback(worker); /* cannot unregister/decrement twice */
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
 
     edict_t *removed = add_gold_worker(0.0f, 0.0f);
     removed->goalentity = removed->orders->resource_goal = mine;
     harvestgold_minegold(removed);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     G_FreeEdict(removed);
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
 
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
@@ -4779,13 +4783,13 @@ TEST(wc3_movement, gold_mine_partial_final_trip_depletes_and_rejects_waiter) {
 
     harvestgold_minegold(miner);
     harvestgold_minegold(waiter);
-    T_EQ(mine->peonsinside, 1);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 1);
     T_STREQ(waiter->currentmove->animation, "stand");
 
     harvestgold_walkback(miner);
-    T_EQ(miner->harvested_gold, 6);
+    T_EQ((miner->harvest ? miner->harvest->gold : 0), 6);
     T_EQ(mine->resources, 0);
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
     T_ASSERT(M_IsDead(mine));
     T_ASSERT(!S_GoldMineWorkerIsInside(waiter));
     T_ASSERT(!(waiter->s.renderfx & RF_HIDDEN));
@@ -5481,14 +5485,14 @@ TEST(wc3_movement, rallied_wisp_waits_for_entangled_mine_then_automatically_boar
     wisp->unitinfo.MoveSpeed = 220.0f;
     wisp->health.value = wisp->health.max_value = 100.0f;
     wisp->stand = unit_stand;
-    wisp->training = true;
+    G_SetUnitFlag(wisp, UNIT_FLAG_TRAINING, true);
     wisp->s.renderfx |= RF_HIDDEN;
     producer->build = wisp;
     unit_stand(wisp);
 
     T_ASSERT(G_SetRallyEntity(producer, mine));
     ai_train_build(producer);
-    T_ASSERT(!wisp->training);
+    T_ASSERT(!G_UnitHasFlag(wisp, UNIT_FLAG_TRAINING));
     T_ASSERT(!(wisp->s.renderfx & RF_HIDDEN));
     /* Training places the Wisp beside its producer; let its rally order reach
      * the mine before construction finishes. */
@@ -5659,9 +5663,9 @@ TEST(wc3_movement, one_tree_cannot_entangle_multiple_gold_mines) {
     G_SetUnitFlag(caster, UNIT_FLAG_NO_PATHING, true); /* rooted Ancient state */
     setup_test_goldmine(parent1, &test_goldmine_stock, 5000);
     setup_test_goldmine(parent2, &test_goldmine_stock, 5000);
-    caster->abilities.added[0] = ability;
-    caster->abilities.added[1] = MAKEFOURCC('A','r','o','1');
-    caster->abilities.added_count = 2;
+    caster->unit_state->overrides.added[0] = ability;
+    caster->unit_state->overrides.added[1] = MAKEFOURCC('A','r','o','1');
+    caster->unit_state->overrides.added_count = 2;
     if (!caster->ancient_root) caster->ancient_root = G_AllocAncientRoot();
     assert(caster->ancient_root);
     caster->ancient_root->ability = MAKEFOURCC('A','r','o','1');
@@ -5831,9 +5835,9 @@ TEST(wc3_movement, zeppelin_unload_moves_to_selected_point_before_ejecting) {
     transport->svflags |= SVF_MONSTER;
     transport->movetype = MOVETYPE_STEP;
     transport->collision = 0;
-    transport->abilities.added[0] = MAKEFOURCC('A','c','a','r');
-    transport->abilities.added[1] = MAKEFOURCC('A','t','d','p');
-    ARRAY_COUNT(transport->abilities.added) = 2;
+    transport->unit_state->overrides.added[0] = MAKEFOURCC('A','c','a','r');
+    transport->unit_state->overrides.added[1] = MAKEFOURCC('A','t','d','p');
+    ARRAY_COUNT(transport->unit_state->overrides.added) = 2;
     G_SelectEntity(clent->client, transport);
     level.time = 1000;
     G_ClientCommand(clent, 2, drop);
@@ -5966,8 +5970,8 @@ TEST(wc3_movement, unload_all_round_trip_resumes_remaining_cargo) {
     setup_test_world();
     edict_t *transport = cargo_unload_transport();
     /* Runtime abilities survive data-pointer rebinding during ReadGame. */
-    transport->abilities.added[0] = MAKEFOURCC('A','c','a','r');
-    ARRAY_COUNT(transport->abilities.added) = 1;
+    transport->unit_state->overrides.added[0] = MAKEFOURCC('A','c','a','r');
+    ARRAY_COUNT(transport->unit_state->overrides.added) = 1;
     level.time = 1000;
     T_ASSERT(S_CargoBeginUnloadAll(transport));
     edict_t *second = transport->cargo->units[0], *third = transport->cargo->units[1];
@@ -6143,8 +6147,8 @@ TEST(wc3_movement, stand_down_stops_attack_before_unloading_burrow) {
     burrow->cargo->count = 1;
     peon->s.renderfx |= RF_HIDDEN;
     G_SetUnitFlag(peon, UNIT_FLAG_PAUSED, true);
-    burrow->attack1.type = ATK_PIERCE;
-    burrow->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    burrow->unit_state->attack1.type = ATK_PIERCE;
+    burrow->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     target->targtype = TARG_GROUND;
 
     order_attack(burrow, target);

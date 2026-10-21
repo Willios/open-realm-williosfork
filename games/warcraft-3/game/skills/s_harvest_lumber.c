@@ -28,8 +28,8 @@ static uint32_t harvest_actor_ability_alias(edict_t const *ent, uint32_t base_co
             if (alias == base_code || G_AbilityCode(alias) == base_code) return alias;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = ent->unit_state->overrides.added[i];
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
         alias_name[4] = '\0';
@@ -174,7 +174,7 @@ bool S_CanReturnResourceAt(edict_t *unit, edict_t *building, returnResource_t re
 }
 
 void S_SetCarriedResource(edict_t *unit, returnResource_t resource, uint32_t amount) {
-    bool const was_carrying = unit && (unit->harvested_gold > 0 || unit->harvested_lumber > 0);
+    bool const was_carrying = unit && ((unit->harvest ? unit->harvest->gold : 0) > 0 || (unit->harvest ? unit->harvest->lumber : 0) > 0);
     bool is_carrying;
 
     if (!unit)
@@ -183,22 +183,25 @@ void S_SetCarriedResource(edict_t *unit, returnResource_t resource, uint32_t amo
     /* A worker carries exactly one visible resource type.  Keep the gameplay
      * counters and renderer flags in one transition so stale lumber/gold tags
      * cannot survive a resource switch or completed deposit. */
-    unit->harvested_gold = 0;
-    unit->harvested_lumber = 0;
+    if (unit->harvest) { unit->harvest->gold = 0; unit->harvest->lumber = 0; }
     unit->s.renderfx &= ~(RF_HAS_GOLD | RF_HAS_LUMBER);
 
     if (amount && resource == RETURN_RESOURCE_GOLD) {
-        unit->harvested_gold = amount;
+        G_InitHarvest(unit);
+        unit->harvest->gold = amount;
         unit->s.renderfx |= RF_HAS_GOLD;
     } else if (amount && resource == RETURN_RESOURCE_LUMBER) {
-        unit->harvested_lumber = amount;
+        G_InitHarvest(unit);
+        unit->harvest->lumber = amount;
         unit->s.renderfx |= RF_HAS_LUMBER;
     }
+
+    if (!amount) G_FreeHarvest(unit);
 
     /* Warsmash exposes Harvest as one toggled ability: empty workers use the
      * normal Gather UI, while any positive carried amount uses the Un* Return
      * Resources UI.  Refresh only when that boolean presentation state flips. */
-    is_carrying = unit->harvested_gold > 0 || unit->harvested_lumber > 0;
+    is_carrying = (unit->harvest ? unit->harvest->gold : 0) > 0 || (unit->harvest ? unit->harvest->lumber : 0) > 0;
     if (was_carrying != is_carrying) {
         FOR_LOOP(i, game.max_clients) {
             gameClient_t *client = game.clients + i;
@@ -395,8 +398,8 @@ static void skill_remove(uint32_t *skills, uint32_t *count, uint32_t index) {
 static bool actor_has_skill(edict_t const *ent, uint32_t code) {
     cstring_t abilities;
     if (!ent || !code) return false;
-    if (skill_index(ent->abilities.removed, ARRAY_COUNT(ent->abilities.removed), code) >= 0) return false;
-    if (skill_index(ent->abilities.added, ARRAY_COUNT(ent->abilities.added), code) >= 0) return true;
+    if (ent->unit_state && skill_index(ent->unit_state->overrides.removed, ARRAY_COUNT(ent->unit_state->overrides.removed), code) >= 0) return false;
+    if (ent->unit_state && skill_index(ent->unit_state->overrides.added, ARRAY_COUNT(ent->unit_state->overrides.added), code) >= 0) return true;
     if (!ent->data.UnitAbilities) return false;
     abilities = ent->data.UnitAbilities->abilList;
     if (abilities) {
@@ -472,11 +475,12 @@ bool harvest_auto_start_lumber(edict_t *self) {
 bool G_ActorAddSkill(edict_t *ent, uint32_t code) {
     int32_t index;
     if (!ent || !code || actor_has_skill(ent, code)) return false;
-    index = skill_index(ent->abilities.removed, ARRAY_COUNT(ent->abilities.removed), code);
-    if (index >= 0) skill_remove(ent->abilities.removed, &ARRAY_COUNT(ent->abilities.removed), index);
+    G_InitUnitState(ent);
+    index = skill_index(ent->unit_state->overrides.removed, ARRAY_COUNT(ent->unit_state->overrides.removed), code);
+    if (index >= 0) skill_remove(ent->unit_state->overrides.removed, &ARRAY_COUNT(ent->unit_state->overrides.removed), index);
     else {
         if (G_AbilityData(code)->id != code) return false;
-        if (!skill_add(ent->abilities.added, &ARRAY_COUNT(ent->abilities.added), code)) return false;
+        if (!skill_add(ent->unit_state->overrides.added, &ARRAY_COUNT(ent->unit_state->overrides.added), code)) return false;
     }
     if (code == MAKEFOURCC('A', 'h', 'a', 'r')) G_InvalidateUnitShortcutsForUnit(ent);
     S_EnableAbility(ent, code);
@@ -487,15 +491,16 @@ bool G_ActorAddSkill(edict_t *ent, uint32_t code) {
 bool G_ActorRemoveSkill(edict_t *ent, uint32_t code) {
     int32_t index;
     if (!ent || !code || !actor_has_skill(ent, code)) return false;
-    index = skill_index(ent->abilities.added, ARRAY_COUNT(ent->abilities.added), code);
-    if (index < 0 && ARRAY_COUNT(ent->abilities.removed) >= MAX_ABILITIES) return false;
+    G_InitUnitState(ent);
+    index = skill_index(ent->unit_state->overrides.added, ARRAY_COUNT(ent->unit_state->overrides.added), code);
+    if (index < 0 && ARRAY_COUNT(ent->unit_state->overrides.removed) >= MAX_ABILITIES) return false;
     /* Invalidate while Ahar is still present; the shortcut invalidation hook
      * deliberately ignores ordinary non-worker units for low CPU overhead. */
     if (code == MAKEFOURCC('A', 'h', 'a', 'r')) G_InvalidateUnitShortcutsForUnit(ent);
-    if (index >= 0) skill_remove(ent->abilities.added, &ARRAY_COUNT(ent->abilities.added), index);
-    else if (!skill_add(ent->abilities.removed, &ARRAY_COUNT(ent->abilities.removed), code)) return false;
-    index = skill_index(ent->abilities.permanent, ARRAY_COUNT(ent->abilities.permanent), code);
-    if (index >= 0) skill_remove(ent->abilities.permanent, &ARRAY_COUNT(ent->abilities.permanent), index);
+    if (index >= 0) skill_remove(ent->unit_state->overrides.added, &ARRAY_COUNT(ent->unit_state->overrides.added), index);
+    else if (!skill_add(ent->unit_state->overrides.removed, &ARRAY_COUNT(ent->unit_state->overrides.removed), code)) return false;
+    index = skill_index(ent->unit_state->overrides.permanent, ARRAY_COUNT(ent->unit_state->overrides.permanent), code);
+    if (index >= 0) skill_remove(ent->unit_state->overrides.permanent, &ARRAY_COUNT(ent->unit_state->overrides.permanent), index);
     S_DisableAbility(ent, code);
     { gameClient_t *client = G_GetPlayerClientByNumber(ent->s.player); if (client) G_InvalidateCommands(client); }
     return true;
@@ -504,18 +509,19 @@ bool G_ActorRemoveSkill(edict_t *ent, uint32_t code) {
 bool G_ActorSetSkillPermanent(edict_t *ent, uint32_t code, bool permanent) {
     int32_t index;
     if (!actor_has_skill(ent, code)) return false;
-    index = skill_index(ent->abilities.permanent, ARRAY_COUNT(ent->abilities.permanent), code);
-    if (permanent && index < 0 && !skill_add(ent->abilities.permanent, &ARRAY_COUNT(ent->abilities.permanent), code)) return false;
-    else if (!permanent && index >= 0) skill_remove(ent->abilities.permanent, &ARRAY_COUNT(ent->abilities.permanent), index);
+    G_InitUnitState(ent);
+    index = skill_index(ent->unit_state->overrides.permanent, ARRAY_COUNT(ent->unit_state->overrides.permanent), code);
+    if (permanent && index < 0 && !skill_add(ent->unit_state->overrides.permanent, &ARRAY_COUNT(ent->unit_state->overrides.permanent), code)) return false;
+    else if (!permanent && index >= 0) skill_remove(ent->unit_state->overrides.permanent, &ARRAY_COUNT(ent->unit_state->overrides.permanent), index);
     return true;
 }
 
 bool G_ActorSkillPermanent(edict_t *ent, uint32_t code) {
-    return ent && skill_index(ent->abilities.permanent, ARRAY_COUNT(ent->abilities.permanent), code) >= 0;
+    return ent && ent->unit_state && skill_index(ent->unit_state->overrides.permanent, ARRAY_COUNT(ent->unit_state->overrides.permanent), code) >= 0;
 }
 
 void G_FreeActorSkills(edict_t *ent) {
-    if (ent) memset(&ent->abilities, 0, sizeof(ent->abilities));
+    if (ent && ent->unit_state) memset(&ent->unit_state->overrides, 0, sizeof(ent->unit_state->overrides));
 }
 
 static void ai_walktree(edict_t *ent) {
@@ -561,7 +567,7 @@ static void harvest_finish_lumber_deposit(edict_t *ent) {
     player = G_GetPlayerByNumber(ent->s.player);
     if (player) {
         G_CreditResourceIncome(player, ent, PLAYERSTATE_RESOURCE_LUMBER,
-                               (int32_t)ent->harvested_lumber);
+                               (int32_t)(ent->harvest ? ent->harvest->lumber : 0));
     }
     S_SetCarriedResource(ent, RETURN_RESOURCE_LUMBER, 0);
 
@@ -644,19 +650,19 @@ static void ai_chop(edict_t *ent) {
     if (valid_hit) {
         if (ent->data.UnitData && WC3_RaceFromString(ent->data.UnitData->race) == RACE_UNDEAD)
             G_BlightMarkDestructable(tree);
-        float const carried = MIN((float)ent->harvested_lumber + tuning.tree_damage,
+        float const carried = MIN((float)(ent->harvest ? ent->harvest->lumber : 0) + tuning.tree_damage,
                                   tuning.lumber_capacity);
 
         felled = G_DestructableApplyDamage(tree, ent, tuning.tree_damage);
-        if (carried > ent->harvested_lumber)
+        if (carried > (ent->harvest ? ent->harvest->lumber : 0))
             S_SetCarriedResource(ent, RETURN_RESOURCE_LUMBER, (uint32_t)carried);
     }
     /* Tree-fall supersedes chop: play one-shot world sound for all clients. */
     if (felled && g_numTreeFallSounds) {
         G_PublishMessage(ent, GAME_MSG_HARVEST_TREE_FELLED, tree);
         G_PlaySound(NULL, ent, CHAN_BODY, g_treeFallSounds[rand() % g_numTreeFallSounds], 1.0f, 1.0f, 0.0f);
-    } else if (ent->sound.num_chop) {
-        int sound = ent->sound.chop[rand() % ent->sound.num_chop];
+    } else if (ent->sound && ent->sound->num_chop) {
+        int sound = ent->sound->chop[rand() % ent->sound->num_chop];
         G_PlaySound(NULL, ent, CHAN_WEAPON, sound, G_SoundIndexVolume(sound), 1.0f, 0.0f);
     }
 }
@@ -677,7 +683,7 @@ static umove_t harvest_move_cooldown = { "stand ready", ai_cooldown, NULL, CAbil
 void harvest_cooldown(edict_t *ent) {
     harvestLumberTuning_t const tuning = harvest_lumber_tuning(ent);
 
-    if (ent->harvested_lumber >= tuning.lumber_capacity) {
+    if ((ent->harvest ? ent->harvest->lumber : 0) >= tuning.lumber_capacity) {
         harvest_walkback(ent);
     } else if (M_IsDead(ent->goalentity)) {
         look_for_another_tree(ent);
@@ -697,7 +703,7 @@ void harvest_swing(edict_t *ent) {
 }
 
 bool harvest_lumber_return_to(edict_t *ent, edict_t *dropoff) {
-    if (!ent || !dropoff || !ent->harvested_lumber ||
+    if (!ent || !dropoff || !(ent->harvest ? ent->harvest->lumber : 0) ||
         !S_CanReturnResourceAt(ent, dropoff, RETURN_RESOURCE_LUMBER)) {
         return false;
     }
@@ -721,7 +727,7 @@ void harvest_start(edict_t *self, edict_t *target) {
     harvestLumberTuning_t const tuning = harvest_lumber_tuning(self);
 
     self->orders->resource_goal = target;
-    if (self->harvested_lumber >= tuning.lumber_capacity && self->harvested_lumber > 0) {
+    if ((self->harvest ? self->harvest->lumber : 0) >= tuning.lumber_capacity && (self->harvest ? self->harvest->lumber : 0) > 0) {
         harvest_walkback(self);
         return;
     }
@@ -1095,9 +1101,9 @@ BZ_COMMAND_PROC(AbilityAcolyteHarvest) {
 /* ---- Return Resources: standalone command to deposit carried resources --- */
 BZ_COMMAND_PROC(AbilityReturn) {
     FOR_CONTROLLABLE_SELECTED_UNITS(clent->client, ent) {
-        if (ent->harvested_lumber > 0) {
+        if ((ent->harvest ? ent->harvest->lumber : 0) > 0) {
             harvest_walkback(ent);
-        } else if (ent->harvested_gold > 0) {
+        } else if ((ent->harvest ? ent->harvest->gold : 0) > 0) {
             edict_t *dropoff = S_FindNearestResourceDropoff(ent, RETURN_RESOURCE_GOLD);
             if (!harvest_gold_return_to(ent, dropoff))
                 ent->stand(ent);
@@ -1134,7 +1140,7 @@ bool harvest_menu_selecttarget(edict_t *clent, edict_t *target) {
 }
 
 static bool harvest_is_toggle_on(edict_t *ent) {
-    return ent && (ent->harvested_lumber > 0 || ent->harvested_gold > 0);
+    return ent && ((ent->harvest ? ent->harvest->lumber : 0) > 0 || (ent->harvest ? ent->harvest->gold : 0) > 0);
 }
 
 void harvest_command(edict_t *ent) {
@@ -1143,7 +1149,7 @@ void harvest_command(edict_t *ent) {
     /* Ahar is the worker's visible command in stock unit data. While the main
      * selected worker carries resources, activating it performs the same
      * no-target Return Resources behavior instead of entering target mode. */
-    if (selected && (selected->harvested_lumber > 0 || selected->harvested_gold > 0)) {
+    if (selected && ((selected->harvest ? selected->harvest->lumber : 0) > 0 || (selected->harvest ? selected->harvest->gold : 0) > 0)) {
         AbilityReturn_Command(ent);
         return;
     }
@@ -1173,7 +1179,7 @@ static void harvest_lumber_command(edict_t *clent) {
 
     if (!clent || !clent->client) return;
     selected = G_GetMainSelectedUnit(clent->client);
-    if (selected && selected->harvested_lumber > 0) {
+    if (selected && (selected->harvest ? selected->harvest->lumber : 0) > 0) {
         AbilityReturn_Command(clent);
         return;
     }

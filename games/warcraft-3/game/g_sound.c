@@ -196,7 +196,7 @@ soundPolicy_t const *G_SoundIndexPolicy(int index) {
 
 void G_PlaySound(vec3_t const *origin, edict_t *ent, int channel, int index, float volume, float attenuation, float timeofs) {
     soundPolicy_t const *registered = G_SoundIndexPolicy(index);
-    uint32_t request = ent && ent->sound.pending == index && (channel & CHAN_OWNER) ? G_UnitResponseRequest(ent, index) : 0;
+    uint32_t request = ent && ent->sound && ent->sound->pending == index && (channel & CHAN_OWNER) ? G_UnitResponseRequest(ent, index) : 0;
     if (registered || request) {
         /* Raw response paths have no authored row; retain generic capacity rules. */
         soundPolicy_t policy = registered ? *registered : (soundPolicy_t){ .priority = SOUND_PRIORITY(channel),
@@ -527,8 +527,8 @@ void G_ShowCommandErrorText(edict_t *clent, cstring_t text) {
 }
 
 void G_QueueReadySound(edict_t *ent) {
-    if (!ent || !ent->sound.num_ready) return;
-    ent->sound.owner_pending = ent->sound.ready[rand() % ent->sound.num_ready];
+    if (!ent || !ent->sound || !ent->sound->num_ready) return;
+    ent->sound->owner_pending = ent->sound->ready[rand() % ent->sound->num_ready];
 }
 
 void G_QueueOwnerSoundAlias(edict_t *ent, cstring_t alias) {
@@ -536,7 +536,7 @@ void G_QueueOwnerSoundAlias(edict_t *ent, cstring_t alias) {
 
     if (!ent || ent->s.player >= MAX_PLAYERS || !alias || !alias[0]) return;
     sound = G_RegisterUISound(alias);
-    if (sound) ent->sound.owner_pending = sound;
+    if (sound) { G_InitSounds(ent); ent->sound->owner_pending = sound; }
 }
 
 void G_QueueOwnerUISound(edict_t *ent, cstring_t skin_key) {

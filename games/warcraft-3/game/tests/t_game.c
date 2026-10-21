@@ -318,19 +318,19 @@ TEST(wc3_game, hero_max_cheat_uses_max_level_xp_and_restores_level_skill_budget)
     hero = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     hero->svflags |= SVF_MONSTER;
     hero->s.player = 0;
-    hero->hero.level = 1;
-    hero->hero.xp = 0;
-    hero->hero.skillpoints = 0;
-    hero->heroabilities[0].code = MAKEFOURCC('A','H','h','b');
-    hero->heroabilities[0].level = 1;
+    hero->unit_state->hero.level = 1;
+    hero->unit_state->hero.xp = 0;
+    hero->unit_state->hero.skillpoints = 0;
+    hero->unit_state->ranks[0].code = MAKEFOURCC('A','H','h','b');
+    hero->unit_state->ranks[0].level = 1;
     G_SelectEntity(client, hero);
 
     G_ClientCommand(&g_edicts[0], 2, command);
 
     max_level = G_MaxHeroLevel();
-    T_EQ((int)hero->hero.level, (int)max_level);
-    T_EQ((int)hero->hero.xp, (int)G_HeroXPForLevel(max_level));
-    T_EQ((int)hero->hero.skillpoints, (int)(max_level - 1));
+    T_EQ((int)hero->unit_state->hero.level, (int)max_level);
+    T_EQ((int)hero->unit_state->hero.xp, (int)G_HeroXPForLevel(max_level));
+    T_EQ((int)hero->unit_state->hero.skillpoints, (int)(max_level - 1));
 
     gi.CvarString = old_cvar;
 }
@@ -374,7 +374,7 @@ TEST(wc3_game, hero_health_and_mana_cheats_fill_or_set_with_max_clamp) {
     hero = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     hero->svflags |= SVF_MONSTER;
     hero->s.player = 0;
-    hero->hero.level = 1;
+    hero->unit_state->hero.level = 1;
     hero->health.max_value = 700.0f;
     hero->health.value = 100.0f;
     hero->mana.max_value = 300.0f;
@@ -785,8 +785,8 @@ static edict_t *make_test_unit(void) {
     ent->health.max_value = 250.0f;
     ent->stand            = unit_stand;
     ent->movetype         = MOVETYPE_STEP;
-    ent->attack1.type     = ATK_NORMAL;
-    ent->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    ent->unit_state->attack1.type     = ATK_NORMAL;
+    ent->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     ent->targtype         = TARG_GROUND;
     unit_stand(ent);
     return ent;
@@ -2273,7 +2273,7 @@ TEST(wc3_game, selected_unit_status_invalidation_resends_info_panel) {
     /* Simulate a panel already serialized, then status application invalidates
      * it. The next ordinary refresh must not accept the old cache as current. */
     client->infopanel.entity = unit->s.number;
-    client->infopanel.xp = (int32_t)unit->hero.xp;
+    client->infopanel.xp = (int32_t)unit->unit_state->hero.xp;
     G_InvalidateUnitInfoPanel(unit);
     T_EQ(client->infopanel.entity, UINT32_MAX);
 
@@ -2285,7 +2285,7 @@ TEST(wc3_game, selected_unit_status_invalidation_resends_info_panel) {
     gi.unicast = old_unicast;
 
     T_EQ(client->infopanel.entity, unit->s.number);
-    T_EQ(client->infopanel.xp, (int32_t)unit->hero.xp);
+    T_EQ(client->infopanel.xp, (int32_t)unit->unit_state->hero.xp);
 
     other = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 32, 0);
     other->s.player = 0;
@@ -3377,8 +3377,8 @@ TEST(wc3_game, hero_xp_bar_serializes_current_level_progress_tooltip) {
 
     setup_test_world();
     hero = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0.0f, 0.0f);
-    hero->hero.level = 1;
-    hero->hero.xp = 75;
+    hero->unit_state->hero.level = 1;
+    hero->unit_state->hero.xp = 75;
     hero_xp_bar_tooltip[0] = '\0';
     hero_xp_bar_value = 0.0f;
     gi.Write = hero_xp_bar_test_write;
@@ -3596,8 +3596,8 @@ TEST(wc3_game, learnability_first_ability_fills_slot0) {
     edict_t *ent = make_test_unit();
     uint32_t code = MAKEFOURCC('A','H','b','z');
     unit_learnability(ent, code);
-    T_EQ((int)ent->heroabilities[0].code,  (int)code);
-    T_EQ((int)ent->heroabilities[0].level, 1);
+    T_EQ((int)ent->unit_state->ranks[0].code,  (int)code);
+    T_EQ((int)ent->unit_state->ranks[0].level, 1);
 }
 
 TEST(wc3_game, learnability_same_code_increments_level) {
@@ -3605,9 +3605,9 @@ TEST(wc3_game, learnability_same_code_increments_level) {
     uint32_t code = MAKEFOURCC('A','H','b','z');
     unit_learnability(ent, code);
     unit_learnability(ent, code);
-    T_EQ((int)ent->heroabilities[0].level, 2);
+    T_EQ((int)ent->unit_state->ranks[0].level, 2);
     /* Should still be in slot 0, not duplicated in slot 1. */
-    T_EQ((int)ent->heroabilities[1].code, 0);
+    T_EQ((int)ent->unit_state->ranks[1].code, 0);
 }
 
 TEST(wc3_game, learnability_different_codes_fill_consecutive_slots) {
@@ -3616,9 +3616,9 @@ TEST(wc3_game, learnability_different_codes_fill_consecutive_slots) {
     uint32_t code2 = MAKEFOURCC('A','H','t','b');
     unit_learnability(ent, code1);
     unit_learnability(ent, code2);
-    T_EQ((int)ent->heroabilities[0].code, (int)code1);
-    T_EQ((int)ent->heroabilities[1].code, (int)code2);
-    T_EQ((int)ent->heroabilities[1].level, 1);
+    T_EQ((int)ent->unit_state->ranks[0].code, (int)code1);
+    T_EQ((int)ent->unit_state->ranks[1].code, (int)code2);
+    T_EQ((int)ent->unit_state->ranks[1].level, 1);
 }
 
 /* =========================================================================
@@ -3927,11 +3927,11 @@ TEST(wc3_game, hold_position_acquires_within_uacq_not_attack_range) {
     enemy = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 200.0f, 0.0f);
     guard->s.player = 0; enemy->s.player = 1;
     guard->svflags |= SVF_MONSTER; enemy->svflags |= SVF_MONSTER;
-    guard->attack1.type = ATK_NORMAL;
-    guard->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    guard->unit_state->attack1.type = ATK_NORMAL;
+    guard->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     enemy->targtype = TARG_GROUND;
-    guard->attack1.cooldown = 1.0f; guard->attack1.damageBase = 1;
-    guard->attack1.range = 64.0f; guard->runtime.acquisition_range = 300.0f;
+    guard->unit_state->attack1.cooldown = 1.0f; guard->unit_state->attack1.damageBase = 1;
+    guard->unit_state->attack1.range = 64.0f; guard->runtime.acquisition_range = 300.0f;
     guard->currentmove = &holdpos_move_stand;
     gi.LinkEntity(guard); gi.LinkEntity(enemy);
     level.time = 300;
@@ -4235,13 +4235,14 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     gi.LinkEntity(first); gi.LinkEntity(second);
     indicator = G_Spawn();
     indicator->svflags = SVF_OWNER_ONLY;
-    indicator->rally_indicator = true;
+    G_SetUnitFlag(indicator, UNIT_FLAG_RALLY_INDICATOR, true);
     indicator->owner = &g_edicts[0];
     game.clients[0].rally_indicator = indicator;
-    first->harvested_gold = 37;
+    S_SetCarriedResource(first, RETURN_RESOURCE_GOLD, 37);
     G_SetUnitFlag(first, UNIT_FLAG_IGNORE_ALARM, true);
-    first->shared_vision = (1u << 0) | (1u << 7);
-    first->projectile_reflected = true;
+    G_SetUnitSharedVision(first, 0, true); G_SetUnitSharedVision(first, 7, true);
+    G_InitMissile(first);
+    first->missile->reflected = true;
     if (!first->sleep) first->sleep = G_AllocSleep();
     assert(first->sleep);
     first->sleep->can_sleep = true;
@@ -4251,7 +4252,8 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     first->owner = second;
     first->orders->follow_target = second;
     first->orders->explicit_allied_attack = true;
-    first->inventory[2] = second;
+    G_InitInventory(first);
+    first->inventory->slots[2] = second;
     if (!first->cargo) first->cargo = G_AllocCargo();
     assert(first->cargo);
     first->cargo->units[3] = second;
@@ -4267,11 +4269,11 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     first->animation_request = G_InternAnimationName("stand ready");
     T_ASSERT(first->currentmove != NULL);
     umove_t const *const saved_move = first->currentmove;
-    first->abilstatus[0] = (heroabilitystatus_t){
+    first->unit_state->statuses[0] = (heroabilitystatus_t){
         .code = MAKEFOURCC('B','m','i','l'), .level = 1,
         .timestamp = 40000, .duration_ms = 45000, .data = 300
     };
-    first->abilitycooldowns[0] = (abilityCooldown_t){
+    first->unit_state->cooldowns[0] = (abilityCooldown_t){
         .code = MAKEFOURCC('A','H','t','b'), .start_time = 3000, .end_time = 12000
     };
     level.framenum = 1234;
@@ -4350,21 +4352,21 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     PATHSTR saved_map;
     T_ASSERT(G_GetSaveMap(filename, saved_map, sizeof(saved_map)));
     T_ASSERT(!strcasecmp(saved_map, level.map_path));
-    first->harvested_gold = 0;
+    S_SetCarriedResource(first, RETURN_RESOURCE_GOLD, 0);
     G_SetUnitFlag(first, UNIT_FLAG_IGNORE_ALARM, false);
-    first->shared_vision = 0;
-    first->projectile_reflected = false;
+    first->vision->shared = 0;
+    first->missile->reflected = false;
     first->sleep->can_sleep = false;
     first->sleep->sleeping = false;
     first->owner = NULL;
     first->orders->follow_target = NULL;
     first->orders->explicit_allied_attack = false;
-    first->inventory[2] = NULL;
+    first->inventory->slots[2] = NULL;
     first->cargo->units[3] = NULL;
     first->animation_props = "";
     first->animation_request = "";
-    memset(first->abilstatus, 0, sizeof(first->abilstatus));
-    memset(first->abilitycooldowns, 0, sizeof(first->abilitycooldowns));
+    memset(first->unit_state->statuses, 0, sizeof(first->unit_state->statuses));
+    memset(first->unit_state->cooldowns, 0, sizeof(first->unit_state->cooldowns));
     strlcpy(game.clients[0].jass.name, "Changed", sizeof(game.clients[0].jass.name));
     game.clients[0].ps.cinematic_portrait = 0;
     game.clients[0].ps.team = 0;
@@ -4395,22 +4397,22 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     /* The sleeping unit's persistent ACsp overlay is a linked, non-selectable
      * edict and is included in the raw world query after save/load. */
     T_EQ(gi.BoxEdicts(&area, found, 4, NULL), 4);
-    T_EQ(g_edicts[first - g_edicts].harvested_gold, 37);
-    T_EQ(g_edicts[first - g_edicts].shared_vision, (1u << 0) | (1u << 7));
-    T_ASSERT(g_edicts[first - g_edicts].projectile_reflected);
+    T_EQ(g_edicts[first - g_edicts].harvest->gold, 37);
+    T_EQ(g_edicts[first - g_edicts].vision->shared, (1u << 0) | (1u << 7));
+    T_ASSERT(g_edicts[first - g_edicts].missile->reflected);
     T_ASSERT(G_UnitHasFlag(&g_edicts[first - g_edicts], UNIT_FLAG_IGNORE_ALARM));
     T_ASSERT(g_edicts[first - g_edicts].sleep->can_sleep);
     T_ASSERT(g_edicts[first - g_edicts].sleep->sleeping);
     T_EQ(g_edicts[first - g_edicts].collision, 42.5f);
     T_EQ(g_edicts[first - g_edicts].s.origin.x, 96.0f);
     T_EQ(g_edicts[first - g_edicts].s.origin.y, 128.0f);
-    T_EQ(g_edicts[first - g_edicts].abilstatus[0].code, MAKEFOURCC('B','m','i','l'));
-    T_EQ(g_edicts[first - g_edicts].abilstatus[0].timestamp, 40000);
-    T_EQ(g_edicts[first - g_edicts].abilstatus[0].duration_ms, 45000);
-    T_EQ(g_edicts[first - g_edicts].abilstatus[0].data, 300);
-    T_EQ(g_edicts[first - g_edicts].abilitycooldowns[0].code, MAKEFOURCC('A','H','t','b'));
-    T_EQ(g_edicts[first - g_edicts].abilitycooldowns[0].start_time, 3000);
-    T_EQ(g_edicts[first - g_edicts].abilitycooldowns[0].end_time, 12000);
+    T_EQ(g_edicts[first - g_edicts].unit_state->statuses[0].code, MAKEFOURCC('B','m','i','l'));
+    T_EQ(g_edicts[first - g_edicts].unit_state->statuses[0].timestamp, 40000);
+    T_EQ(g_edicts[first - g_edicts].unit_state->statuses[0].duration_ms, 45000);
+    T_EQ(g_edicts[first - g_edicts].unit_state->statuses[0].data, 300);
+    T_EQ(g_edicts[first - g_edicts].unit_state->cooldowns[0].code, MAKEFOURCC('A','H','t','b'));
+    T_EQ(g_edicts[first - g_edicts].unit_state->cooldowns[0].start_time, 3000);
+    T_EQ(g_edicts[first - g_edicts].unit_state->cooldowns[0].end_time, 12000);
     T_EQ(level.framenum, 1234);
     T_EQ(level.time, 5678);
     T_FEQ(level.timeofday.elapsed, 240.0f, 0.001f);
@@ -4454,7 +4456,7 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     T_ASSERT(g_edicts[first - g_edicts].owner == &g_edicts[second - g_edicts]);
     T_ASSERT(g_edicts[first - g_edicts].orders->follow_target == &g_edicts[second - g_edicts]);
     T_ASSERT(g_edicts[first - g_edicts].orders->explicit_allied_attack);
-    T_ASSERT(g_edicts[first - g_edicts].inventory[2] == &g_edicts[second - g_edicts]);
+    T_ASSERT(G_InventoryItem(&g_edicts[first - g_edicts], 2) == &g_edicts[second - g_edicts]);
     T_ASSERT(g_edicts[first - g_edicts].cargo->units[3] == &g_edicts[second - g_edicts]);
     T_STREQ(g_edicts[first - g_edicts].animation_props, "alternate,work");
     T_STREQ(g_edicts[first - g_edicts].animation_request, "stand ready");
@@ -4605,6 +4607,33 @@ static void prepare_save_field(edict_t *unit, cstring_t name) {
     }
 }
 
+/* Pool admission must respect the selected pool, including full-sized unit pools. */
+TEST(wc3_save, pool_capacity_is_checked_before_allocating_records) {
+    reset_entities();
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    G_InitHarvest(unit);
+    unit->harvest->gold = 17;
+    savePool_t pool = { "harvest", offsetof(edict_t, harvest), sizeof(harvest_t),
+                        harvest_fields, SaveAllocHarvest, 1 };
+    FILE *f = tmpfile();
+    T_ASSERT(f != NULL);
+    T_ASSERT(WritePool(f, &pool));
+    G_FreeHarvest(unit);
+    rewind(f);
+    T_ASSERT(!ReadPool(f, &pool));
+    T_NULL(unit->harvest);
+    pool.capacity = MAX_ENTITIES;
+    rewind(f);
+    T_ASSERT(ReadPool(f, &pool));
+    T_ASSERT(unit->harvest != NULL);
+    T_EQ(unit->harvest->gold, 17);
+    fclose(f);
+    FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
+        if (!strcmp(save_pools[i].name, "unit_state"))
+            T_EQ(save_pools[i].capacity, MAX_ENTITIES);
+    }
+}
+
 /* Keep every g_save.c edict schema entry independently covered so adding or removing a fixup cannot hide in a broad save. */
 #define SAVE_INT_FIELD_TEST(name, field, saved) \
 TEST(wc3_save, name) { \
@@ -4647,11 +4676,11 @@ TEST(wc3_save, name) { \
     remove(filename); \
 }
 
-SAVE_INT_FIELD_TEST(field_unit_flags_round_trip, unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE | UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING | UNIT_FLAG_TIMED_LIFE_PAUSED)
+SAVE_INT_FIELD_TEST(field_unit_flags_round_trip, unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE | UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING | UNIT_FLAG_TIMED_LIFE_PAUSED | UNIT_FLAG_TRAINING | UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED | UNIT_FLAG_RALLY_INDICATOR | UNIT_FLAG_USES_ALT_ICON | UNIT_FLAG_ANIMATION_OVERRIDE | UNIT_FLAG_VERTEX_COLOR_SET | UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET)
 
 SAVE_INT_FIELD_TEST(field_class_id_round_trip, class_id, MAKEFOURCC('h', 'p', 'e', 'a'))
 SAVE_INT_FIELD_TEST(field_variation_round_trip, variation, 7)
-SAVE_INT_FIELD_TEST(field_build_project_round_trip, build_project, MAKEFOURCC('h', 'b', 'a', 'r'))
+SAVE_INT_FIELD_TEST(field_build_project_round_trip, orders->build_project, MAKEFOURCC('h', 'b', 'a', 'r'))
 SAVE_INT_FIELD_TEST(field_spawn_time_round_trip, spawn_time, 12345)
 SAVE_INT_FIELD_TEST(field_aura_effect_role_round_trip, aura_effect_role, AURA_EFFECT_SOURCE)
 SAVE_INT_FIELD_TEST(field_wander_next_time_round_trip, wander->next_time, 9100)
@@ -4672,7 +4701,7 @@ TEST(wc3_save, ability_owned_timed_summon_round_trip) {
     summon = alloc_test_unit(MAKEFOURCC('h', 'w', 'a', 't'), 64.0f, 0.0f);
     summon->owner = owner;
     summon->summon_ability = MAKEFOURCC('A', 'H', 'w', 'e');
-    timed_life = &summon->abilstatus[2];
+    timed_life = &summon->unit_state->statuses[2];
     *timed_life = (heroabilitystatus_t){
         .code = MAKEFOURCC('B', 'T', 'L', 'F'),
         .level = 1,
@@ -4792,7 +4821,7 @@ TEST(wc3_save, corpse_reservation_round_trip_preserves_owner_marker) {
     T_ASSERT(WriteGame(filename));
 
     corpse->aiflags &= ~AI_CORPSE_RESERVED;
-    memset(corpse->abilstatus, 0, sizeof(corpse->abilstatus));
+    memset(corpse->unit_state->statuses, 0, sizeof(corpse->unit_state->statuses));
     T_ASSERT(ReadGame(filename));
 
     T_ASSERT(corpse->aiflags & AI_CORPSE_RESERVED);
@@ -4836,9 +4865,9 @@ TEST(wc3_save, owned_target_effect_round_trip_preserves_owner_and_target_generat
     T_ASSERT(effect->s.flags & EF_NOT_SELECTABLE);
     remove(filename);
 }
-SAVE_INT_FIELD_TEST(field_shared_vision_round_trip, shared_vision, (1u << 0) | (1u << 7))
-SAVE_INT_FIELD_TEST(field_harvested_lumber_round_trip, harvested_lumber, 37)
-SAVE_INT_FIELD_TEST(field_harvested_gold_round_trip, harvested_gold, 41)
+SAVE_INT_FIELD_TEST(field_shared_vision_round_trip, vision->shared, (1u << 0) | (1u << 7))
+SAVE_INT_FIELD_TEST(field_harvested_lumber_round_trip, harvest->lumber, 37)
+SAVE_INT_FIELD_TEST(field_harvested_gold_round_trip, harvest->gold, 41)
 /* Saved animation text must survive destruction of every interned process address. */
 TEST(wc3_save, animation_strings_restore_after_intern_storage_is_released) {
     cstring_t file = Test_TempPath("animation-strings.bin");
@@ -4875,14 +4904,14 @@ TEST(wc3_save, route_cache_rebuilds_after_load) {
     T_EQ(unit->route->serial, 42);
     remove(file);
 }
-SAVE_INT_FIELD_TEST(field_peons_inside_round_trip, peonsinside, 5)
+SAVE_INT_FIELD_TEST(field_peons_inside_round_trip, goldmine->occupants, 5)
 SAVE_INT_FIELD_TEST(field_ai_flags_round_trip, aiflags, 0x55)
 SAVE_INT_FIELD_TEST(field_corpse_flags_round_trip, aiflags, AI_CORPSE_UNRAISABLE | AI_CORPSE_NO_DECAY | AI_CORPSE_RESERVED)
 SAVE_INT_FIELD_TEST(field_script_explosion_round_trip, aiflags, AI_SCRIPT_EXPLODED)
 SAVE_INT_FIELD_TEST(field_damage_round_trip, damage, 99)
-SAVE_INT_FIELD_TEST(field_projectile_attack_type_round_trip, projectile_attack_type, ATK_PIERCE)
-SAVE_INT_FIELD_TEST(field_attack_cooldown_end_time_round_trip, attack_cooldown_end_time, 12345)
-SAVE_INT_FIELD_TEST(field_attack_backswing_end_time_round_trip, attack_backswing_end_time, 12346)
+SAVE_INT_FIELD_TEST(field_projectile_attack_type_round_trip, missile->attack_type, ATK_PIERCE)
+SAVE_INT_FIELD_TEST(field_attack_cooldown_end_time_round_trip, unit_state->attack_cooldown_end_time, 12345)
+SAVE_INT_FIELD_TEST(field_attack_backswing_end_time_round_trip, unit_state->attack_backswing_end_time, 12346)
 TEST(wc3_save, artillery_profile_round_trips_inflight_projectile) {
     cstring_t filename = Test_TempPath("wc3-save-artillery-profile.bin");
     field_t const *desc = find_save_field("artillery");
@@ -4904,7 +4933,7 @@ TEST(wc3_save, artillery_profile_round_trips_inflight_projectile) {
     T_FEQ(projectile->artillery->factor_small, 0.25f, 0.001f);
     remove(filename);
 }
-SAVE_INT_FIELD_TEST(field_autocast_code_round_trip, autocast_code, MAKEFOURCC('A', 'h', 'e', 'a'))
+SAVE_INT_FIELD_TEST(field_autocast_code_round_trip, unit_state->autocast, MAKEFOURCC('A', 'h', 'e', 'a'))
 SAVE_INT_FIELD_TEST(field_channel_code_round_trip, channel->code, MAKEFOURCC('A', 'H', 'd', 'r'))
 SAVE_INT_FIELD_TEST(field_channel_serial_round_trip, channel->serial, 7)
 
@@ -5000,10 +5029,10 @@ SAVE_FLOAT_FIELD_TEST(field_avatar_armor_round_trip, avatar->armor, 7.0f)
 SAVE_FLOAT_FIELD_TEST(field_avatar_health_round_trip, avatar->health, 600.0f)
 SAVE_FLOAT_FIELD_TEST(field_raven_height_round_trip, raven->fly_height, 125.0f)
 SAVE_FLOAT_FIELD_TEST(field_unitinfo_prop_window_round_trip, unitinfo.PropWindow, 37.5f)
-SAVE_FLOAT_FIELD_TEST(field_attack1_backswing_round_trip, attack1.backswingPoint, 0.35f)
-SAVE_FLOAT_FIELD_TEST(field_attack1_range_buffer_round_trip, attack1.rangeBuffer, 42.0f)
-SAVE_FLOAT_FIELD_TEST(field_attack2_backswing_round_trip, attack2.backswingPoint, 0.45f)
-SAVE_FLOAT_FIELD_TEST(field_attack2_range_buffer_round_trip, attack2.rangeBuffer, 84.0f)
+SAVE_FLOAT_FIELD_TEST(field_attack1_backswing_round_trip, unit_state->attack1.backswingPoint, 0.35f)
+SAVE_FLOAT_FIELD_TEST(field_attack1_range_buffer_round_trip, unit_state->attack1.rangeBuffer, 42.0f)
+SAVE_FLOAT_FIELD_TEST(field_attack2_backswing_round_trip, unit_state->attack2.backswingPoint, 0.45f)
+SAVE_FLOAT_FIELD_TEST(field_attack2_range_buffer_round_trip, unit_state->attack2.rangeBuffer, 84.0f)
 SAVE_FLOAT_FIELD_TEST(field_raven_start_round_trip, raven->rise_start, 1000.0f)
 SAVE_FLOAT_FIELD_TEST(field_raven_duration_round_trip, raven->rise_duration, 2.0f)
 SAVE_INT_FIELD_TEST(field_raven_state_round_trip, raven->rise_state, RAVEN_RISE_ACTIVE)
@@ -5013,25 +5042,24 @@ SAVE_INT_FIELD_TEST(field_polymorph_form_type_round_trip, polymorph->form_type, 
 SAVE_INT_FIELD_TEST(field_polymorph_original_model_round_trip, polymorph->original_model, 37)
 SAVE_FLOAT_FIELD_TEST(field_polymorph_original_scale_round_trip, polymorph->original_scale, 1.35f)
 SAVE_FLOAT_FIELD_TEST(field_polymorph_original_move_speed_round_trip, polymorph->original_move_speed, 270.0f)
-SAVE_FLOAT_FIELD_TEST(field_temporary_health_bonus_round_trip, temporary_health_bonus, 600.0f)
-SAVE_FLOAT_FIELD_TEST(field_temporary_mana_bonus_round_trip, temporary_mana_bonus, 125.0f)
+SAVE_FLOAT_FIELD_TEST(field_temporary_health_bonus_round_trip, unit_state->temporary_health_bonus, 600.0f)
+SAVE_FLOAT_FIELD_TEST(field_temporary_mana_bonus_round_trip, unit_state->temporary_mana_bonus, 125.0f)
 SAVE_FLOAT_FIELD_TEST(field_animation_speed_round_trip, animation_speed, 0.5f)
-SAVE_INT_FIELD_TEST(field_animation_override_round_trip, animation_override, 1)
 
 TEST(wc3_save, field_hero_shortcut_alert_is_runtime_only) {
     cstring_t filename = Test_TempPath("wc3-save-hero-shortcut-alert.bin");
-    field_t const *desc = find_save_field("hero_shortcut_alert_until");
+    field_t const *desc = find_save_field("unit_state->shortcut_alert_until");
     edict_t *unit;
 
     reset_entities();
     unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
     T_NOT_NULL(desc);
     if (desc) T_ASSERT(desc->type == F_IGNORE && desc->flags == FIELD_RUNTIME);
-    unit->hero_shortcut_alert_until = 12345;
+    unit->unit_state->shortcut_alert_until = 12345;
     T_ASSERT(WriteGame(filename));
-    unit->hero_shortcut_alert_until = 0;
+    unit->unit_state->shortcut_alert_until = 0;
     T_ASSERT(ReadGame(filename));
-    T_EQ(unit->hero_shortcut_alert_until, 0);
+    T_EQ(unit->unit_state->shortcut_alert_until, 0);
     remove(filename);
 }
 
@@ -5293,11 +5321,11 @@ TEST(wc3_save, field_vertex_tint_round_trip) {
     reset_entities();
     unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
     unit->vertex_color = MAKE(color32_t, 11, 22, 33, 0);
-    unit->vertex_color_set = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET, true);
     T_ASSERT(WriteGame(filename));
-    unit->vertex_color = COLOR32_WHITE; unit->vertex_color_set = false;
+    unit->vertex_color = COLOR32_WHITE; G_SetUnitFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET, false);
     T_ASSERT(ReadGame(filename));
-    T_ASSERT(unit->vertex_color_set);
+    T_ASSERT(G_UnitHasFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(unit->vertex_color.r, 11); T_EQ(unit->vertex_color.g, 22);
     T_EQ(unit->vertex_color.b, 33); T_EQ(unit->vertex_color.a, 0);
     remove(filename);
@@ -5515,14 +5543,14 @@ TEST(wc3_save, mineoverlay_entangle_tree_round_trip) {
 }
 
 SAVE_PTR_FIELD_TEST(field_primary_builder_round_trip, "construction->primary_builder", construction->primary_builder, 0)
-SAVE_PTR_FIELD_TEST(creep_status_source_round_trip, "abilstatus.source", abilstatus[3].source, 0)
+SAVE_PTR_FIELD_TEST(creep_status_source_round_trip, "unit_state->statuses.source", unit_state->statuses[3].source, 0)
 
 TEST(wc3_save, status_source_incarnation_round_trip) {
     cstring_t filename = Test_TempPath("wc3-save-status-source-incarnation.bin");
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
     edict_t *source = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 64.0f, 0.0f);
-    heroabilitystatus_t *slot = &unit->abilstatus[3];
+    heroabilitystatus_t *slot = &unit->unit_state->statuses[3];
 
     slot->code = MAKEFOURCC('B', 'E', 'e', 'r');
     slot->level = 1;
@@ -5536,7 +5564,7 @@ TEST(wc3_save, status_source_incarnation_round_trip) {
         .policy = WC3_STATUS_MOD_ADD, .value = 2.0f,
         .owner = WC3_STATUS_MOD_OWNER_AUTHORED
     };
-    unit->next_status_instance_id = 20;
+    unit->unit_state->next_status_id = 20;
     T_ASSERT(WriteGame(filename));
     slot->source = NULL;
     slot->source_spawn_time = 0;
@@ -5549,7 +5577,7 @@ TEST(wc3_save, status_source_incarnation_round_trip) {
     T_EQ(slot->modifier_count, 1);
     T_EQ(slot->modifiers[0].owner, WC3_STATUS_MOD_OWNER_AUTHORED);
     T_FEQ(slot->modifiers[0].value, 2.0f, 0.001f);
-    T_EQ(unit->next_status_instance_id, 20);
+    T_EQ(unit->unit_state->next_status_id, 20);
     source->spawn_time++;
     T_NULL(S_SpellStatusSource(slot));
     remove(filename);
@@ -5564,7 +5592,7 @@ SAVE_PTR_FIELD_TEST(field_mineoverlay_parent_round_trip, "mineoverlay->parent", 
 SAVE_PTR_FIELD_TEST(field_mineoverlay_caster_round_trip, "mineoverlay->caster", mineoverlay->caster, 0)
 SAVE_PTR_FIELD_TEST(field_mineoverlay_entangle_tree_round_trip, "mineoverlay->entangle_tree", mineoverlay->entangle_tree, 0)
 SAVE_PTR_FIELD_TEST(field_acolyte_mine_round_trip, "acolyte_mine->mine", acolyte_mine->mine, 0)
-SAVE_PTR_FIELD_TEST(field_inventory_round_trip, "inventory", inventory[3], MAX_INVENTORY)
+SAVE_PTR_FIELD_TEST(field_inventory_round_trip, "inventory->slots", inventory->slots[3], MAX_INVENTORY)
 SAVE_PTR_FIELD_TEST(field_cargo_round_trip, "cargo->units", cargo->units[4], MAX_CARGO)
 SAVE_PTR_FIELD_TEST(field_item_carrier_round_trip, "item->carrier", item->carrier, 0)
 SAVE_PTR_FIELD_TEST(field_ground_next_round_trip, "ground_next", ground_next, 0)
@@ -5592,7 +5620,7 @@ SAVE_PTR_FIELD_TEST(field_combat_entity_round_trip, "combatentity", combatentity
 SAVE_PTR_FIELD_TEST(field_secondary_goal_round_trip, "orders->resource_goal", orders->resource_goal, 0)
 SAVE_PTR_FIELD_TEST(field_owner_round_trip, "owner", owner, 0)
 SAVE_PTR_FIELD_TEST(field_build_round_trip, "build", build, 0)
-SAVE_PTR_FIELD_TEST(field_build_preview_round_trip, "build_preview", build_preview, 0)
+SAVE_PTR_FIELD_TEST(field_build_preview_round_trip, "orders->build_preview", orders->build_preview, 0)
 
 #undef SAVE_PTR_FIELD_TEST
 #undef SAVE_INT_FIELD_TEST
@@ -5609,7 +5637,7 @@ TEST(wc3_save, unit_flags_and_overlapping_stuns_restore_without_a_cache) {
     unit_applystatus(unit, &(status_application_t){ .buff = "Bq01", .level = 1,
         .duration = 0.2f, .state_mask = WC3_STATUS_STATE_STUNNED });
     T_ASSERT(WriteGame(path));
-    unit->unit_flags = 0; memset(unit->abilstatus, 0, sizeof(unit->abilstatus));
+    unit->unit_flags = 0; memset(unit->unit_state->statuses, 0, sizeof(unit->unit_state->statuses));
     T_ASSERT(ReadGame(path)); unit = g_edicts + index;
     T_EQ(unit->unit_flags, UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING);
     T_ASSERT(unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
@@ -5647,7 +5675,7 @@ TEST(wc3_save, soul_trap_links_and_world_state_survive_round_trip) {
     target->soultrap->carrier = NULL; target->soultrap->carrier_spawn_time = 0;
     target->soultrap->item = NULL; target->soultrap->item_spawn_time = 0;
     filled->item->soul_target = NULL; filled->item->soul_target_spawn_time = 0;
-    carrier->forced_visibility_count[1] = 0;
+    carrier->vision->forced[1] = 0;
     target->aiflags = 0; target->s.renderfx = 0; target->svflags = 0; target->s.flags = 0;
     T_ASSERT(ReadGame(filename));
     T_ASSERT(carrier->soultrap->head == target);
@@ -5661,7 +5689,7 @@ TEST(wc3_save, soul_trap_links_and_world_state_survive_round_trip) {
     T_ASSERT(target->aiflags & AI_SOUL_TRAPPED);
     T_ASSERT(target->s.renderfx & RF_HIDDEN);
     T_ASSERT(!M_IsDead(target));
-    T_EQ(carrier->forced_visibility_count[1], 1);
+    T_EQ(carrier->vision->forced[1], 1);
     T_ASSERT(G_UnitIsForcedVisibleToPlayer(carrier, 1));
     T_ASSERT(!G_UnitIsForcedVisibleToPlayer(carrier, 2));
     remove(filename);
@@ -5691,14 +5719,14 @@ TEST(wc3_save, round_trip_actor_abilities) {
     cstring_t filename = Test_TempPath("wc3-save-abilities.bin");
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
-    unit->abilities.added[0] = MAKEFOURCC('A', '0', '0', '1'); ARRAY_COUNT(unit->abilities.added) = 1;
-    unit->abilities.removed[0] = MAKEFOURCC('A', '0', '0', '2'); ARRAY_COUNT(unit->abilities.removed) = 1;
-    unit->abilities.permanent[0] = MAKEFOURCC('A', '0', '0', '3'); ARRAY_COUNT(unit->abilities.permanent) = 1;
-    T_ASSERT(WriteGame(filename)); memset(&unit->abilities, 0, sizeof(unit->abilities)); T_ASSERT(ReadGame(filename));
-    T_EQ(ARRAY_COUNT(unit->abilities.added), 1); T_EQ(unit->abilities.added[0], MAKEFOURCC('A', '0', '0', '1'));
-    T_EQ(ARRAY_COUNT(unit->abilities.removed), 1); T_EQ(unit->abilities.removed[0], MAKEFOURCC('A', '0', '0', '2'));
-    T_EQ(ARRAY_COUNT(unit->abilities.permanent), 1); T_EQ(unit->abilities.permanent[0], MAKEFOURCC('A', '0', '0', '3'));
-    ARRAY_COUNT(unit->abilities.added) = MAX_ABILITIES + 1;
+    unit->unit_state->overrides.added[0] = MAKEFOURCC('A', '0', '0', '1'); ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
+    unit->unit_state->overrides.removed[0] = MAKEFOURCC('A', '0', '0', '2'); ARRAY_COUNT(unit->unit_state->overrides.removed) = 1;
+    unit->unit_state->overrides.permanent[0] = MAKEFOURCC('A', '0', '0', '3'); ARRAY_COUNT(unit->unit_state->overrides.permanent) = 1;
+    T_ASSERT(WriteGame(filename)); memset(&unit->unit_state->overrides, 0, sizeof(unit->unit_state->overrides)); T_ASSERT(ReadGame(filename));
+    T_EQ(ARRAY_COUNT(unit->unit_state->overrides.added), 1); T_EQ(unit->unit_state->overrides.added[0], MAKEFOURCC('A', '0', '0', '1'));
+    T_EQ(ARRAY_COUNT(unit->unit_state->overrides.removed), 1); T_EQ(unit->unit_state->overrides.removed[0], MAKEFOURCC('A', '0', '0', '2'));
+    T_EQ(ARRAY_COUNT(unit->unit_state->overrides.permanent), 1); T_EQ(unit->unit_state->overrides.permanent[0], MAKEFOURCC('A', '0', '0', '3'));
+    ARRAY_COUNT(unit->unit_state->overrides.added) = MAX_ABILITIES + 1;
     T_ASSERT(!WriteGame(filename)); remove(filename);
 }
 
@@ -5760,7 +5788,8 @@ TEST(wc3_save, round_trip_entity_c_callbacks) {
     far_sight->think = far_sight_think; far_sight->s.player = 3;
     far_sight->s.origin2 = (vec2_t){ 123.0f, 456.0f }; far_sight->collision = 777.0f; far_sight->spawn_time = 9876;
     unit->spawn_time = 2468; mine->spawn_time = 369; chain->spawn_time = 1357;
-    unit->permanent_invisibility_reveal_until = 97531;
+    G_InitVisibility(unit);
+    unit->vision->reveal_until = 97531;
     unit->runtime.flags |= UNIT_BALANCE_PERMANENT_INVISIBLE;
     chain->think = chain_lightning_think; chain->owner = unit; chain->class_id = MAKEFOURCC('A', 'O', 'c', 'l');
     if (!chain->channel) chain->channel = G_AllocChannel();
@@ -5796,12 +5825,13 @@ TEST(wc3_save, round_trip_entity_c_callbacks) {
     chain->resources = chain->freetime = 0;
     chain_marker->class_id = chain_marker->svflags = chain_marker->channel->owner_spawn_time = chain_marker->resources = 0;
     chain_marker->owner = chain_marker->goalentity = NULL;
-    unit->permanent_invisibility_reveal_until = 0; unit->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
+    G_InitVisibility(unit);
+    unit->vision->reveal_until = 0; unit->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
     unit->stand = mine->stand = idle->stand = tree->stand = NULL;
     unit->birth = tree->birth = NULL; unit->die = tree->die = NULL; tree->pain = NULL; effect->prethink = NULL;
     T_ASSERT(ReadGame(filename));
     T_ASSERT(unit->stand == unit_stand && unit->birth == unit_birth && unit->die == unit_die && unit->think == monster_think);
-    T_EQ(unit->permanent_invisibility_reveal_until, 97531);
+    T_EQ(unit->vision->reveal_until, 97531);
     T_ASSERT(unit->runtime.flags & UNIT_BALANCE_PERMANENT_INVISIBLE);
     T_ASSERT(mine->think == blight_mine_think && mine->stand == unit_stand);
     T_ASSERT(!idle->think && idle->stand == unit_stand);
@@ -6848,16 +6878,16 @@ TEST(wc3_save, rejects_corruption_without_mutation) {
     uint8_t byte = 0;
     reset_entities();
     unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
-    unit->harvested_gold = 37;
+    S_SetCarriedResource(unit, RETURN_RESOURCE_GOLD, 37);
     T_ASSERT(WriteGame(filename));
     f = fopen(filename, "r+b");
     T_ASSERT(f != NULL && fseek(f, sizeof(uint32_t), SEEK_SET) == 0 && fread(&byte, 1, 1, f) == 1);
     byte ^= 0x80;
     T_ASSERT(fseek(f, sizeof(uint32_t), SEEK_SET) == 0 && fwrite(&byte, 1, 1, f) == 1);
     fclose(f);
-    unit->harvested_gold = 99;
+    S_SetCarriedResource(unit, RETURN_RESOURCE_GOLD, 99);
     T_ASSERT(!ReadGame(filename));
-    T_EQ(unit->harvested_gold, 99);
+    T_EQ((unit->harvest ? unit->harvest->gold : 0), 99);
     remove(filename);
 }
 
@@ -6867,12 +6897,12 @@ TEST(wc3_save, rejects_script_identity_without_mutation) {
     edict_t *unit;
     T_ASSERT(run_test_jass("function main takes nothing returns nothing\nendfunction\n"));
     unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0.0f, 0.0f);
-    unit->harvested_gold = 37;
+    S_SetCarriedResource(unit, RETURN_RESOURCE_GOLD, 37);
     T_ASSERT(WriteGame(filename));
     T_ASSERT(jass_dobuffer(level.vm, extra));
-    unit->harvested_gold = 99;
+    S_SetCarriedResource(unit, RETURN_RESOURCE_GOLD, 99);
     T_ASSERT(!ReadGame(filename));
-    T_EQ(unit->harvested_gold, 99);
+    T_EQ((unit->harvest ? unit->harvest->gold : 0), 99);
     remove(filename);
 }
 

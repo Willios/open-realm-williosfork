@@ -806,8 +806,8 @@ intptr_t S_UnitStatusAbilityEvent(edict_t *ent, abilityMsg_t msg, abilityCall_t 
     intptr_t result = 0;
 
     if (!ent) return 0;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         abilityitem_t item;
         abilityCall_t call;
         intptr_t handled;
@@ -875,15 +875,15 @@ static intptr_t unit_dispatch_authored_abilities(edict_t *ent, abilityMsg_t msg,
         }
     }
     if (msg == A_UNIT_REMOVE) {
-        for (int32_t i = (int32_t)ARRAY_COUNT(ent->abilities.added) - 1; i >= 0; i--)
-            if (ent->abilities.added[i]) DISPATCH_AUTHORED_ABILITY(ent->abilities.added[i]);
+        for (int32_t i = (int32_t)(ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0) - 1; i >= 0; i--)
+            if (ent->unit_state->overrides.added[i]) DISPATCH_AUTHORED_ABILITY(ent->unit_state->overrides.added[i]);
     } else {
-        FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added))
-            if (ent->abilities.added[i]) DISPATCH_AUTHORED_ABILITY(ent->abilities.added[i]);
+        FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0))
+            if (ent->unit_state->overrides.added[i]) DISPATCH_AUTHORED_ABILITY(ent->unit_state->overrides.added[i]);
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES)
-        if (ent->heroabilities[i].level && ent->heroabilities[i].code)
-            DISPATCH_AUTHORED_ABILITY(ent->heroabilities[i].code);
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0)
+        if (ent->unit_state->ranks[i].level && ent->unit_state->ranks[i].code)
+            DISPATCH_AUTHORED_ABILITY(ent->unit_state->ranks[i].code);
 #undef DISPATCH_AUTHORED_ABILITY
     return handled;
 }
@@ -1013,13 +1013,13 @@ bool S_UnitTargetAbilityOrder(edict_t *target, edict_t *issuer, cstring_t order)
                 return true;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(target->abilities.added)) {
-        uint32_t const code = target->abilities.added[i];
+    FOR_LOOP(i, (target->unit_state ? ARRAY_COUNT(target->unit_state->overrides.added) : 0)) {
+        uint32_t const code = target->unit_state->overrides.added[i];
         if (unit_target_ability_try(target, issuer, order, code, seen, &seen_count, seen_capacity))
             return true;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        uint32_t const code = target->heroabilities[i].level ? target->heroabilities[i].code : 0;
+    FOR_LOOP(i, target->unit_state ? MAX_HERO_ABILITIES : 0) {
+        uint32_t const code = target->unit_state->ranks[i].level ? target->unit_state->ranks[i].code : 0;
         if (unit_target_ability_try(target, issuer, order, code, seen, &seen_count, seen_capacity))
             return true;
     }
@@ -1129,11 +1129,11 @@ bool S_UnitAbilityMessage(edict_t *ent, abilityMsg_t msg, abilityCall_t const *c
             if (strlen(token) == 4) { memcpy(&token_code, token, 4); DISPATCH_UNIT_ABILITY(token_code); }
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added))
-        if (ent->abilities.added[i]) DISPATCH_UNIT_ABILITY(ent->abilities.added[i]);
-    FOR_LOOP(i, MAX_HERO_ABILITIES)
-        if (ent->heroabilities[i].level && ent->heroabilities[i].code)
-            DISPATCH_UNIT_ABILITY(ent->heroabilities[i].code);
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0))
+        if (ent->unit_state->overrides.added[i]) DISPATCH_UNIT_ABILITY(ent->unit_state->overrides.added[i]);
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0)
+        if (ent->unit_state->ranks[i].level && ent->unit_state->ranks[i].code)
+            DISPATCH_UNIT_ABILITY(ent->unit_state->ranks[i].code);
 #undef DISPATCH_UNIT_ABILITY
     return false;
 }
@@ -1145,7 +1145,7 @@ void S_EnableAbility(edict_t *ent, uint32_t code) {
 }
 
 void S_DisableAbility(edict_t *ent, uint32_t code) {
-    if (ent && ent->autocast_code == code) G_SetUnitAutocast(ent, code, false);
+    if (ent && ent->unit_state && ent->unit_state->autocast == code) G_SetUnitAutocast(ent, code, false);
     abilityitem_t item = S_AbilityItem(code);
     abilityCall_t call = MAKE(abilityCall_t, .item = &item);
     if (item.ability) S_AbilityMessage(ent, A_DISABLE, &call);
@@ -1164,7 +1164,7 @@ void S_RefreshAbilityLevel(edict_t *ent, ability_t const *ability) {
 bool G_UnitAutocastIsOn(edict_t *ent, uint32_t code) {
     abilityitem_t item = S_AbilityItem(code);
     abilityCall_t call = MAKE(abilityCall_t, .item = &item);
-    return ent && code && ent->autocast_code == code && item.ability && (item.ability->flags & AB_AUTOCAST) &&
+    return ent && ent->unit_state && code && ent->unit_state->autocast == code && item.ability && (item.ability->flags & AB_AUTOCAST) &&
         G_UnitAbilityLevel(ent, code) && S_AbilityMessage(ent, A_AUTOCAST_ON, &call);
 }
 
@@ -1174,7 +1174,9 @@ bool G_SetUnitAutocast(edict_t *ent, uint32_t code, bool enabled) {
     abilityCall_t call = MAKE(abilityCall_t, .item = &item, .enabled = enabled);
     if (!ent || !item.ability || !(item.ability->flags & AB_AUTOCAST) ||
         (enabled && !G_UnitAbilityLevel(ent, code))) return false;
-    old = S_AbilityItem(ent->autocast_code);
+    if (!enabled && !ent->unit_state) return true;
+    G_InitUnitState(ent);
+    old = S_AbilityItem(ent->unit_state->autocast);
     if (!enabled && old.code != code) return true;
     abilityCall_t prev = MAKE(abilityCall_t, .item = &old, .enabled = false);
     bool switched = enabled && old.code && old.code != code;
@@ -1186,10 +1188,10 @@ bool G_SetUnitAutocast(edict_t *ent, uint32_t code, bool enabled) {
         return false;
     }
     if (enabled) {
-        ent->autocast_code = code;
+        ent->unit_state->autocast = code;
         ent->aiflags |= AI_AUTOCAST_ACTIVE;
     } else if (old.code == code) {
-        ent->autocast_code = 0;
+        ent->unit_state->autocast = 0;
         ent->aiflags &= ~AI_AUTOCAST_ACTIVE;
     }
     return true;
@@ -1198,7 +1200,7 @@ bool G_SetUnitAutocast(edict_t *ent, uint32_t code, bool enabled) {
 /* Dispatch the selected alias directly, including runtime-added abilities absent from UnitAbilities. */
 bool G_TryUnitAutocast(edict_t *ent) {
     if (!ent || !(ent->aiflags & AI_AUTOCAST_ACTIVE)) return false;
-    abilityitem_t item = S_AbilityItem(ent->autocast_code);
+    abilityitem_t item = S_AbilityItem(ent->unit_state->autocast);
     abilityCall_t call = MAKE(abilityCall_t, .item = &item);
     return G_UnitAutocastIsOn(ent, item.code) && S_AbilityMessage(ent, A_AUTOCAST_ACQUIRE, &call);
 }

@@ -140,8 +140,8 @@ abilityAliasRef_t S_ResolveAbilityAlias(edict_t *ent, uint32_t base_code) {
             }
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = ent->unit_state->overrides.added[i];
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
         if (G_ActorHasSkill(ent, alias_name) && (alias == base_code || G_AbilityCode(alias) == base_code)) {
@@ -150,8 +150,8 @@ abilityAliasRef_t S_ResolveAbilityAlias(edict_t *ent, uint32_t base_code) {
             return result;
         }
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *hero = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *hero = ent->unit_state->ranks + i;
         if (hero->level && (hero->code == base_code || G_AbilityCode(hero->code) == base_code)) {
             result.alias = hero->code;
             result.level = hero->level;
@@ -186,8 +186,8 @@ static auraAbilityRef_t unit_ability_with_proc(edict_t *ent, abilityProc_t proc)
             }
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = ent->unit_state->overrides.added[i];
         abilityitem_t item;
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
@@ -196,8 +196,8 @@ static auraAbilityRef_t unit_ability_with_proc(edict_t *ent, abilityProc_t proc)
             result.alias = alias; result.level = 1; return result;
         }
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *hero = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *hero = ent->unit_state->ranks + i;
         abilityitem_t item;
         if (!hero->level) continue;
         item = S_AbilityItem(hero->code);
@@ -835,21 +835,21 @@ float S_CommandAuraAttackBonus(edict_t *unit) {
 float S_WarDrumsAttackBonus(edict_t *unit) { return hero_aura_bonus(unit, ID_WAR_DRUMS, 1); }
 
 float S_TrueshotAttackBonus(edict_t *unit) {
-    return unit->attack1.type == ATK_PIERCE ? hero_aura_bonus(unit, ID_TRUESHOT_AURA, 1) : 0.0f;
+    return unit->unit_state->attack1.type == ATK_PIERCE ? hero_aura_bonus(unit, ID_TRUESHOT_AURA, 1) : 0.0f;
 }
 
 int S_SearingArrowDamage(edict_t *attacker, int damage) {
     uint32_t code = ID_SEARING_ARROWS, level = 0;
     if (!attacker) return damage;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *st = attacker->abilstatus + i;
+    FOR_LOOP(i, attacker->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *st = attacker->unit_state->statuses + i;
         if (!st->level || (st->timestamp && st->timestamp <= G_Time())) continue;
         if (st->code == ID_SEARING_ARROWS || G_AbilityCode(st->code) == ID_SEARING_ARROWS) {
             code = st->code; level = st->level; break;
         }
     }
     if (!level) { level = G_UnitStatusLevel(attacker, ID_POISON_ARROWS); code = ID_POISON_ARROWS; }
-    return level && attacker->attack1.weapon == WPN_MISSILE ? damage + (int)S_SpellData(code, level, 1) : damage;
+    return level && attacker->unit_state->attack1.weapon == WPN_MISSILE ? damage + (int)S_SpellData(code, level, 1) : damage;
 }
 
 static uint32_t mana_shield_buff(uint32_t code, uint32_t level) {
@@ -858,9 +858,9 @@ static uint32_t mana_shield_buff(uint32_t code, uint32_t level) {
 }
 
 static void mana_shield_remove(edict_t *unit, uint32_t buff) {
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == buff)
-            unit_removestatus(unit, unit->abilstatus + i, STATUS_REMOVE_SCRIPT);
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == buff)
+            unit_removestatus(unit, unit->unit_state->statuses + i, STATUS_REMOVE_SCRIPT);
     G_InvalidateUnitInfoPanel(unit);
 }
 
@@ -923,7 +923,7 @@ int S_ManaShieldDamage(edict_t *target, int damage) {
 }
 
 float S_ThornsDamageReturn(edict_t const *target, edict_t const *attacker, float damage) {
-    if (!target || !attacker || (attacker->attack1.weapon != WPN_NORMAL && attacker->attack1.weapon != WPN_INSTANT))
+    if (!target || !attacker || (attacker->unit_state->attack1.weapon != WPN_NORMAL && attacker->unit_state->attack1.weapon != WPN_INSTANT))
         return 0.0f;
     return damage * hero_aura_bonus((edict_t *)target, ID_THORNS_AURA, 1);
 }

@@ -42,7 +42,7 @@ semantically the same after loading.
 
 ## Runtime Attack Fields
 
-`edict_t.attack1` and `attack2` are mutable copies of `UnitWeapons.slk` data. Target validation checks both authored target masks without changing either profile. Attack timing, projectile setup, and damage select the compatible profile from the current target, leaving both authored runtime copies in their original slots. Candidate scans and repeated target validation are read-only, so their traversal order cannot change the active weapon.
+`edict_t.unit_state->attack1` and `attack2` are mutable copies of `UnitWeapons.slk` data. Target validation checks both authored target masks without changing either profile. Attack timing, projectile setup, and damage select the compatible profile from the current target, leaving both authored runtime copies in their original slots. Candidate scans and repeated target validation are read-only, so their traversal order cannot change the active weapon.
 
 For each `unitAttack_t`:
 

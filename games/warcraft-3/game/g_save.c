@@ -135,7 +135,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 102 separates optional movement, route and wander records from retained orders. */
 /* Version 103 moves Soul Trap relationships into an optional owned pool. */
 /* Version 104 replaces independent unit booleans with flags and removes the derived stun mirror. */
-static uint32_t const save_version = 104;
+/* Version 105 extracts unit feature records from the base edict. */
+static uint32_t const save_version = 105;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -143,7 +144,8 @@ static uint32_t const save_version = 104;
 
 /* F_MMOVE anchor: umove_t instances are file-scope statics, so a move pointer
  * survives a save as a signed offset from a fixed symbol in the same data segment. */
-static umove_t umove_reloc;
+/* Keep the move anchor in initialized data beside the authored moves, not beyond large pool BSS. */
+static umove_t umove_reloc = { .animation = "save anchor" };
 
 _Static_assert(sizeof(umove_t *) == 8, "F_MMOVE packs a relocation offset and a validation hash into the pointer field");
 _Static_assert(sizeof(void (*)(edict_t *)) == 8, "F_CFUNCTION packs a roster index and a name hash into the pointer field");
@@ -661,6 +663,7 @@ static field_t const militia_fields[] = {
 };
 
 static field_t const goldmine_fields[] = {
+    TF(goldMine_t, occupants, F_INT),
     TF(goldMine_t, mine, F_EDICT, 0, FIELD_NONE),
     { NULL, 0, 0, 0, 0, 0 }
 };
@@ -784,6 +787,8 @@ static field_t const movement_fields[] = {
 };
 
 static field_t const order_fields[] = {
+    TF(unitOrders_t, build_project, F_INT),
+    TF(unitOrders_t, build_preview, F_EDICT, 0, FIELD_NONE),
     TF(unitOrders_t, item_drop, F_EDICT, 0, FIELD_NONE),
 
     TF(unitOrders_t, waygate_target, F_EDICT, 0, FIELD_NONE),
@@ -847,6 +852,7 @@ static field_t const edict_data_fields[] = {
 };
 
 static field_t const client_menu_fields[] = {
+    TF(clientMenu_s, build_project, F_IGNORE, 0, FIELD_RUNTIME),
     TF(clientMenu_s, on_entity_selected, F_IGNORE, 0, FIELD_RUNTIME),
     TF(clientMenu_s, on_location_selected, F_IGNORE, 0, FIELD_RUNTIME),
     TF(clientMenu_s, cmdbutton, F_IGNORE, 0, FIELD_RUNTIME),
@@ -926,7 +932,61 @@ static field_t const stock_fields[] = {
 };
 
 /* Every persistent and process-owned edict field crossing the save boundary is represented here. */
+static field_t const unit_state_fields[] = {
+    TF(unitState_t, attack1, F_STRUCT, 1, unit_attack_fields),
+    TF(unitState_t, attack2, F_STRUCT, 1, unit_attack_fields),
+    TF(unitState_t, defense_type, F_INT),
+    TF(unitState_t, armor_value, F_FLOAT),
+    TF(unitState_t, permanent_armor_bonus, F_FLOAT),
+    TF(unitState_t, temporary_armor_bonus, F_FLOAT),
+    TF(unitState_t, permanent_health_bonus, F_FLOAT),
+    TF(unitState_t, temporary_health_bonus, F_FLOAT),
+    TF(unitState_t, temporary_mana_bonus, F_FLOAT),
+    TF(unitState_t, mana_regen_bonus, F_FLOAT),
+
+    TF(unitState_t, attack_cooldown_end_time, F_INT),
+    TF(unitState_t, attack_backswing_end_time, F_INT),
+    TF(unitState_t, attack_target_spawn_time, F_INT),
+
+    TF(unitState_t, score_level_xp, F_INT),
+    TF(unitState_t, shortcut_alert_until, F_IGNORE, 0, FIELD_RUNTIME),
+    TF(unitState_t, statuses, F_STRUCT, MAX_UNIT_STATUSES, status_fields),
+    TF(unitState_t, overrides, F_STRUCT, 1, abilities_fields),
+    TF(unitState_t, next_status_id, F_INT),
+    TF(unitState_t, autocast, F_INT),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const vision_fields[] = {
+    TF(visibility_t, forced, F_INT),
+    TF(visibility_t, shared, F_INT),
+    TF(visibility_t, reveal_until, F_INT),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const harvest_fields[] = {
+    TF(harvest_t, gold, F_INT),
+    TF(harvest_t, lumber, F_INT),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const inventory_fields[] = {
+    TF(inventory_t, slots, F_EDICT, MAX_INVENTORY, FIELD_NONE),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const missile_fields[] = {
+    TF(attackMissile_t, attack_type, F_INT),
+    TF(attackMissile_t, reflected, F_INT),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const sound_fields[] = {
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
 field_t edict_fields[] = {
+    F(edict_s, summon_ability, F_INT),
     F(edict_s, construction, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, research, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, rally, F_IGNORE, 0, FIELD_RUNTIME),
@@ -954,6 +1014,12 @@ field_t edict_fields[] = {
     F(edict_s, avatar, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, sleep, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, soultrap, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, unit_state, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, sound, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, missile, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, inventory, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, harvest, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, vision, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, channel, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, movement, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, route, F_IGNORE, 0, FIELD_RUNTIME),
@@ -961,52 +1027,24 @@ field_t edict_fields[] = {
 
     F(edict_s, class_id, F_INT),
     F(edict_s, variation, F_INT),
-    F(edict_s, build_project, F_INT),
-    F(edict_s, build_preview, F_EDICT, 0, FIELD_NONE),
     F(edict_s, spawn_time, F_INT),
-    F(edict_s, summon_ability, F_INT),
     F(edict_s, aura_effect_role, F_INT),
-    F(edict_s, permanent_invisibility_reveal_until, F_INT),
-    F(edict_s, forced_visibility_count, F_INT),
-    F(edict_s, shared_vision, F_INT),
-    F(edict_s, harvested_lumber, F_INT),
-    F(edict_s, harvested_gold, F_INT),
-    F(edict_s, peonsinside, F_INT),
     F(edict_s, aiflags, F_INT),
     F(edict_s, unit_flags, F_INT),
-    F(edict_s, autocast_code, F_INT),
-    F(edict_s, abilstatus, F_STRUCT, MAX_UNIT_STATUSES, status_fields),
-    F(edict_s, next_status_instance_id, F_INT),
     F(edict_s, damage, F_INT),
-    F(edict_s, projectile_attack_type, F_INT),
-    F(edict_s, projectile_reflected, F_INT),
     F(edict_s, collision, F_FLOAT),
-    F(edict_s, attack_cooldown_end_time, F_INT),
-    F(edict_s, attack_backswing_end_time, F_INT),
     F(edict_s, unitinfo, F_STRUCT, 1, unit_info_fields),
-    F(edict_s, attack1, F_STRUCT, 1, unit_attack_fields),
-    F(edict_s, attack2, F_STRUCT, 1, unit_attack_fields),
     F(edict_s, s, F_STRUCT, 1, entity_state_fields),
-    F(edict_s, score_level_xp, F_INT),
-    F(edict_s, hero_shortcut_alert_until, F_IGNORE, 0, FIELD_RUNTIME),
-    F(edict_s, inventory, F_EDICT, MAX_INVENTORY, FIELD_NONE),
     F(edict_s, ground_next, F_EDICT, 0, FIELD_NONE),
     F(edict_s, orders, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, goalentity, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, attack_target_spawn_time, F_INT),
     F(edict_s, combatentity, F_EDICT, 0, FIELD_NONE),
     F(edict_s, owner, F_EDICT, 0, FIELD_NONE),
     F(edict_s, build, F_EDICT, 0, FIELD_NONE),
     F(edict_s, client, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, pathtex, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, area, F_STRUCT, 1, link_fields),
-    F(edict_s, abilities, F_STRUCT, 1, abilities_fields),
-    F(edict_s, permanent_health_bonus, F_FLOAT),
-    F(edict_s, temporary_health_bonus, F_FLOAT),
-    F(edict_s, temporary_mana_bonus, F_FLOAT),
-    F(edict_s, mana_regen_bonus, F_FLOAT),
     F(edict_s, animation_speed, F_FLOAT),
-    F(edict_s, animation_override, F_INT),
     F(edict_s, animation, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, animation_request, F_ANIMSTRING),
     F(edict_s, queued_animation, F_ANIMSTRING),
@@ -1017,10 +1055,6 @@ field_t edict_fields[] = {
     F(edict_s, prethink, F_CFUNCTION),
     F(edict_s, think, F_CFUNCTION),
     F(edict_s, die, F_CFUNCTION),
-    F(edict_s, idle, F_CFUNCTION),
-    F(edict_s, move, F_CFUNCTION),
-    F(edict_s, run, F_CFUNCTION),
-    F(edict_s, attack, F_CFUNCTION),
     F(edict_s, pain, F_CFUNCTION),
     F(edict_s, data, F_STRUCT, 1, edict_data_fields),
     { NULL, 0, 0, 0, 0, 0 }
@@ -2145,6 +2179,7 @@ typedef struct {
     size_t offset, size;
     field_t const *fields;
     void *(*alloc)(void);
+    uint32_t capacity;
 } savePool_t;
 
 static field_t const scalar_pool_fields[] = { { NULL, 0, 0, 0, 0, 0 } };
@@ -2176,6 +2211,12 @@ POOL_ALLOC(Artillery)
 POOL_ALLOC(Avatar)
 POOL_ALLOC(Sleep)
 POOL_ALLOC(SoulTrap)
+POOL_ALLOC(UnitState)
+POOL_ALLOC(Sounds)
+POOL_ALLOC(Missile)
+POOL_ALLOC(Inventory)
+POOL_ALLOC(Harvest)
+POOL_ALLOC(Visibility)
 POOL_ALLOC(Orders)
 POOL_ALLOC(Movement)
 POOL_ALLOC(Route)
@@ -2183,38 +2224,44 @@ POOL_ALLOC(Wander)
 POOL_ALLOC(Channel)
 
 static savePool_t const save_pools[] = {
-    { "orders", offsetof(edict_t, orders), sizeof(unitOrders_t), order_fields, SaveAllocOrders },
-    { "movement", offsetof(edict_t, movement), sizeof(movement_t), movement_fields, SaveAllocMovement },
-    { "route", offsetof(edict_t, route), sizeof(routeCache_t), route_fields, SaveAllocRoute },
-    { "wander", offsetof(edict_t, wander), sizeof(wander_t), wander_fields, SaveAllocWander },
-    { "construction", offsetof(edict_t, construction), sizeof(construction_t), construction_fields, SaveAllocConstruction },
-    { "research", offsetof(edict_t, research), sizeof(research_t), scalar_pool_fields, SaveAllocResearch },
-    { "rally", offsetof(edict_t, rally), sizeof(rally_t), rally_fields, SaveAllocRally },
-    { "food", offsetof(edict_t, food), sizeof(food_t), scalar_pool_fields, SaveAllocFood },
-    { "buildwork", offsetof(edict_t, buildwork), sizeof(buildwork_t), scalar_pool_fields, SaveAllocBuildwork },
-    { "revival", offsetof(edict_t, revival), sizeof(revival_t), revival_fields, SaveAllocRevival },
-    { "sacrifice", offsetof(edict_t, sacrifice), sizeof(sacrifice_t), sacrifice_fields, SaveAllocSacrifice },
-    { "unsummon", offsetof(edict_t, unsummon), sizeof(unsummon_t), unsummon_fields, SaveAllocUnsummon },
-    { "shadowmeld", offsetof(edict_t, shadowmeld), sizeof(shadowMeld_t), scalar_pool_fields, SaveAllocShadowMeld },
-    { "militia", offsetof(edict_t, militia), sizeof(militia_t), militia_fields, SaveAllocMilitia },
-    { "polymorph", offsetof(edict_t, polymorph), sizeof(polymorph_t), polymorph_fields, SaveAllocPolymorph },
-    { "raven", offsetof(edict_t, raven), sizeof(raven_t), raven_fields, SaveAllocRaven },
-    { "blight_growth", offsetof(edict_t, blight_growth), sizeof(blightGrowth_t), scalar_pool_fields, SaveAllocBlightGrowth },
-    { "ensnare", offsetof(edict_t, ensnare), sizeof(ensnare_t), ensnare_fields, SaveAllocEnsnare },
-    { "ancient_root", offsetof(edict_t, ancient_root), sizeof(ancientRoot_t), ancient_root_fields, SaveAllocAncientRoot },
-    { "goldmine", offsetof(edict_t, goldmine), sizeof(goldMine_t), goldmine_fields, SaveAllocGoldMine },
-    { "mineoverlay", offsetof(edict_t, mineoverlay), sizeof(mineOverlay_t), mineoverlay_fields, SaveAllocMineOverlay },
-    { "acolyte_mine", offsetof(edict_t, acolyte_mine), sizeof(acolyteMine_t), acolyte_mine_fields, SaveAllocAcolyteMine },
-    { "item", offsetof(edict_t, item), sizeof(item_t), item_fields, SaveAllocItem },
-    { "destructable", offsetof(edict_t, destructable), sizeof(destructable_t), destructable_fields, SaveAllocDestructable },
-    { "cargo", offsetof(edict_t, cargo), sizeof(cargo_t), cargo_fields, SaveAllocCargo },
-    { "stock", offsetof(edict_t, stock), sizeof(stock_t), stock_fields, SaveAllocStock },
-    { "waygate", offsetof(edict_t, waygate), sizeof(waygate_t), scalar_pool_fields, SaveAllocWaygate },
-    { "artillery", offsetof(edict_t, artillery), sizeof(artillery_t), artillery_fields, SaveAllocArtillery },
-    { "avatar", offsetof(edict_t, avatar), sizeof(avatar_t), avatar_fields, SaveAllocAvatar },
-    { "sleep", offsetof(edict_t, sleep), sizeof(sleep_t), sleep_fields, SaveAllocSleep },
-    { "soultrap", offsetof(edict_t, soultrap), sizeof(soulTrap_t), soultrap_fields, SaveAllocSoulTrap },
-    { "channel", offsetof(edict_t, channel), sizeof(channel_t), channel_fields, SaveAllocChannel },
+    { "orders", offsetof(edict_t, orders), sizeof(unitOrders_t), order_fields, SaveAllocOrders, MAX_ENTITIES },
+    { "movement", offsetof(edict_t, movement), sizeof(movement_t), movement_fields, SaveAllocMovement, MAX_ENTITIES },
+    { "route", offsetof(edict_t, route), sizeof(routeCache_t), route_fields, SaveAllocRoute, MAX_ENTITIES },
+    { "wander", offsetof(edict_t, wander), sizeof(wander_t), wander_fields, SaveAllocWander, MAX_ENTITIES },
+    { "construction", offsetof(edict_t, construction), sizeof(construction_t), construction_fields, SaveAllocConstruction, LIFECYCLE_POOL_CAP },
+    { "research", offsetof(edict_t, research), sizeof(research_t), scalar_pool_fields, SaveAllocResearch, LIFECYCLE_POOL_CAP },
+    { "rally", offsetof(edict_t, rally), sizeof(rally_t), rally_fields, SaveAllocRally, LIFECYCLE_POOL_CAP },
+    { "food", offsetof(edict_t, food), sizeof(food_t), scalar_pool_fields, SaveAllocFood, LIFECYCLE_POOL_CAP },
+    { "buildwork", offsetof(edict_t, buildwork), sizeof(buildwork_t), scalar_pool_fields, SaveAllocBuildwork, LIFECYCLE_POOL_CAP },
+    { "revival", offsetof(edict_t, revival), sizeof(revival_t), revival_fields, SaveAllocRevival, LIFECYCLE_POOL_CAP },
+    { "sacrifice", offsetof(edict_t, sacrifice), sizeof(sacrifice_t), sacrifice_fields, SaveAllocSacrifice, LIFECYCLE_POOL_CAP },
+    { "unsummon", offsetof(edict_t, unsummon), sizeof(unsummon_t), unsummon_fields, SaveAllocUnsummon, LIFECYCLE_POOL_CAP },
+    { "shadowmeld", offsetof(edict_t, shadowmeld), sizeof(shadowMeld_t), scalar_pool_fields, SaveAllocShadowMeld, LIFECYCLE_POOL_CAP },
+    { "militia", offsetof(edict_t, militia), sizeof(militia_t), militia_fields, SaveAllocMilitia, LIFECYCLE_POOL_CAP },
+    { "polymorph", offsetof(edict_t, polymorph), sizeof(polymorph_t), polymorph_fields, SaveAllocPolymorph, LIFECYCLE_POOL_CAP },
+    { "raven", offsetof(edict_t, raven), sizeof(raven_t), raven_fields, SaveAllocRaven, LIFECYCLE_POOL_CAP },
+    { "blight_growth", offsetof(edict_t, blight_growth), sizeof(blightGrowth_t), scalar_pool_fields, SaveAllocBlightGrowth, LIFECYCLE_POOL_CAP },
+    { "ensnare", offsetof(edict_t, ensnare), sizeof(ensnare_t), ensnare_fields, SaveAllocEnsnare, LIFECYCLE_POOL_CAP },
+    { "ancient_root", offsetof(edict_t, ancient_root), sizeof(ancientRoot_t), ancient_root_fields, SaveAllocAncientRoot, LIFECYCLE_POOL_CAP },
+    { "goldmine", offsetof(edict_t, goldmine), sizeof(goldMine_t), goldmine_fields, SaveAllocGoldMine, LIFECYCLE_POOL_CAP },
+    { "mineoverlay", offsetof(edict_t, mineoverlay), sizeof(mineOverlay_t), mineoverlay_fields, SaveAllocMineOverlay, LIFECYCLE_POOL_CAP },
+    { "acolyte_mine", offsetof(edict_t, acolyte_mine), sizeof(acolyteMine_t), acolyte_mine_fields, SaveAllocAcolyteMine, LIFECYCLE_POOL_CAP },
+    { "item", offsetof(edict_t, item), sizeof(item_t), item_fields, SaveAllocItem, LIFECYCLE_POOL_CAP },
+    { "destructable", offsetof(edict_t, destructable), sizeof(destructable_t), destructable_fields, SaveAllocDestructable, DESTRUCTABLE_POOL_CAP },
+    { "cargo", offsetof(edict_t, cargo), sizeof(cargo_t), cargo_fields, SaveAllocCargo, LIFECYCLE_POOL_CAP },
+    { "stock", offsetof(edict_t, stock), sizeof(stock_t), stock_fields, SaveAllocStock, LIFECYCLE_POOL_CAP },
+    { "waygate", offsetof(edict_t, waygate), sizeof(waygate_t), scalar_pool_fields, SaveAllocWaygate, LIFECYCLE_POOL_CAP },
+    { "artillery", offsetof(edict_t, artillery), sizeof(artillery_t), artillery_fields, SaveAllocArtillery, LIFECYCLE_POOL_CAP },
+    { "avatar", offsetof(edict_t, avatar), sizeof(avatar_t), avatar_fields, SaveAllocAvatar, LIFECYCLE_POOL_CAP },
+    { "sleep", offsetof(edict_t, sleep), sizeof(sleep_t), sleep_fields, SaveAllocSleep, LIFECYCLE_POOL_CAP },
+    { "soultrap", offsetof(edict_t, soultrap), sizeof(soulTrap_t), soultrap_fields, SaveAllocSoulTrap, LIFECYCLE_POOL_CAP },
+    { "unit_state", offsetof(edict_t, unit_state), sizeof(unitState_t), unit_state_fields, SaveAllocUnitState, MAX_ENTITIES },
+    { "sound", offsetof(edict_t, sound), sizeof(unitSounds_t), sound_fields, SaveAllocSounds, MAX_ENTITIES },
+    { "missile", offsetof(edict_t, missile), sizeof(attackMissile_t), missile_fields, SaveAllocMissile, MAX_ENTITIES },
+    { "inventory", offsetof(edict_t, inventory), sizeof(inventory_t), inventory_fields, SaveAllocInventory, MAX_ENTITIES },
+    { "harvest", offsetof(edict_t, harvest), sizeof(harvest_t), harvest_fields, SaveAllocHarvest, MAX_ENTITIES },
+    { "vision", offsetof(edict_t, vision), sizeof(visibility_t), vision_fields, SaveAllocVisibility, MAX_ENTITIES },
+    { "channel", offsetof(edict_t, channel), sizeof(channel_t), channel_fields, SaveAllocChannel, LIFECYCLE_POOL_CAP },
 };
 
 static void *SavePoolSlot(edict_t const *ent, savePool_t const *pool) {
@@ -2246,7 +2293,7 @@ static bool WritePool(FILE *f, savePool_t const *pool) {
 
 static bool ReadPool(FILE *f, savePool_t const *pool) {
     uint32_t count;
-    if (!LoadBytes(f, &count, sizeof(count)) || count >= DESTRUCTABLE_POOL_CAP || count > globals.num_edicts) return false;
+    if (!LoadBytes(f, &count, sizeof(count)) || count >= pool->capacity || count > globals.num_edicts) return false;
     FOR_LOOP(n, count) {
         uint32_t index;
         if (!LoadBytes(f, &index, sizeof(index)) || index >= globals.num_edicts ||
@@ -2394,10 +2441,11 @@ static void RebindEntityModels(edict_t *ent) {
         }
         ent->s.model = G_RegisterModel(model_filename);
     }
-    if (ent->attack1.weapon == WPN_MISSILE || ent->attack1.weapon == WPN_ARTILLERY)
-        ent->attack1.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[0].art);
-    if (ent->attack2.weapon == WPN_MISSILE || ent->attack2.weapon == WPN_ARTILLERY)
-        ent->attack2.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[1].art);
+    if (!ent->unit_state) return;
+    if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY)
+        ent->unit_state->attack1.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[0].art);
+    if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY)
+        ent->unit_state->attack2.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[1].art);
 }
 
 bool ReadGame(cstring_t filename) {
@@ -2530,7 +2578,7 @@ bool ReadGame(cstring_t filename) {
     FOR_LOOP(i, game.max_clients) game.clients[i].camera.target_controller = targets[i] < 0 ? NULL : g_edicts + targets[i];
     FOR_LOOP(i, globals.num_edicts) {
         edict_t *ent = g_edicts + i;
-        if (ent->inuse && ent->rally_indicator && ent->owner && ent->owner->client)
+        if (ent->inuse && G_UnitHasFlag(ent, UNIT_FLAG_RALLY_INDICATOR) && ent->owner && ent->owner->client)
             ent->owner->client->rally_indicator = ent;
     }
     FOR_LOOP(i, globals.num_edicts) {
@@ -2803,14 +2851,14 @@ TEST(wc3_save, missile_attack_projectile_models_are_reregistered_after_load) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0.0f, 0.0f);
     unit->s.flags |= EF_UNIT;
-    unit->attack1.weapon = WPN_MISSILE; unit->attack1.projectile.model = 6;
-    unit->attack2.weapon = WPN_ARTILLERY; unit->attack2.projectile.model = 7;
+    unit->unit_state->attack1.weapon = WPN_MISSILE; unit->unit_state->attack1.projectile.model = 6;
+    unit->unit_state->attack2.weapon = WPN_ARTILLERY; unit->unit_state->attack2.projectile.model = 7;
     T_ASSERT(WriteGame(filename));
     T_ASSERT(save_test_read_with_model_stub(filename));
     T_ASSERT(save_test_model_index(unit->data.UnitProfile->attack[0].art, false) > 0);
     T_ASSERT(save_test_model_index(unit->data.UnitProfile->attack[1].art, false) > 0);
-    T_EQ(unit->attack1.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[0].art, false));
-    T_EQ(unit->attack2.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[1].art, false));
+    T_EQ(unit->unit_state->attack1.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[0].art, false));
+    T_EQ(unit->unit_state->attack2.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[1].art, false));
     G_SetProfileRows(old); free_slk_rows(rows);
     remove(filename);
 }
@@ -3044,9 +3092,9 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     edict_t *goal = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 64);
     int const index = unit - g_edicts, goal_index = goal - g_edicts;
-    unit->attack_cooldown_end_time = 12000;
-    unit->attack_backswing_end_time = 9000;
-    unit->attack_target_spawn_time = goal->spawn_time;
+    unit->unit_state->attack_cooldown_end_time = 12000;
+    unit->unit_state->attack_backswing_end_time = 9000;
+    unit->unit_state->attack_target_spawn_time = goal->spawn_time;
     unit->orders->cargo_unload_pending = true;
     unit->orders->cargo_unload_ability = MAKEFOURCC('A','t','d','p');
     unit->orders->cargo_unload_goal = goal;
@@ -3058,7 +3106,7 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     unit->orders->wisp_egress_target_valid = true;
     unit->unitinfo.PropWindow = 0.0f;
     T_ASSERT(WriteGame(filename));
-    unit->attack_cooldown_end_time = G_Time();
+    unit->unit_state->attack_cooldown_end_time = G_Time();
     unit->orders->cargo_unload_pending = false;
     unit->orders->cargo_unload_goal = NULL;
     unit->orders->wisp_egress_tree = NULL;
@@ -3068,10 +3116,10 @@ TEST(wc3_save, current_combat_cargo_state_round_trips_without_migration) {
     T_ASSERT(ReadGame(filename));
     unit = g_edicts + index;
     goal = g_edicts + goal_index;
-    T_ASSERT((int32_t)(unit->attack_cooldown_end_time - G_Time()) > 0);
-    T_EQ(unit->attack_cooldown_end_time, 12000);
-    T_EQ(unit->attack_backswing_end_time, 9000);
-    T_EQ(unit->attack_target_spawn_time, goal->spawn_time);
+    T_ASSERT((int32_t)(unit->unit_state->attack_cooldown_end_time - G_Time()) > 0);
+    T_EQ(unit->unit_state->attack_cooldown_end_time, 12000);
+    T_EQ(unit->unit_state->attack_backswing_end_time, 9000);
+    T_EQ(unit->unit_state->attack_target_spawn_time, goal->spawn_time);
     T_FEQ(unit->unitinfo.PropWindow, 0.0f, 0.001f);
     T_ASSERT(unit->orders->cargo_unload_pending);
     T_EQ(unit->orders->cargo_unload_ability, MAKEFOURCC('A','t','d','p'));
@@ -3146,10 +3194,23 @@ TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
     edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
     FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
+        if (SavePoolSlot(unit, save_pools + i)) continue;
         void *slot = save_pools[i].alloc();
         memcpy((uint8_t *)unit + save_pools[i].offset, &slot, sizeof(slot));
     }
 
+    unit->unit_state->next_status_id = 57;
+    unit->unit_state->statuses[0].source = target;
+    unit->unit_state->statuses[0].source_spawn_time = target->spawn_time;
+    unit->unit_state->hero.xp = 123;
+    unit->vision->forced[3] = 2;
+    unit->vision->shared = 1u << 4;
+    unit->vision->reveal_until = 7000;
+    unit->harvest->lumber = 19;
+    unit->inventory->slots[2] = target;
+    unit->missile->attack_type = ATK_PIERCE;
+    unit->missile->reflected = true;
+    unit->sound->owner_pending = 17;
     unit->construction->progress = 13.5f;
     unit->construction->worker = target;
     unit->research->upgrade = MAKEFOURCC('R','h','m','e');
@@ -3187,8 +3248,20 @@ TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
         T_NOT_NULL(SavePoolSlot(unit, save_pools + i));
         if (!strcmp(save_pools[i].name, "orders")) T_NOT_NULL(target->orders);
+        else if (!strcmp(save_pools[i].name, "unit_state")) T_NOT_NULL(target->unit_state);
         else T_NULL(SavePoolSlot(target, save_pools + i));
     }
+    T_EQ(unit->unit_state->next_status_id, 57);
+    T_ASSERT(unit->unit_state->statuses[0].source == target);
+    T_EQ(unit->unit_state->hero.xp, 123);
+    T_EQ(unit->vision->forced[3], 2);
+    T_EQ(unit->vision->shared, 1u << 4);
+    T_EQ(unit->vision->reveal_until, 7000);
+    T_EQ(unit->harvest->lumber, 19);
+    T_ASSERT(G_InventoryItem(unit, 2) == target);
+    T_EQ(unit->missile->attack_type, ATK_PIERCE);
+    T_ASSERT(unit->missile->reflected);
+    T_EQ(unit->sound->owner_pending, 17);
     T_ASSERT(unit->construction);
     T_FEQ(unit->construction->progress, 13.5f, 0.001f);
     T_ASSERT(unit->construction->worker == target);

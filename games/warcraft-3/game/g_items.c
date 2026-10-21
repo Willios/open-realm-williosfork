@@ -383,15 +383,15 @@ static void G_RetainConsumedItemForUseEvent(edict_t *item) {
     item->item->pending_use_carrier_spawn_time = carrier ? carrier->spawn_time : 0;
     item->item->pending_use_slot = slot;
     if (carrier && carrier->inuse) {
-        if (slot < 0 || slot >= MAX_INVENTORY || carrier->inventory[slot] != item) {
+        if (slot < 0 || slot >= MAX_INVENTORY || G_InventoryItem(carrier, slot) != item) {
             slot = -1;
             FOR_LOOP(i, MAX_INVENTORY) {
-                if (carrier->inventory[i] == item) { slot = (int32_t)i; break; }
+                if (G_InventoryItem(carrier, i) == item) { slot = (int32_t)i; break; }
             }
         }
         if (slot >= 0) {
             G_ApplyItemStats(carrier, item, false);
-            carrier->inventory[slot] = NULL;
+            carrier->inventory->slots[slot] = NULL;
         }
         G_RefreshInventoryUI(carrier);
     }
@@ -460,7 +460,7 @@ void G_RunConsumedItemFrees(void) {
 int32_t G_FindFreeInventorySlot(edict_t const *unit) {
     uint32_t capacity = G_InventoryCapacity(unit);
 
-    FOR_LOOP(i, capacity) if (!unit->inventory[i]) return (int32_t)i;
+    FOR_LOOP(i, capacity) if (!G_InventoryItem(unit, i)) return (int32_t)i;
     return -1;
 }
 
@@ -483,7 +483,7 @@ bool G_CanPickupItem(edict_t *unit, edict_t *item) {
 }
 
 bool G_AddItemToSlotInternal(edict_t *unit, edict_t *item, uint32_t slot, bool publish_event) {
-    if (slot >= G_InventoryCapacity(unit) || !G_CanPickupItem(unit, item) || unit->inventory[slot]) {
+    if (slot >= G_InventoryCapacity(unit) || !G_CanPickupItem(unit, item) || G_InventoryItem(unit, slot)) {
         return false;
     }
 
@@ -493,7 +493,8 @@ bool G_AddItemToSlotInternal(edict_t *unit, edict_t *item, uint32_t slot, bool p
     item->item->in_world = false;
     item->item->carrier = unit;
     item->item->inventory_slot = (int32_t)slot;
-    unit->inventory[slot] = item;
+    G_InitInventory(unit);
+    unit->inventory->slots[slot] = item;
     G_ApplyItemStats(unit, item, true);
     G_RefreshInventoryUI(unit);
     if (publish_event) {
@@ -524,7 +525,7 @@ static bool G_TransferCarriedItemInternal(edict_t *recipient, edict_t *item, boo
     source = item->item->carrier;
     source_slot = item->item->inventory_slot;
     if (!source || !source->inuse || source_slot < 0 || source_slot >= MAX_INVENTORY ||
-        source->inventory[source_slot] != item) return false;
+        G_InventoryItem(source, source_slot) != item) return false;
     if (source == recipient) return true;
     /* Ability-bound items (notably the filled Soul Gem) are never transferable
      * to a different carrier, even through a scripted UnitAddItem. Plain
@@ -534,8 +535,9 @@ static bool G_TransferCarriedItemInternal(edict_t *recipient, edict_t *item, boo
     if (target_slot < 0) return false;
 
     G_ApplyItemStats(source, item, false);
-    source->inventory[source_slot] = NULL;
-    recipient->inventory[target_slot] = item;
+    source->inventory->slots[source_slot] = NULL;
+    G_InitInventory(recipient);
+    recipient->inventory->slots[target_slot] = item;
     item->item->carrier = recipient;
     item->item->inventory_slot = target_slot;
     G_ApplyItemStats(recipient, item, true);
@@ -682,7 +684,7 @@ static bool G_DropItemAtInternal(edict_t *unit, uint32_t slot, vec2_t const *pos
     if (!unit || !position || slot >= (uint32_t)G_InventoryCapacity(unit)) {
         return false;
     }
-    item = unit->inventory[slot];
+    item = G_InventoryItem(unit, slot);
     if (!G_IsItem(item) || item->item->carrier != unit || item->item->inventory_slot != (int32_t)slot ||
         item->item->in_world) {
         return false;
@@ -696,7 +698,7 @@ static bool G_DropItemAtInternal(edict_t *unit, uint32_t slot, vec2_t const *pos
     G_FindUnitUnstuckPosition(item, position, &drop_position);
 
     G_ApplyItemStats(unit, item, false);
-    unit->inventory[slot] = NULL;
+    unit->inventory->slots[slot] = NULL;
     item->item->carrier = NULL;
     item->item->inventory_slot = -1;
     item->item->in_world = true;
@@ -716,14 +718,14 @@ bool G_DropItemAt(edict_t *unit, uint32_t slot, vec2_t const *position) {
     edict_t *item;
 
     if (!unit || slot >= (uint32_t)G_InventoryCapacity(unit)) return false;
-    item = unit->inventory[slot];
+    item = G_InventoryItem(unit, slot);
     if (!G_ItemDroppable(item) || G_ItemAbilitiesPreventDrop(unit, item)) return false;
     return G_DropItemAtInternal(unit, slot, position, true);
 }
 
 bool G_DropItemAtScripted(edict_t *unit, uint32_t slot, vec2_t const *position) {
     if (unit && slot < G_InventoryCapacity(unit) &&
-        G_ItemAbilitiesPreventDrop(unit, unit->inventory[slot])) return false;
+        G_ItemAbilitiesPreventDrop(unit, G_InventoryItem(unit, slot))) return false;
     return G_DropItemAtInternal(unit, slot, position, true);
 }
 
@@ -742,7 +744,7 @@ void G_DropInventoryOnDeath(edict_t *unit) {
     default_drop = G_InventoryDropsItemsOnDeath(unit);
     capacity = G_InventoryCapacity(unit);
     FOR_LOOP(slot, capacity) {
-        edict_t *item = unit->inventory[slot];
+        edict_t *item = G_InventoryItem(unit, slot);
         if (!G_IsItem(item) || G_ItemAbilitiesPreventDrop(unit, item)) continue;
         if (item->item->drop_on_death_set ? item->item->drop_on_death : default_drop)
             G_DropItemAtInternal(unit, slot, &unit->s.origin2, false);
@@ -753,22 +755,23 @@ bool G_DetachItemAtScripted(edict_t *unit, uint32_t slot) {
     edict_t *item;
 
     if (!unit || slot >= (uint32_t)G_InventoryCapacity(unit)) return false;
-    item = unit->inventory[slot];
+    item = G_InventoryItem(unit, slot);
     if (!G_IsItem(item) || item->item->carrier != unit || item->item->inventory_slot != (int32_t)slot ||
         item->item->in_world) return false;
     G_ApplyItemStats(unit, item, false);
-    unit->inventory[slot] = NULL;
+    unit->inventory->slots[slot] = NULL;
     item->item->inventory_slot = -1;
     G_RefreshInventoryUI(unit);
     return true;
 }
 
 bool G_ReattachItemAtScripted(edict_t *unit, edict_t *item, uint32_t slot) {
-    if (!unit || slot >= (uint32_t)G_InventoryCapacity(unit) || unit->inventory[slot] ||
+    if (!unit || slot >= (uint32_t)G_InventoryCapacity(unit) || G_InventoryItem(unit, slot) ||
         !G_IsItem(item) || item->item->carrier != unit || item->item->inventory_slot != -1 ||
         item->item->in_world || item->item->pending_use_removal) return false;
     item->item->inventory_slot = (int32_t)slot;
-    unit->inventory[slot] = item;
+    G_InitInventory(unit);
+    unit->inventory->slots[slot] = item;
     G_ApplyItemStats(unit, item, true);
     G_RefreshInventoryUI(unit);
     G_PublishEventWithSource(unit, EVENT_PLAYER_UNIT_PICKUP_ITEM, item);
@@ -796,7 +799,7 @@ static void G_DropItemThink(edict_t *unit) {
         return;
     }
     slot = item->item->inventory_slot;
-    if (slot < 0 || slot >= MAX_INVENTORY || unit->inventory[slot] != item) {
+    if (slot < 0 || slot >= MAX_INVENTORY || G_InventoryItem(unit, slot) != item) {
         G_StopDropItemOrder(unit);
         return;
     }
@@ -842,7 +845,7 @@ static bool G_CanGiveItemTarget(edict_t *source, edict_t *item, edict_t *recipie
         item->item->carrier != source || !G_ItemDroppable(item) ||
         G_ItemAbilitiesPreventDrop(source, item)) return false;
     slot = item->item->inventory_slot;
-    return slot >= 0 && slot < MAX_INVENTORY && source->inventory[slot] == item;
+    return slot >= 0 && slot < MAX_INVENTORY && G_InventoryItem(source, slot) == item;
 }
 
 static void G_GiveItemThink(edict_t *source) {
@@ -911,7 +914,7 @@ bool G_OrderDropItemAt(edict_t *unit, edict_t *item, vec2_t const *position) {
         !G_ItemDroppable(item) || G_ItemAbilitiesPreventDrop(unit, item) || (unit->aiflags & AI_IMMOBILE) ||
         !G_IsItem(item) || item->item->carrier != unit || item->item->in_world ||
         item->item->inventory_slot < 0 || item->item->inventory_slot >= MAX_INVENTORY ||
-        unit->inventory[item->item->inventory_slot] != item) {
+        G_InventoryItem(unit, item->item->inventory_slot) != item) {
         return false;
     }
 
@@ -934,10 +937,10 @@ void G_RemoveItem(edict_t *item) {
     carrier = item->item->carrier;
     slot = item->item->inventory_slot;
     if (carrier && carrier->inuse) {
-        if (slot < 0 || slot >= MAX_INVENTORY || carrier->inventory[slot] != item) {
+        if (slot < 0 || slot >= MAX_INVENTORY || G_InventoryItem(carrier, slot) != item) {
             slot = -1;
             FOR_LOOP(i, MAX_INVENTORY) {
-                if (carrier->inventory[i] == item) {
+                if (G_InventoryItem(carrier, i) == item) {
                     slot = (int32_t)i;
                     break;
                 }
@@ -945,7 +948,7 @@ void G_RemoveItem(edict_t *item) {
         }
         if (slot >= 0) {
             G_ApplyItemStats(carrier, item, false);
-            carrier->inventory[slot] = NULL;
+            carrier->inventory->slots[slot] = NULL;
         }
         G_RefreshInventoryUI(carrier);
     }
@@ -970,13 +973,13 @@ void G_ReleaseInventoryOnUnitRemoval(edict_t *unit) {
     if (!unit || !unit->inuse || unit->targtype == TARG_ITEM) return;
     inventory_owner = G_InventoryCapacity(unit) > 0;
     FOR_LOOP(slot, MAX_INVENTORY) {
-        edict_t *item = unit->inventory[slot];
+        edict_t *item = G_InventoryItem(unit, slot);
         if (!item) continue;
         inventory_owner = true;
         if (G_IsItem(item) && item->item->carrier == unit)
             G_RemoveItem(item);
         else
-            unit->inventory[slot] = NULL;
+            unit->inventory->slots[slot] = NULL;
     }
     if (!inventory_owner) return;
     /* Detached items have carrier==unit but are not present in any slot.
@@ -1003,7 +1006,7 @@ void G_UseItem(edict_t *unit, uint32_t slot) {
         slot >= G_InventoryCapacity(unit) || unit->s.player >= MAX_PLAYERS) {
         return;
     }
-    item = unit->inventory[slot];
+    item = G_InventoryItem(unit, slot);
     if (!item) {
         return;
     }
@@ -1048,7 +1051,7 @@ edict_t *G_GetDraggedItem(gameClient_t *client) {
     if (!item || !carrier || item->spawn_time != client->menu.dragged_item_spawn_time ||
         !G_UnitCanControl(client, carrier) || !G_InventoryCanDropItems(carrier) || item->item->in_world ||
         item->item->inventory_slot >= G_InventoryCapacity(carrier) ||
-        carrier->inventory[item->item->inventory_slot] != item) return NULL;
+        G_InventoryItem(carrier, item->item->inventory_slot) != item) return NULL;
     return item;
 }
 

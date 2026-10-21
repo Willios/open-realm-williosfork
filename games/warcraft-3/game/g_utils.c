@@ -95,7 +95,7 @@ void G_FreeEdict(edict_t *ent) {
     G_InvalidateUnitShortcutsForUnit(ent);
     G_InvalidateRallyTarget(ent);
     if ((ent->revival && ent->revival->reviving)) G_CancelHeroRevive(ent->revival->producer, ent);
-    if (ent->training) G_ClearTrainingQueueFood(ent);
+    if (G_UnitHasFlag(ent, UNIT_FLAG_TRAINING)) G_ClearTrainingQueueFood(ent);
     else { G_CancelHeroRevives(ent); G_CancelTrainingQueue(ent, true); }
     G_ClearUnitFood(ent);
     if (ent->s.flags & EF_FOW_BLOCKER) G_FowMarkBlockersDirty();

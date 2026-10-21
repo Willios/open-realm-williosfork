@@ -145,18 +145,18 @@ bool G_DestructableCanBeAttackedBy(edict_t const *attacker, edict_t const *targe
     uint32_t flag;
 
     if (!attacker || !G_DestructableIsAttackable(target) ||
-        (attacker->attack1.type == ATK_NONE && attacker->attack2.type == ATK_NONE)) {
+        (attacker->unit_state->attack1.type == ATK_NONE && attacker->unit_state->attack2.type == ATK_NONE)) {
         return false;
     }
     /* Retail lets the explicit Attack command cut down trees even though
      * standard UnitWeapons.slk melee target lists usually omit "tree".
      * Smart handling is still separate and workers keep Harvest precedence. */
     if (target->targtype == TARG_TREE)
-        return (attacker->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0)) ||
-               (attacker->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1));
+        return (attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0)) ||
+               (attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1));
     flag = G_TargetFlagForType(target->targtype);
-    return flag && ((attacker->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) && (attacker->attack1.targetsAllowed & flag)) ||
-                    (attacker->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) && (attacker->attack2.targetsAllowed & flag)));
+    return flag && ((attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) && (attacker->unit_state->attack1.targetsAllowed & flag)) ||
+                    (attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) && (attacker->unit_state->attack2.targetsAllowed & flag)));
 }
 
 bool G_DestructableAcceptsSmartAttack(edict_t const *attacker, edict_t const *target) {

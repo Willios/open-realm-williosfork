@@ -58,7 +58,7 @@ static void couple_setup(coupleFix_t *fix, cstring_t slk, uint32_t code, uint32_
 	fix->caster->svflags |= SVF_MONSTER; fix->partner->svflags |= SVF_MONSTER;
 	fix->enemy->svflags |= SVF_MONSTER; fix->wrong->svflags |= SVF_MONSTER;
 	fix->caster->targtype = fix->partner->targtype = fix->enemy->targtype = fix->wrong->targtype = TARG_GROUND;
-	fix->caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+	fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
 	fix->caster->mana.value = fix->caster->mana.max_value = 100;
 	fix->caster->health.value = fix->caster->health.max_value = 200;
 	fix->partner->health.value = fix->partner->health.max_value = 300;

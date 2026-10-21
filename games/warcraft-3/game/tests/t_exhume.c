@@ -46,9 +46,9 @@ static void exh_setup(exhFix_t *fix) {
 	fix->wagon = alloc_test_unit(MAKEFOURCC('u', 'm', 't', 'w'), 100, 100);
 	fix->wagon->s.player = 0; fix->wagon->svflags |= SVF_MONSTER; fix->wagon->targtype = TARG_GROUND;
 	fix->wagon->health.value = fix->wagon->health.max_value = 500;
-	fix->wagon->heroabilities[0] = MAKE(heroability_t, .code = BZ_AEXH, .level = 1);
-	fix->wagon->heroabilities[1] = MAKE(heroability_t, .code = BZ_EXH_AMEL, .level = 1);
-	fix->wagon->heroabilities[2] = MAKE(heroability_t, .code = BZ_SCH2, .level = 1);
+	fix->wagon->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AEXH, .level = 1);
+	fix->wagon->unit_state->ranks[1] = MAKE(heroability_t, .code = BZ_EXH_AMEL, .level = 1);
+	fix->wagon->unit_state->ranks[2] = MAKE(heroability_t, .code = BZ_SCH2, .level = 1);
 	G_ActorAddSkill(fix->wagon, BZ_EXH_AMEL);
 	G_ActorAddSkill(fix->wagon, BZ_SCH2);
 	fix->wagon->think = monster_think;
@@ -249,7 +249,7 @@ TEST(wc3_spell, cannibalize_approaches_moving_corpse_holder_not_hidden_corpse_or
     caster->collision = 16.0f;
     fix.wagon->collision = 32.0f;
     caster->data.UnitAbilities = &abilities;
-    caster->heroabilities[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','c','a','n'), .level = 1);
+    caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','c','a','n'), .level = 1);
     caster->think = monster_think;
     unit_stand(caster);
     gi.LinkEntity(caster);
@@ -294,7 +294,7 @@ TEST(wc3_spell, cannibalize_approach_cancels_when_corpse_disappears) {
     caster->s.player = 0; caster->svflags |= SVF_MONSTER; caster->targtype = TARG_GROUND;
     caster->health.max_value = 1000.0f; caster->health.value = 500.0f;
     caster->unitinfo.MoveSpeed = 270.0f; caster->data.UnitAbilities = &abilities;
-    caster->heroabilities[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','c','a','n'), .level = 1);
+    caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','c','a','n'), .level = 1);
     caster->think = monster_think; unit_stand(caster); gi.LinkEntity(caster);
     clent->client = &game.clients[0]; clent->client->ps.number = 0; G_SelectEntity(clent->client, caster);
     item = S_AbilityItem(MAKEFOURCC('A','c','a','n'));
@@ -397,7 +397,7 @@ TEST(wc3_spell, graveyard_waits_for_construction_completion_before_starting_cool
     graveyard = alloc_test_unit(MAKEFOURCC('u','g','r','v'), 100, 100);
     graveyard->s.player = 0; graveyard->svflags |= SVF_MONSTER;
     graveyard->health.value = graveyard->health.max_value = 900;
-    graveyard->heroabilities[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
+    graveyard->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
     if (!graveyard->construction) graveyard->construction = G_AllocConstruction();
     assert(graveyard->construction);
 
@@ -434,7 +434,7 @@ TEST(wc3_spell, graveyard_recycled_building_slot_cancels_producer) {
     graveyard = alloc_test_unit(MAKEFOURCC('u','g','r','v'), 100, 100);
     graveyard->s.player = 0; graveyard->svflags |= SVF_MONSTER;
     graveyard->health.value = graveyard->health.max_value = 900;
-    graveyard->heroabilities[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
+    graveyard->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
     S_RunAbilityUpdates(graveyard);
     thinker = graveyard_test_thinker(graveyard); T_NOT_NULL(thinker);
     graveyard->spawn_time++;
@@ -453,7 +453,7 @@ TEST(wc3_spell, graveyard_waits_for_legacy_self_link_construction) {
     graveyard = alloc_test_unit(MAKEFOURCC('u','g','r','v'), 100, 100);
     graveyard->s.player = 0; graveyard->svflags |= SVF_MONSTER;
     graveyard->health.value = graveyard->health.max_value = 900;
-    graveyard->heroabilities[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
+    graveyard->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
     graveyard->build = graveyard; /* Legacy construction marker; health may already be positive. */
 
     S_RunAbilityUpdates(graveyard);
@@ -485,7 +485,7 @@ TEST(wc3_spell, graveyard_uses_cool_dataa_datab_datac_unitid) {
     graveyard = alloc_test_unit(MAKEFOURCC('u','g','r','v'), 100, 100);
     graveyard->s.player = 0; graveyard->svflags |= SVF_MONSTER;
     graveyard->health.value = graveyard->health.max_value = 900;
-    graveyard->heroabilities[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
+    graveyard->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AGYD, .level = 1);
 
     T_NOT_NULL(item.ability); T_EQ(item.ability->proc, CAbilityGraveyard);
     T_ASSERT(item.ability->flags & AB_PASSIVE); T_ASSERT(item.ability->flags & AB_UPDATE);

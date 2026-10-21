@@ -54,8 +54,8 @@ static edict_t *volcano_doodad(void) {
 
 static uint32_t volcano_stun_ms(edict_t const *unit) {
     FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == BZ_BSTU)
-            return unit->abilstatus[i].duration_ms;
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == BZ_BSTU)
+            return unit->unit_state->statuses[i].duration_ms;
     return 0;
 }
 
@@ -114,7 +114,7 @@ static void volcano_setup(volcFix_t *fix) {
     fix->far->health.value = fix->far->health.max_value = 500;
     fix->hero->health.value = fix->hero->health.max_value = 500;
     fix->outer->health.value = fix->outer->health.max_value = 500;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_ANVC, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_ANVC, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 200;
 }
 

@@ -51,7 +51,7 @@ static purgeFix_t purge_setup(cstring_t slk, uint32_t code) {
 	fix.caster->s.player = 0; fix.enemy->s.player = 1;
 	fix.caster->svflags |= SVF_MONSTER; fix.enemy->svflags |= SVF_MONSTER;
 	fix.caster->targtype = fix.enemy->targtype = TARG_GROUND;
-	fix.caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+	fix.caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
 	fix.caster->mana.value = fix.caster->mana.max_value = 200;
 	fix.enemy->health.value = fix.enemy->health.max_value = 500;
 	fix.enemy->stand = unit_stand; unit_stand(fix.enemy);
@@ -82,8 +82,8 @@ TEST(wc3_spell, purge_full_protected_target_preserves_statuses) {
     T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_APG2, fix.enemy));
     T_EQ(G_UnitStatusLevel(fix.enemy, BZ_BPRG), 0);
     FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        T_EQ(fix.enemy->abilstatus[i].level, 1);
-        T_ASSERT(fix.enemy->abilstatus[i].buff_flags & WC3_STATUS_BUFF_UNDISPELLABLE);
+        T_EQ(fix.enemy->unit_state->statuses[i].level, 1);
+        T_ASSERT(fix.enemy->unit_state->statuses[i].buff_flags & WC3_STATUS_BUFF_UNDISPELLABLE);
     }
     purge_done(fix);
 }
@@ -92,10 +92,10 @@ TEST(wc3_spell, purge_full_protected_target_preserves_statuses) {
 TEST(wc3_spell, purge_reuses_slot_freed_by_dispel) {
     purgeFix_t fix = purge_setup(PURGE_APG2_SLK, BZ_APG2);
     fill_area_status_slots(fix.enemy, MAX_UNIT_STATUSES, true);
-    fix.enemy->abilstatus[0].buff_flags = WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL;
+    fix.enemy->unit_state->statuses[0].buff_flags = WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL;
     T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_APG2, fix.enemy));
     T_EQ(G_UnitStatusLevel(fix.enemy, BZ_BPRG), 1);
-    FOR_LOOP(i, MAX_UNIT_STATUSES) T_ASSERT(fix.enemy->abilstatus[i].level);
+    FOR_LOOP(i, MAX_UNIT_STATUSES) T_ASSERT(fix.enemy->unit_state->statuses[i].level);
     purge_done(fix);
 }
 

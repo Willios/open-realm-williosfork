@@ -51,8 +51,8 @@ static void shadowmeld_setup_as(shadowmeldFix_t *fix, uint32_t class_id) {
     fix->unit = alloc_test_unit(class_id, 0, 0);
     fix->unit->s.player = 0;
     fix->unit->svflags |= SVF_MONSTER;
-    fix->unit->abilities.added[0] = ID_ASHM;
-    ARRAY_COUNT(fix->unit->abilities.added) = 1;
+    fix->unit->unit_state->overrides.added[0] = ID_ASHM;
+    ARRAY_COUNT(fix->unit->unit_state->overrides.added) = 1;
     fix->unit->stand = unit_stand;
     unit_stand(fix->unit);
 }
@@ -122,8 +122,8 @@ TEST(wc3_shadowmeld, availability_is_scoped_to_each_shadowmeld_class) {
     gameClient_t *client;
 
     shadowmeld_setup(&fix);
-    fix.unit->abilities.added[1] = ID_AHID;
-    ARRAY_COUNT(fix.unit->abilities.added) = 2;
+    fix.unit->unit_state->overrides.added[1] = ID_AHID;
+    ARRAY_COUNT(fix.unit->unit_state->overrides.added) = 2;
     client = &game.clients[0];
     client->ps.number = 0;
     fix.unit->s.player = 0;
@@ -162,8 +162,8 @@ TEST(wc3_shadowmeld, availability_is_scoped_to_each_shadowmeld_class) {
 TEST(wc3_shadowmeld, akama_variant_is_distinct_and_suppresses_auto_acquire) {
     shadowmeldFix_t fix;
     shadowmeld_setup(&fix);
-    fix.unit->abilities.added[0] = ID_AHID;
-    ARRAY_COUNT(fix.unit->abilities.added) = 1;
+    fix.unit->unit_state->overrides.added[0] = ID_AHID;
+    ARRAY_COUNT(fix.unit->unit_state->overrides.added) = 1;
     G_SetTimeOfDay(game.constants.duskTimeGameHours);
     G_UpdateTimeOfDay();
 
@@ -260,7 +260,7 @@ TEST(wc3_shadowmeld, owner_ghost_alpha_multiplies_authored_vertex_alpha) {
     clent->client = &game.clients[0];
     clent->client->ps.number = 0;
     fix.unit->vertex_color = MAKE(color32_t, 210, 180, 150, 200);
-    fix.unit->vertex_color_set = true;
+    G_SetUnitFlag(fix.unit, UNIT_FLAG_VERTEX_COLOR_SET, true);
     G_SetTimeOfDay(game.constants.duskTimeGameHours);
     G_UpdateTimeOfDay();
     S_RunAbilityUpdates(fix.unit);
@@ -304,10 +304,11 @@ TEST(wc3_shadowmeld, persistent_invisibility_uses_owner_ghost_alpha) {
     clent->client = &game.clients[0];
     clent->client->ps.number = 0;
     fix.unit->vertex_color = MAKE(color32_t, 210, 180, 150, 200);
-    fix.unit->vertex_color_set = true;
+    G_SetUnitFlag(fix.unit, UNIT_FLAG_VERTEX_COLOR_SET, true);
 
     fix.unit->runtime.flags |= UNIT_BALANCE_PERMANENT_INVISIBLE;
-    fix.unit->permanent_invisibility_reveal_until = 0;
+    G_InitVisibility(fix.unit);
+    fix.unit->vision->reveal_until = 0;
     T_ASSERT(shadowmeld_datagram_tint(clent, fix.unit->s.number, &color));
     T_EQ(color.a, 70);
 
@@ -533,8 +534,8 @@ TEST(wc3_shadowmeld, attack_order_immediately_breaks_shadowmeld_and_hide) {
     edict_t *enemy;
     shadowmeld_setup(&fix);
     fix.unit->data.UnitWeapons = &weapons;
-    fix.unit->attack1.type = ATK_NORMAL;
-    fix.unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    fix.unit->unit_state->attack1.type = ATK_NORMAL;
+    fix.unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     G_SetTimeOfDay(game.constants.duskTimeGameHours);
     G_UpdateTimeOfDay();
 
@@ -566,8 +567,8 @@ TEST(wc3_shadowmeld, explicit_hide_does_not_retaliate_when_hit_during_fade) {
     shadowmeld_setup(&fix);
     fix.unit->health.value = fix.unit->health.max_value = 100.0f;
     fix.unit->data.UnitWeapons = &weapons;
-    fix.unit->attack1.type = ATK_NORMAL;
-    fix.unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    fix.unit->unit_state->attack1.type = ATK_NORMAL;
+    fix.unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     G_SetTimeOfDay(game.constants.duskTimeGameHours);
     G_UpdateTimeOfDay();
 
@@ -598,11 +599,11 @@ TEST(wc3_shadowmeld, explicit_hide_blocks_idle_automatic_attack_acquisition) {
     uint32_t i;
     shadowmeld_setup_as(&fix, MAKEFOURCC('E', 't', 'y', 'r'));
     fix.unit->data.UnitWeapons = &weapons;
-    fix.unit->attack1.type = ATK_NORMAL;
-    fix.unit->attack1.cooldown = 1.0f;
-    fix.unit->attack1.damageBase = 10;
-    fix.unit->attack1.range = 150.0f;
-    fix.unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    fix.unit->unit_state->attack1.type = ATK_NORMAL;
+    fix.unit->unit_state->attack1.cooldown = 1.0f;
+    fix.unit->unit_state->attack1.damageBase = 10;
+    fix.unit->unit_state->attack1.range = 150.0f;
+    fix.unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     fix.unit->runtime.acquisition_range = 128.0f;
     enemy = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 64, 0);
     enemy->s.player = 1;

@@ -2022,7 +2022,7 @@ void G_SetClientConnected(edict_t *player, bool connected) {
  * unit row.  Only live, metadata-bound units contribute authored food values. */
 void G_AccumulatePlayerFood(gameClient_t *client) {
     FILTER_EDICTS(ent, ent->inuse && ent->data.UnitBalance && client->ps.number == ent->s.player) {
-        if (ent->svflags & SVF_DEADMONSTER || ent->training) continue;
+        if (ent->svflags & SVF_DEADMONSTER || G_UnitHasFlag(ent, UNIT_FLAG_TRAINING)) continue;
         G_SetUnitFoodUsed(ent, ent->data.UnitBalance->foodUsed);
         if (!ent->construction) G_SetUnitFoodMade(ent, ent->data.UnitBalance->foodMade);
     }
@@ -2749,7 +2749,7 @@ TEST(wc3_score_postgame, frame_tail_removes_entities_before_navigation) {
     T_NOT_NULL(hero);
     if (!hero) return;
     hero->s.player = 0;
-    hero->hero.level = 3;
+    hero->unit_state->hero.level = 3;
     postgame_test_removal = hero;
     postgame_test_removed_at_menu = false;
     T_ASSERT(run_test_jass("function main takes nothing returns nothing\nendfunction\n"));
@@ -2910,7 +2910,7 @@ TEST(wc3_score_finalization, deferred_hero_removal_precedes_snapshot) {
     T_NOT_NULL(hero);
     if (!hero) return;
     hero->s.player = 0;
-    hero->hero.level = 3;
+    hero->unit_state->hero.level = 3;
     G_QueueScoreTransition("menu", "menu_main");
     G_DeferFreeEdict(hero);
     G_RunDeferredFrees();

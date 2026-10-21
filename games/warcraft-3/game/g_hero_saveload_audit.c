@@ -54,17 +54,17 @@ static void hsa_capture(edict_t const *hero, hsaSnap_t *snap) {
     snap->number = hero->s.number;
     snap->class_id = hero->class_id;
     snap->origin = hero->s.origin;
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        snap->abilities[i] = hero->heroabilities[i].code;
-        snap->levels[i] = hero->heroabilities[i].level;
+    FOR_LOOP(i, hero->unit_state ? MAX_HERO_ABILITIES : 0) {
+        snap->abilities[i] = hero->unit_state->ranks[i].code;
+        snap->levels[i] = hero->unit_state->ranks[i].level;
     }
-    snap->added_count = ARRAY_COUNT(hero->abilities.added);
+    snap->added_count = (hero->unit_state ? ARRAY_COUNT(hero->unit_state->overrides.added) : 0);
     if (snap->added_count > MAX_ABILITIES) snap->added_count = MAX_ABILITIES;
-    FOR_LOOP(i, snap->added_count) snap->added[i] = hero->abilities.added[i];
+    FOR_LOOP(i, snap->added_count) snap->added[i] = hero->unit_state->overrides.added[i];
     FOR_LOOP(i, MAX_INVENTORY) {
-        if (!hero->inventory[i]) continue;
-        snap->inventory[i] = hero->inventory[i]->class_id;
-        snap->charges[i] = hero->inventory[i]->item->charges;
+        if (!G_InventoryItem(hero, i)) continue;
+        snap->inventory[i] = G_InventoryItem(hero, i)->class_id;
+        snap->charges[i] = G_InventoryItem(hero, i)->item->charges;
     }
     if (hero->currentmove && hero->currentmove->animation)
         strlcpy(snap->move, hero->currentmove->animation, sizeof(snap->move));

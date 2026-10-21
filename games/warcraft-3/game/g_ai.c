@@ -22,11 +22,12 @@ static bool unit_is_active_repair_move(edict_t *self) {
 
 void unit_setmove(edict_t *self, umove_t *move) {
     G_InitUnitOrders(self);
+    G_InitUnitState(self);
     bool was_idle = G_UnitIsIdleWorker(self);
     bool const was_standing = self->currentmove && self->currentmove->think == ai_stand;
 
     if (self->currentmove != move) move_cancel_displacement(self);
-    self->animation_override = false;
+    G_SetUnitFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE, false);
 
     /* buildwork.ability is staged before Repair switches from the worker's
      * existing stand/move behavior. Only an OLD Repair move means this
@@ -62,13 +63,13 @@ void unit_setmove(edict_t *self, umove_t *move) {
                 (long)(self - g_edicts),
                 self->currentmove->animation ? self->currentmove->animation : "<none>",
                 move->animation ? move->animation : "<none>",
-                self->build_project ? (cstring_t)&self->build_project : "----",
+                self->orders->build_project ? (cstring_t)&self->orders->build_project : "----",
                 self->goalentity ? (long)(self->goalentity - g_edicts) : -1L,
-                self->build_preview ? (long)(self->build_preview - g_edicts) : -1L,
+                self->orders->build_preview ? (long)(self->orders->build_preview - g_edicts) : -1L,
                 self->s.origin2.x, self->s.origin2.y);
 #endif
         G_ClearBuildPreview(self);
-        self->build_project = 0;
+        self->orders->build_project = 0;
     }
     if (self->currentmove != move)
         S_UnitAbilityMoveLeave(self, move->proc);
@@ -163,8 +164,8 @@ static bool filter_sight(edict_t const *ent) {
 /* Does this unit have an attack to acquire targets with? */
 static bool unit_has_attack(edict_t const *self) {
     return S_CargoAttacksEnabled(self) &&
-           ((S_UnitAttackSlotEnabled(self, 0) && self->attack1.cooldown > 0.0f && (self->attack1.damageBase > 0 || self->attack1.numberOfDice > 0)) ||
-            (S_UnitAttackSlotEnabled(self, 1) && self->attack2.cooldown > 0.0f && (self->attack2.damageBase > 0 || self->attack2.numberOfDice > 0)));
+           ((S_UnitAttackSlotEnabled(self, 0) && self->unit_state->attack1.cooldown > 0.0f && (self->unit_state->attack1.damageBase > 0 || self->unit_state->attack1.numberOfDice > 0)) ||
+            (S_UnitAttackSlotEnabled(self, 1) && self->unit_state->attack2.cooldown > 0.0f && (self->unit_state->attack2.damageBase > 0 || self->unit_state->attack2.numberOfDice > 0)));
 }
 
 /* Throttle target re-acquisition: units scan only a few times per second,
@@ -182,8 +183,8 @@ float G_AcquisitionRange(edict_t const *self) {
 }
 
 static bool ai_has_siege_attack(edict_t const *self) {
-    return self && ((S_UnitAttackSlotEnabled(self, 0) && self->attack1.type == ATK_SIEGE) ||
-                    (S_UnitAttackSlotEnabled(self, 1) && self->attack2.type == ATK_SIEGE));
+    return self && ((S_UnitAttackSlotEnabled(self, 0) && self->unit_state->attack1.type == ATK_SIEGE) ||
+                    (S_UnitAttackSlotEnabled(self, 1) && self->unit_state->attack2.type == ATK_SIEGE));
 }
 
 /* Melee AI policy setters affect automatic target acquisition, not explicit player/script
@@ -471,7 +472,7 @@ static bool creep_guard_begin_return(edict_t *unit) {
     unit->orders->creep_guard_retry_at_ms = 0;
     unit_leavecombat(unit);
     unit->goalentity = NULL;
-    unit->attack_target_spawn_time = 0;
+    unit->unit_state->attack_target_spawn_time = 0;
     point = Waypoint_add(&unit->orders->creep_guard_origin);
     if (point) order_move(unit, point);
     /* order_move can reject movement (root, Cyclone, etc). Keep the return

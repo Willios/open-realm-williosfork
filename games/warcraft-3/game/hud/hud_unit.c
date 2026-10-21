@@ -627,8 +627,8 @@ uint8_t G_GetCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t 
         ((w->attack1.damageDice != 0 && S_UnitAttackSlotEnabled(ent, 0)) ||
          (w->attack2.damageDice != 0 && S_UnitAttackSlotEnabled(ent, 1))) && (!is_burrow || burrow_occupied)) {
         G_AddCommandButton(ent, buttons, max_buttons, &count, STR_CmdAttack, false, 0);
-        if ((S_UnitAttackSlotEnabled(ent, 0) && ent->attack1.weapon == WPN_ARTILLERY) ||
-            (S_UnitAttackSlotEnabled(ent, 1) && ent->attack2.weapon == WPN_ARTILLERY))
+        if ((S_UnitAttackSlotEnabled(ent, 0) && ent->unit_state->attack1.weapon == WPN_ARTILLERY) ||
+            (S_UnitAttackSlotEnabled(ent, 1) && ent->unit_state->attack2.weapon == WPN_ARTILLERY))
             G_AddCommandButton(ent, buttons, max_buttons, &count, STR_CmdAttackGround, false, 0);
     }
     /* Some WC3 data paths expose the Burrow hold/battle-stations abilities
@@ -646,7 +646,7 @@ uint8_t G_GetCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t 
         uint8_t const idx = count;
         G_AddCommandButton(ent, buttons, max_buttons, &count, STR_CmdSelectSkill, false, 0);
         if (count > idx) {
-            buttons[idx].number = ent->hero.skillpoints;
+            buttons[idx].number = ent->unit_state->hero.skillpoints;
         }
     }
     if ((!S_AncientHasRootAbility(ent) || S_AncientIsRooted(ent)) && G_UnitHasRally(ent)) {
@@ -667,16 +667,16 @@ uint8_t G_GetCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t 
                 G_AddAbilityCommandButtons(ent, buttons, max_buttons, &count, ability_code);
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
         char abil[5] = {0};
-        uint32_t const code = ent->abilities.added[i];
+        uint32_t const code = ent->unit_state->overrides.added[i];
         if (!code) continue;
         memcpy(abil, &code, 4);
         if (G_IsImplementedAbility(abil) && G_ActorHasSkill(ent, abil))
             G_AddAbilityCommandButtons(ent, buttons, max_buttons, &count, abil);
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *ha = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *ha = ent->unit_state->ranks + i;
         if (ha->level > 0 && G_IsUnitAbilityAvailable(ent, ha->code) &&
             G_UnitAbilityResearchVisible(ent, ha->code)) {
             uint8_t const idx = count;
@@ -807,7 +807,7 @@ uint8_t G_GetInventory(edict_t *ent, gameInventoryItem_t *items, uint8_t max_ite
     capacity = G_InventoryCapacity(ent);
     FOR_LOOP(slot, capacity) {
         if (count >= max_items) break;
-        if (G_BuildInventoryItem(ent, ent->inventory[slot], (uint8_t)slot, &items[count])) count++;
+        if (G_BuildInventoryItem(ent, G_InventoryItem(ent, slot), (uint8_t)slot, &items[count])) count++;
     }
     return count;
 }
@@ -888,7 +888,7 @@ uint8_t G_GetBuildQueue(edict_t *ent, gameQueueItem_t *queue, uint8_t max_queue)
                     progress = build->health.value / build->health.max_value;
                     progress = MAX(0, MIN(progress, 1));
                 }
-                food_blocked = build->training && cost > 0 && (!build->food || build->food->used == 0) && G_FoodLimitsEnabled();
+                food_blocked = G_UnitHasFlag(build, UNIT_FLAG_TRAINING) && cost > 0 && (!build->food || build->food->used == 0) && G_FoodLimitsEnabled();
             }
             UI_CopyString(queue[count].art, sizeof(queue[count].art), FindConfigValue(build_name, STR_ART));
         }

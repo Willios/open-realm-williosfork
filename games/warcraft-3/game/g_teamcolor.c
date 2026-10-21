@@ -71,16 +71,16 @@ void G_InitializeUnitVertexColor(edict_t *unit) {
     UnitUI_t const *ui;
 
     if (!unit || !(ui = unit->data.UnitUI)) return;
-    if (unit->vertex_color_override_set) return;
+    if (G_UnitHasFlag(unit, UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET)) return;
     if (ui->tintRed == 255 && ui->tintGreen == 255 && ui->tintBlue == 255) {
         unit->vertex_color = COLOR32_WHITE;
-        unit->vertex_color_set = false;
+        G_SetUnitFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET, false);
         return;
     }
     unit->vertex_color = MAKE(color32_t,
         BZ_CLAMP_U8(ui->tintRed), BZ_CLAMP_U8(ui->tintGreen),
         BZ_CLAMP_U8(ui->tintBlue), 255);
-    unit->vertex_color_set = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET, true);
 }
 
 /* Apply the map placement custom color when the unit type permits authored colors. */

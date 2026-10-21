@@ -68,8 +68,8 @@ TEST(wc3_item_lifecycle, passive_item_alias_applies_authored_attack_bonus) {
     slkTestData_t *idata = parse_slk_string(items), *olditem = G_SetSLKRows("ItemData", idata);
     setup_test_world();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
-    unit->attack1.temporaryDamageBonus = unit->attack2.temporaryDamageBonus = 0;
-    unit->temporary_armor_bonus = 0;
+    unit->unit_state->attack1.temporaryDamageBonus = unit->unit_state->attack2.temporaryDamageBonus = 0;
+    unit->unit_state->temporary_armor_bonus = 0;
     FOR_LOOP(i, 3) {
         edict_t *item = alloc_test_unit(codes[i], 32, 0);
         item->targtype = TARG_ITEM;
@@ -79,23 +79,23 @@ TEST(wc3_item_lifecycle, passive_item_alias_applies_authored_attack_bonus) {
         item->item->inventory_slot = -1;
         T_ASSERT(G_AddItemToSlot(unit, item, i));
     }
-    T_FEQ(unit->attack1.temporaryDamageBonus, 7, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 7, 0.001f);
-    T_FEQ(unit->temporary_armor_bonus, 1, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 7, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 7, 0.001f);
+    T_FEQ(unit->unit_state->temporary_armor_bonus, 1, 0.001f);
     uint32_t index = unit->s.number;
     T_ASSERT(WriteGame(path));
     T_ASSERT(ReadGame(path));
     unit = g_edicts + index;
-    T_FEQ(unit->attack1.temporaryDamageBonus, 7, 0.001f);
-    T_FEQ(unit->temporary_armor_bonus, 1, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 7, 0.001f);
+    T_FEQ(unit->unit_state->temporary_armor_bonus, 1, 0.001f);
     T_ASSERT(G_DropItem(unit, 1));
-    T_FEQ(unit->attack1.temporaryDamageBonus, 1, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 1, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 1, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 1, 0.001f);
     T_ASSERT(G_DropItem(unit, 2));
-    T_FEQ(unit->temporary_armor_bonus, 0, 0.001f);
+    T_FEQ(unit->unit_state->temporary_armor_bonus, 0, 0.001f);
     T_ASSERT(G_DropItem(unit, 0));
-    T_FEQ(unit->attack1.temporaryDamageBonus, 0, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 0, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 0, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 0, 0.001f);
     remove(path);
     G_SetSLKRows("ItemData", olditem); free_slk_rows(idata);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
@@ -126,7 +126,7 @@ TEST(wc3_item_lifecycle, passive_item_removal_ignores_current_can_use_permission
 
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
-    unit->attack1.temporaryDamageBonus = unit->attack2.temporaryDamageBonus = 0;
+    unit->unit_state->attack1.temporaryDamageBonus = unit->unit_state->attack2.temporaryDamageBonus = 0;
     item = alloc_test_unit(MAKEFOURCC('r','a','t','f'), 32, 0);
     item->targtype = TARG_ITEM;
     if (!item->item) item->item = G_AllocItem();
@@ -136,16 +136,16 @@ TEST(wc3_item_lifecycle, passive_item_removal_ignores_current_can_use_permission
 
     T_ASSERT(G_InventoryCanUseItems(unit));
     T_ASSERT(G_AddItemToSlot(unit, item, 0));
-    T_FEQ(unit->attack1.temporaryDamageBonus, 3, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 3, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 3, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 3, 0.001f);
 
     {
         slkTestData_t *disabled = parse_slk_string(disabled_slk);
         slkTestData_t *replaced = G_SetSLKRows("AbilityData", disabled);
         T_ASSERT(!G_InventoryCanUseItems(unit));
         T_ASSERT(G_DropItem(unit, 0));
-        T_FEQ(unit->attack1.temporaryDamageBonus, 0, 0.001f);
-        T_FEQ(unit->attack2.temporaryDamageBonus, 0, 0.001f);
+        T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 0, 0.001f);
+        T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 0, 0.001f);
         free_slk_rows(disabled);
         free_slk_rows(replaced);
     }
@@ -173,9 +173,9 @@ TEST(wc3_item_lifecycle, max_resource_item_bonuses_survive_hero_recompute) {
     edict_t *unit = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     balance = *unit->data.UnitBalance;
     unit->data.UnitBalance = &balance;
-    unit->hero.str = balance.strength;
-    unit->hero.agi = balance.agility;
-    unit->hero.intel = balance.intelligence;
+    unit->unit_state->hero.str = balance.strength;
+    unit->unit_state->hero.agi = balance.agility;
+    unit->unit_state->hero.intel = balance.intelligence;
     unit->health.max_value = balance.maxHealth;
     unit->health.value = balance.maxHealth;
     unit->mana.max_value = balance.maxMana;
@@ -188,8 +188,8 @@ TEST(wc3_item_lifecycle, max_resource_item_bonuses_survive_hero_recompute) {
         T_FEQ(unit->health.max_value, balance.maxHealth + 123, 0.001f);
         T_FEQ(unit->mana.max_value, balance.maxMana + 77, 0.001f);
 
-        unit->hero.str++;
-        unit->hero.intel++;
+        unit->unit_state->hero.str++;
+        unit->unit_state->hero.intel++;
         G_RecomputeHeroStats(unit);
         T_FEQ(unit->health.max_value, balance.maxHealth + 25 + 123, 0.001f);
         T_FEQ(unit->mana.max_value, balance.maxMana + 15 + 77, 0.001f);
@@ -225,23 +225,23 @@ TEST(wc3_item_lifecycle, strength_tome_modifies_strength) {
     unit->s.player = 0;
     G_SelectEntity(clent->client, unit);
     FOR_LOOP(i, 3) {
-        unit->hero.str = unit->hero.agi = unit->hero.intel = 10;
+        unit->unit_state->hero.str = unit->unit_state->hero.agi = unit->unit_state->hero.intel = 10;
         clent->client->menu.ability_code = codes[i][0];
         abilityitem_t item = S_AbilityItem(codes[i][0]);
         abilityCall_t call = { .item = &item, .entity = clent };
         T_ASSERT(S_AbilityMessage(clent, A_ITEM_USE, &call));
-        T_EQ(unit->hero.str, 10 + (i == 0));
-        T_EQ(unit->hero.agi, 10 + (i == 1));
-        T_EQ(unit->hero.intel, 10 + (i == 2));
+        T_EQ(unit->unit_state->hero.str, 10 + (i == 0));
+        T_EQ(unit->unit_state->hero.agi, 10 + (i == 1));
+        T_EQ(unit->unit_state->hero.intel, 10 + (i == 2));
         item = S_AbilityItem(codes[i][1]);
         T_ASSERT(S_AbilityMessage(unit, A_ITEM_ADD, &call));
-        T_EQ(unit->hero.str, 10 + 2 * (i == 0));
-        T_EQ(unit->hero.agi, 10 + 2 * (i == 1));
-        T_EQ(unit->hero.intel, 10 + 2 * (i == 2));
+        T_EQ(unit->unit_state->hero.str, 10 + 2 * (i == 0));
+        T_EQ(unit->unit_state->hero.agi, 10 + 2 * (i == 1));
+        T_EQ(unit->unit_state->hero.intel, 10 + 2 * (i == 2));
         T_ASSERT(S_AbilityMessage(unit, A_ITEM_REMOVE, &call));
-        T_EQ(unit->hero.str, 10 + (i == 0));
-        T_EQ(unit->hero.agi, 10 + (i == 1));
-        T_EQ(unit->hero.intel, 10 + (i == 2));
+        T_EQ(unit->unit_state->hero.str, 10 + (i == 0));
+        T_EQ(unit->unit_state->hero.agi, 10 + (i == 1));
+        T_EQ(unit->unit_state->hero.intel, 10 + (i == 2));
     }
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -266,7 +266,7 @@ TEST(wc3_item_lifecycle, orb_pickup_applies_authored_bonus_damage) {
     slkTestData_t *idata = parse_slk_string(items), *olditem = G_SetSLKRows("ItemData", idata);
     setup_test_world();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
-    unit->attack1.temporaryDamageBonus = unit->attack2.temporaryDamageBonus = 0;
+    unit->unit_state->attack1.temporaryDamageBonus = unit->unit_state->attack2.temporaryDamageBonus = 0;
     FOR_LOOP(i, 2) {
         edict_t *item = alloc_test_unit(codes[i], 32, 0);
         item->targtype = TARG_ITEM;
@@ -276,13 +276,13 @@ TEST(wc3_item_lifecycle, orb_pickup_applies_authored_bonus_damage) {
         item->item->inventory_slot = -1;
         T_ASSERT(G_AddItemToSlot(unit, item, i));
     }
-    T_FEQ(unit->attack1.temporaryDamageBonus, 24, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 24, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 24, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 24, 0.001f);
     T_ASSERT(G_DropItem(unit, 0));
-    T_FEQ(unit->attack1.temporaryDamageBonus, 13, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 13, 0.001f);
     T_ASSERT(G_DropItem(unit, 1));
-    T_FEQ(unit->attack1.temporaryDamageBonus, 0, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 0, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 0, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 0, 0.001f);
     G_SetSLKRows("ItemData", olditem); free_slk_rows(idata);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }

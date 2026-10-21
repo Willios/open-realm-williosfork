@@ -226,8 +226,8 @@ TEST(wc3_ancient_root, shop_command_card_keeps_uproot_position_and_click_dispatc
     unit->s.player = 0;
     unit->data.UnitProfile = &shop_profile;
     unit->data.UnitWeapons = &weapons;
-    unit->attack1.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96.0f, 64.0f);
     target->s.player = 1;
     target->svflags |= SVF_MONSTER;
@@ -288,10 +288,10 @@ TEST(wc3_ancient_root, protector_uses_authored_rooted_attack_mask) {
     unit = ancient_test_unit(true);
     unit->ancient_root->ability = TEST_ARO2;
     unit->data.UnitWeapons = &weapons;
-    unit->attack1.type = ATK_NORMAL;
-    unit->attack2.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
-    unit->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack2.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96.0f, 64.0f);
     target->s.player = 1;
     target->svflags |= SVF_MONSTER;
@@ -305,7 +305,7 @@ TEST(wc3_ancient_root, protector_uses_authored_rooted_attack_mask) {
     count = G_GetCommandButtons(unit, buttons, 12);
     FOR_LOOP(i, count) if (!strcmp(buttons[i].command, STR_CmdAttack)) attack_button = true;
     T_ASSERT(attack_button);
-    T_EQ(unit->attack2.type, ATK_NORMAL); /* Rooted ranged weapon. */
+    T_EQ(unit->unit_state->attack2.type, ATK_NORMAL); /* Rooted ranged weapon. */
 
     unit->ancient_root->mode = ANCIENT_ROOTING;
     T_ASSERT(!S_UnitAttackSlotEnabled(unit, 1));
@@ -321,7 +321,7 @@ TEST(wc3_ancient_root, protector_uses_authored_rooted_attack_mask) {
     T_ASSERT(!S_UnitAttackSlotEnabled(unit, 1));
     T_ASSERT(S_AttackCanTarget(unit, target));
     T_ASSERT(S_OrderAttack(unit, target));
-    T_EQ(unit->attack1.type, ATK_NORMAL); /* Shared uprooted melee weapon. */
+    T_EQ(unit->unit_state->attack1.type, ATK_NORMAL); /* Shared uprooted melee weapon. */
     count = G_GetCommandButtons(unit, buttons, 12);
     attack_button = false;
     FOR_LOOP(i, count) if (!strcmp(buttons[i].command, STR_CmdAttack)) attack_button = true;
@@ -365,8 +365,8 @@ TEST(wc3_ancient_root, ordinary_ancients_hide_attack_order_but_counterattack_whe
     unit = ancient_test_unit(true);
     unit->ancient_root->ability = TEST_ARO1;
     unit->data.UnitWeapons = &weapons;
-    unit->attack1.type = unit->attack2.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = unit->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack1.type = unit->unit_state->attack2.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = unit->unit_state->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96.0f, 64.0f);
     target->s.player = 1;
     target->svflags |= SVF_MONSTER;
@@ -385,20 +385,20 @@ TEST(wc3_ancient_root, ordinary_ancients_hide_attack_order_but_counterattack_whe
 
     /* Damage-triggered retaliation follows the weapon profile even though
      * players cannot issue an explicit rooted Attack order. */
-    unit->attack1.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = WC3_TARGET_FLAG_AIR;
-    unit->attack2.type = ATK_NORMAL;
-    unit->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
-    unit->attack2.range = 256.0f;
-    unit->attack2.weapon = WPN_MISSILE;
-    target->attack1.type = ATK_NORMAL;
-    target->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_AIR;
+    unit->unit_state->attack2.type = ATK_NORMAL;
+    unit->unit_state->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack2.range = 256.0f;
+    unit->unit_state->attack2.weapon = WPN_MISSILE;
+    target->unit_state->attack1.type = ATK_NORMAL;
+    target->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     target->data.UnitWeapons = &weapons;
     T_Damage(unit, target, 1);
     T_ASSERT(unit->goalentity == target);
     T_EQ(unit->currentmove->proc, CAbilityAttack);
     unit->wait = 0.0f;
-    unit->attack_cooldown_end_time = G_Time();
+    unit->unit_state->attack_cooldown_end_time = G_Time();
     unit->currentmove->think(unit);
     T_STREQ(unit->currentmove->animation, "attack range");
 
@@ -426,11 +426,11 @@ TEST(wc3_ancient_root, uprooted_protector_does_not_counterattack_with_rooted_wea
     unit = ancient_test_unit(false);
     unit->ancient_root->ability = TEST_ARO2;
     unit->data.UnitWeapons = &weapons;
-    unit->attack1.type = unit->attack2.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
-    unit->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_AIR;
-    unit->attack2.range = 256.0f;
-    unit->attack2.weapon = WPN_MISSILE;
+    unit->unit_state->attack1.type = unit->unit_state->attack2.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack2.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_AIR;
+    unit->unit_state->attack2.range = 256.0f;
+    unit->unit_state->attack2.weapon = WPN_MISSILE;
     flyer = alloc_test_unit(MAKEFOURCC('h','g','r','y'), 96.0f, 64.0f);
     flyer->s.player = 1; flyer->svflags |= SVF_MONSTER; flyer->targtype = TARG_AIR;
     footman = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32.0f, 64.0f);

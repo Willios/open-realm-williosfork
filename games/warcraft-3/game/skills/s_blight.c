@@ -17,8 +17,8 @@ static uint32_t blight_growth_ability(edict_t *ent) {
             if (item.ability && item.ability->proc == CAbilityBlightGrowth) return alias;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = ent->unit_state->overrides.added[i];
         abilityitem_t item;
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
@@ -26,8 +26,8 @@ static uint32_t blight_growth_ability(edict_t *ent) {
         if (G_ActorHasSkill(ent, alias_name) && item.ability && item.ability->proc == CAbilityBlightGrowth)
             return alias;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *hero = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *hero = ent->unit_state->ranks + i;
         abilityitem_t item;
         if (!hero->level) continue;
         item = S_AbilityItem(hero->code);

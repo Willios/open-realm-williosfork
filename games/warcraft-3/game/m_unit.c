@@ -252,11 +252,11 @@ static void unit_apply_health_cap_delta(edict_t *ent, float amount, float *ledge
 }
 
 void G_ApplyPermanentMaxHealthBonus(edict_t *ent, float amount) {
-    if (ent) unit_apply_health_cap_delta(ent, amount, &ent->permanent_health_bonus);
+    if (ent) unit_apply_health_cap_delta(ent, amount, &ent->unit_state->permanent_health_bonus);
 }
 
 void G_ApplyTemporaryMaxHealthBonus(edict_t *ent, float amount) {
-    if (ent) unit_apply_health_cap_delta(ent, amount, &ent->temporary_health_bonus);
+    if (ent) unit_apply_health_cap_delta(ent, amount, &ent->unit_state->temporary_health_bonus);
 }
 
 void G_ApplyTemporaryMaxManaBonus(edict_t *ent, float amount) {
@@ -264,7 +264,7 @@ void G_ApplyTemporaryMaxManaBonus(edict_t *ent, float amount) {
     if (!ent || amount == 0.0f) return;
     old_max = MAX(1.0f, ent->mana.max_value);
     fraction = ent->mana.value / old_max;
-    ent->temporary_mana_bonus += amount;
+    ent->unit_state->temporary_mana_bonus += amount;
     ent->mana.max_value = MAX(0.0f, ent->mana.max_value + amount);
     ent->mana.value = ent->mana.max_value * fraction;
     G_InvalidateUnitInfoPanel(ent);
@@ -273,35 +273,35 @@ void G_ApplyTemporaryMaxManaBonus(edict_t *ent, float amount) {
 static void unit_apply_armor_delta(edict_t *ent, float amount, float *ledger) {
     if (!ent || amount == 0.0f) return;
     *ledger += amount;
-    ent->armor_value += amount;
+    ent->unit_state->armor_value += amount;
     G_InvalidateUnitInfoPanel(ent);
 }
 
 void G_ApplyPermanentArmorBonus(edict_t *ent, float amount) {
-    if (ent) unit_apply_armor_delta(ent, amount, &ent->permanent_armor_bonus);
+    if (ent) unit_apply_armor_delta(ent, amount, &ent->unit_state->permanent_armor_bonus);
 }
 
 void G_ApplyTemporaryArmorBonus(edict_t *ent, float amount) {
-    if (ent) unit_apply_armor_delta(ent, amount, &ent->temporary_armor_bonus);
+    if (ent) unit_apply_armor_delta(ent, amount, &ent->unit_state->temporary_armor_bonus);
 }
 
 void G_ApplyPermanentAttackDamageBonus(edict_t *ent, float amount) {
     if (!ent || amount == 0.0f) return;
-    if (ent->attack1.numberOfDice) {
-        ent->attack1.permanentDamageBonus += amount;
-        ent->attack1.damageBase = (uint32_t)MAX(0, (int32_t)ent->attack1.damageBase + (int32_t)amount);
+    if (ent->unit_state->attack1.numberOfDice) {
+        ent->unit_state->attack1.permanentDamageBonus += amount;
+        ent->unit_state->attack1.damageBase = (uint32_t)MAX(0, (int32_t)ent->unit_state->attack1.damageBase + (int32_t)amount);
     }
-    if (ent->attack2.numberOfDice) {
-        ent->attack2.permanentDamageBonus += amount;
-        ent->attack2.damageBase = (uint32_t)MAX(0, (int32_t)ent->attack2.damageBase + (int32_t)amount);
+    if (ent->unit_state->attack2.numberOfDice) {
+        ent->unit_state->attack2.permanentDamageBonus += amount;
+        ent->unit_state->attack2.damageBase = (uint32_t)MAX(0, (int32_t)ent->unit_state->attack2.damageBase + (int32_t)amount);
     }
     G_InvalidateUnitInfoPanel(ent);
 }
 
 void G_ApplyTemporaryAttackDamageBonus(edict_t *ent, float amount) {
     if (!ent || amount == 0.0f) return;
-    ent->attack1.temporaryDamageBonus += amount;
-    ent->attack2.temporaryDamageBonus += amount;
+    ent->unit_state->attack1.temporaryDamageBonus += amount;
+    ent->unit_state->attack2.temporaryDamageBonus += amount;
     G_InvalidateUnitInfoPanel(ent);
 }
 
@@ -503,7 +503,7 @@ void unit_die(edict_t *self, edict_t *attacker) {
     if ((self->mineoverlay && self->mineoverlay->parent) || self->think == blight_mine_think) S_MineOverlayRelease(self);
     if (S_AcolyteHarvestIsActive(self)) S_AcolyteHarvestRelease(self);
     S_CargoReleaseUnit(self);
-    if (self->training) G_ClearTrainingQueueFood(self);
+    if (G_UnitHasFlag(self, UNIT_FLAG_TRAINING)) G_ClearTrainingQueueFood(self);
     else { G_CancelHeroRevives(self); G_CancelTrainingQueue(self, true); }
     G_ClearUnitFood(self);
     if (G_UnitIsHero(self)) {
@@ -525,11 +525,11 @@ void unit_die(edict_t *self, edict_t *attacker) {
     /* Warsmash advances the render Death animation after KillUnit even when
      * the simulation unit is paused by a cinematic. Keep the explicit frame
      * override active until the death move reaches its decay transition. */
-    self->animation_override = true;
+    G_SetUnitFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE, true);
     if (self->animation) self->s.frame = self->animation->interval[0];
-    if (!summon_explodes && !script_explodes && self->sound.death) {
-        self->sound.world_pending = self->sound.death;
-        self->sound.world_pending_event = EV_DEATH;
+    if (!summon_explodes && !script_explodes && self->sound && self->sound->death) {
+        self->sound->world_pending = self->sound->death;
+        self->sound->world_pending_event = EV_DEATH;
     }
     /* Destroying a transport ejects its passengers at the wreck. */
     if (self->cargo && self->cargo->count > 0) {
@@ -756,8 +756,8 @@ static uint32_t unit_spell_code_for_base(edict_t const *unit, uint32_t base_code
     /* A shared order can belong to a concrete campaign alias (for example
      * Rexxar's Arsg inherits AOsf's "spiritwolf" order). Keep that rawcode
      * through dispatch so the alias's authored summon data and handler win. */
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *hero_ability = unit->heroabilities + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *hero_ability = unit->unit_state->ranks + i;
         uint32_t code = hero_ability->code;
         abilityitem_t item;
         if (!hero_ability->level || !code || G_AbilityCode(code) != base_code) continue;
@@ -775,8 +775,8 @@ static uint32_t unit_spell_code_for_base(edict_t const *unit, uint32_t base_code
             if (item.ability && (item.ability->flags & AB_SPELL)) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(unit->abilities.added)) {
-        uint32_t code = unit->abilities.added[i];
+    FOR_LOOP(i, (unit->unit_state ? ARRAY_COUNT(unit->unit_state->overrides.added) : 0)) {
+        uint32_t code = unit->unit_state->overrides.added[i];
         abilityitem_t item;
         if (!code || G_AbilityCode(code) != base_code) continue;
         item = S_AbilityItem(code);
@@ -1103,10 +1103,10 @@ static bool unit_issuetargetorder_now(edict_t *self, cstring_t order, edict_t *t
             return true;
         }
         if ((S_HarvestCanLumber(self) || S_HarvestCanGold(self)) &&
-            self->harvested_lumber > 0 && harvest_lumber_return_to(self, target))
+            (self->harvest ? self->harvest->lumber : 0) > 0 && harvest_lumber_return_to(self, target))
             return true;
         if ((S_HarvestCanLumber(self) || S_HarvestCanGold(self)) &&
-            self->harvested_gold > 0 && harvest_gold_return_to(self, target))
+            (self->harvest ? self->harvest->gold : 0) > 0 && harvest_gold_return_to(self, target))
             return true;
         /* Smart/right-click only force-attacks ordinary breakable debris.
          * Other destructable classes require the explicit Attack command, and
@@ -1421,11 +1421,11 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     if (source_building != target_building) return false;
     health_ratio = unit->health.max_value > 0.0f ? unit->health.value / unit->health.max_value : 1.0f;
     mana_ratio = unit->mana.max_value > 0.0f ? unit->mana.value / unit->mana.max_value : 0.0f;
-    temporary_armor = unit->temporary_armor_bonus;
-    temporary_health = unit->temporary_health_bonus;
-    temporary_mana = unit->temporary_mana_bonus;
-    temporary_attack1 = unit->attack1.temporaryDamageBonus;
-    temporary_attack2 = unit->attack2.temporaryDamageBonus;
+    temporary_armor = unit->unit_state->temporary_armor_bonus;
+    temporary_health = unit->unit_state->temporary_health_bonus;
+    temporary_mana = unit->unit_state->temporary_mana_bonus;
+    temporary_attack1 = unit->unit_state->attack1.temporaryDamageBonus;
+    temporary_attack2 = unit->unit_state->attack2.temporaryDamageBonus;
     old_flags = unit->s.flags;
     creep_guard_origin = unit->orders->creep_guard_origin;
     creep_guard_last_hit_ms = unit->orders->creep_guard_last_hit_ms;
@@ -1446,13 +1446,13 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     unit->s.flags &= ~(EF_BUILDING | EF_FOW_BLOCKER | EF_FOW_REVEALER);
     unit->aiflags &= ~(AI_FLYING | AI_IMMOBILE);
     unit->s.shadow = 0;
-    memset(&unit->attack1, 0, sizeof(unit->attack1));
-    memset(&unit->attack2, 0, sizeof(unit->attack2));
-    unit->permanent_armor_bonus = 0.0f;
-    unit->permanent_health_bonus = 0.0f;
-    unit->temporary_armor_bonus = 0.0f;
-    unit->temporary_health_bonus = 0.0f;
-    unit->temporary_mana_bonus = 0.0f;
+    memset(&unit->unit_state->attack1, 0, sizeof(unit->unit_state->attack1));
+    memset(&unit->unit_state->attack2, 0, sizeof(unit->unit_state->attack2));
+    unit->unit_state->permanent_armor_bonus = 0.0f;
+    unit->unit_state->permanent_health_bonus = 0.0f;
+    unit->unit_state->temporary_armor_bonus = 0.0f;
+    unit->unit_state->temporary_health_bonus = 0.0f;
+    unit->unit_state->temporary_mana_bonus = 0.0f;
     SP_SpawnUnit(unit);
     /* A transformation retains the same handle, owner, and guard post. Do not
      * silently recapture its current position or re-enable a disabled guard. */
@@ -1468,8 +1468,8 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     G_SetHealth(unit, MIN(unit->health.max_value, MAX(0.0f, unit->health.max_value * health_ratio)));
     unit->mana.value = MIN(unit->mana.max_value, MAX(0.0f, unit->mana.max_value * mana_ratio));
     G_ApplyTemporaryArmorBonus(unit, temporary_armor);
-    unit->attack1.temporaryDamageBonus = temporary_attack1;
-    unit->attack2.temporaryDamageBonus = temporary_attack2;
+    unit->unit_state->attack1.temporaryDamageBonus = temporary_attack1;
+    unit->unit_state->attack2.temporaryDamageBonus = temporary_attack2;
     G_ActivateUnitFood(unit);
     unit->animation = NULL;
     gi.LinkEntity(unit);
@@ -1694,8 +1694,8 @@ heroabilitystatus_t const *unit_findtimedbarstatus(edict_t const *ent) {
 
     if (!ent) return NULL;
     now = G_Time();
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = ent->unit_state->statuses + i;
         if (!status->level || !status->timestamp || !status->duration_ms) continue;
         if (status->timestamp <= now || !unit_statusshowstimedbar(status->code)) continue;
         /* Warsmash owns one timed-status slot; later qualifying buffs replace
@@ -1710,14 +1710,14 @@ float G_UnitArmorValue(edict_t const *ent) {
     float armor;
 
     if (!ent) return 0.0f;
-    armor = ent->armor_value;
+    armor = ent->unit_state ? ent->unit_state->armor_value : 0;
 
     /* Bdef is the stock Scroll of Protection status. Keep the authored armor
      * amount in AbilityData (AIda/DataA) rather than baking it into the unit or
      * status record; status expiry then removes the bonus automatically from
      * both combat and HUD calculations without adding save-state fields. */
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = ent->unit_state->statuses + i;
         if (status->level && status->code == MAKEFOURCC('B', 'd', 'e', 'f')) {
             armor += G_AbilityLevel(MAKEFOURCC('A', 'I', 'd', 'a'), status->level)->data[0].number;
         }
@@ -1747,14 +1747,14 @@ static void UnitDispatchStatus(edict_t *ent, heroabilitystatus_t *slot, uint32_t
 
 /* Return the live slot so an ability can attach its applying rawcode/source after insertion. */
 heroabilitystatus_t *unit_findstatus(edict_t *ent, uint32_t code) {
-    if (ent) FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (ent->abilstatus[i].level && ent->abilstatus[i].code == code) return ent->abilstatus + i;
+    if (ent) FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (ent->unit_state->statuses[i].level && ent->unit_state->statuses[i].code == code) return ent->unit_state->statuses + i;
     return NULL;
 }
 
 heroabilitystatus_t *unit_findstatussource(edict_t *ent, uint32_t code, edict_t const *source) {
-    if (ent) FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    if (ent) FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         if (status->level && status->code == code && status->source == source &&
             (!status->timestamp || status->timestamp > G_Time()) &&
             (!source || status->source_spawn_time == source->spawn_time)) return status;
@@ -1764,8 +1764,8 @@ heroabilitystatus_t *unit_findstatussource(edict_t *ent, uint32_t code, edict_t 
 
 /* Notify active victim statuses before death cleanup can discard their applying state. */
 void unit_statusdeath(edict_t *ent) {
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *slot = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *slot = ent->unit_state->statuses + i;
         if (slot->level && (!slot->timestamp || slot->timestamp > G_Time()))
             UnitDispatchStatus(ent, slot, (slot->source_ability ? slot->source_ability : slot->data), A_STATUS_DEATH, STATUS_REMOVE_DEATH);
     }
@@ -1812,8 +1812,8 @@ static uint32_t unit_builtin_status_states(uint32_t code) {
 bool unit_hasstatusstate(edict_t const *ent, wc3_status_state_t state) {
     uint32_t mask = (uint32_t)state;
     if (!ent || !mask || (mask & (mask - 1u))) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = ent->unit_state->statuses + i;
         if (!status->level || !((status->state_mask | unit_builtin_status_states(status->code)) & mask)) continue;
         if (!status->timestamp || status->timestamp > G_Time()) return true;
     }
@@ -1849,8 +1849,8 @@ float unit_status_modifier_total(edict_t const *unit, wc3_status_modifier_type_t
     bool have_families = false;
     float result = 0.0f;
     if (!unit || type > WC3_STATUS_MOD_MANA_REGEN_FLAT) return 0.0f;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = unit->unit_state->statuses + i;
         if (!status->level || !status->modifier_count ||
             (status->timestamp && status->timestamp <= G_Time())) continue;
         FOR_LOOP(j, MIN(status->modifier_count, WC3_STATUS_MAX_MODIFIERS)) {
@@ -1891,8 +1891,8 @@ float unit_status_modifier_total(edict_t const *unit, wc3_status_modifier_type_t
 /* Notify live status owners to reconcile flight/height and other inverse state.
  * Categorical locks are queried directly; no stun mirror needs refreshing. */
 void unit_refreshstatusflags(edict_t *ent) {
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         if (!status->level || (status->timestamp && status->timestamp <= G_Time())) continue;
         UnitDispatchStatus(ent, status, (status->source_ability ? status->source_ability : status->data), A_STATUS_REFRESH, STATUS_REMOVE_SCRIPT);
     }
@@ -1945,8 +1945,8 @@ void unit_removebuffs(edict_t *ent, bool remove_positive, bool remove_negative,
      * or aura ownership by a target visual. TODO: category-aware metadata. */
     (void)timed_life; (void)aura; (void)auto_dispel;
     if (!ent || !polarities || !kinds) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         uint32_t polarity, kind;
         if (!unit_status_can_dispel(status)) continue;
         polarity = status->buff_flags & (WC3_STATUS_BUFF_POSITIVE | WC3_STATUS_BUFF_NEGATIVE);
@@ -1996,8 +1996,8 @@ static void unit_removestatus_core(edict_t *ent, heroabilitystatus_t *status,
     UnitDispatchStatus(ent, status, origin, A_STATUS_REMOVE, reason);
     /* Callback can remove its own TargetArt; this second cleanup is safe and
      * ensures ordinary expiry/dispel/replacement also retires owned visuals. */
-    if (status->buff_flags & WC3_STATUS_BUFF_TARGET_ART) FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *other = ent->abilstatus + i;
+    if (status->buff_flags & WC3_STATUS_BUFF_TARGET_ART) FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *other = ent->unit_state->statuses + i;
         if (other != status && other->level && other->code == status->code &&
             (other->buff_flags & WC3_STATUS_BUFF_TARGET_ART) &&
             (!other->timestamp || other->timestamp > G_Time())) {
@@ -2047,8 +2047,8 @@ void unit_updatestatuses(edict_t *ent) {
     bool kill = false;
     bool militia_expired = false;
 
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         if (!status->level || !status->timestamp) {
             continue;
         }
@@ -2089,8 +2089,9 @@ wc3_status_apply_check_t unit_status_checkapplication(edict_t const *ent, status
         return WC3_STATUS_APPLY_INVALID;
     memcpy(&code, app->buff, sizeof(code));
     if (!code) return WC3_STATUS_APPLY_INVALID;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = ent->abilstatus + i;
+    if (!ent->unit_state) return WC3_STATUS_APPLY_FREE_SLOT;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = ent->unit_state->statuses + i;
         if (status->level && status->code == code &&
             ((app->stack_policy == WC3_STATUS_STACK_DEFAULT &&
               status->stack_policy == WC3_STATUS_STACK_DEFAULT) ||
@@ -2121,13 +2122,14 @@ heroabilitystatus_t *unit_applystatus(edict_t *ent, status_application_t const *
         return NULL;
     }
 
+    G_InitUnitState(ent);
     code = *((uint32_t const *)skill);
     now = G_Time();
     duration_ms = duration > 0.0f ? (uint32_t)(duration * 1000.0f) : 0;
     stacktype = S_SpellString(code, "BuffStackType", 0);
 
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = ent->abilstatus + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = ent->unit_state->statuses + i;
         if (status->level && status->code == code &&
             ((app->stack_policy == WC3_STATUS_STACK_DEFAULT &&
               status->stack_policy == WC3_STATUS_STACK_DEFAULT) ||
@@ -2152,8 +2154,8 @@ heroabilitystatus_t *unit_applystatus(edict_t *ent, status_application_t const *
                  * instance becomes visible (Refresh/Stack must not). */
                 unit_removestatus_deferred(ent, status, STATUS_REMOVE_REPLACED);
                 status->code = code;
-                status->instance_id = ++ent->next_status_instance_id;
-                if (!status->instance_id) status->instance_id = ++ent->next_status_instance_id;
+                status->instance_id = ++ent->unit_state->next_status_id;
+                if (!status->instance_id) status->instance_id = ++ent->unit_state->next_status_id;
                 status->stack_policy = app->stack_policy;
                 status->level = level;
                 status->data = app->data;
@@ -2188,8 +2190,8 @@ heroabilitystatus_t *unit_applystatus(edict_t *ent, status_application_t const *
     }
 
     slot->code = code;
-    slot->instance_id = ++ent->next_status_instance_id;
-    if (!slot->instance_id) slot->instance_id = ++ent->next_status_instance_id;
+    slot->instance_id = ++ent->unit_state->next_status_id;
+    if (!slot->instance_id) slot->instance_id = ++ent->unit_state->next_status_id;
     slot->stack_policy = app->stack_policy;
     slot->level = level;
     slot->timestamp = duration_ms ? now + duration_ms : 0;
@@ -2258,10 +2260,10 @@ uint32_t G_UnitStatusBuffCode(heroabilitystatus_t const *status) {
 
 uint32_t G_UnitStatusLevel(edict_t const *ent, uint32_t code) {
     if (!ent || !code) return 0;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (ent->abilstatus[i].level && ent->abilstatus[i].code == code &&
-            (!ent->abilstatus[i].timestamp || ent->abilstatus[i].timestamp > G_Time()))
-            return ent->abilstatus[i].level;
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (ent->unit_state->statuses[i].level && ent->unit_state->statuses[i].code == code &&
+            (!ent->unit_state->statuses[i].timestamp || ent->unit_state->statuses[i].timestamp > G_Time()))
+            return ent->unit_state->statuses[i].level;
     return 0;
 }
 
@@ -2269,8 +2271,8 @@ static heroability_t *G_FindRuntimeAbility(edict_t *ent, uint32_t abilcode) {
     if (!ent || !abilcode) {
         return NULL;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t *ha = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t *ha = ent->unit_state->ranks + i;
         if (ha->level && ha->code == abilcode) {
             return ha;
         }
@@ -2283,8 +2285,8 @@ static uint32_t G_HeroSkillLevel(edict_t const *ent, uint32_t abilcode) {
     if (!ent || !abilcode) {
         return 0;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *ha = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *ha = ent->unit_state->ranks + i;
         if (ha->level && G_AbilityCode(ha->code) == base_code) {
             return ha->level;
         }
@@ -2298,14 +2300,15 @@ void G_HeroInitializeProgression(edict_t *ent) {
     if (!ent) {
         return;
     }
-    if (ent->hero.level == 0) {
-        ent->hero.level = 1;
+    G_InitUnitState(ent);
+    if (ent->unit_state->hero.level == 0) {
+        ent->unit_state->hero.level = 1;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        spent_points += ent->heroabilities[i].level;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        spent_points += ent->unit_state->ranks[i].level;
     }
-    if (!ent->hero.skillpoints && ent->hero.level > spent_points) {
-        ent->hero.skillpoints = ent->hero.level - spent_points;
+    if (!ent->unit_state->hero.skillpoints && ent->unit_state->hero.level > spent_points) {
+        ent->unit_state->hero.skillpoints = ent->unit_state->hero.level - spent_points;
     }
 }
 
@@ -2318,7 +2321,7 @@ bool G_HeroModifySkillPoints(edict_t *ent, int32_t delta) {
         return false;
     }
 
-    old_points = ent->hero.skillpoints;
+    old_points = ent->unit_state->hero.skillpoints;
     if (delta < 0) {
         unsigned long long const remove = (unsigned long long)(-(long long)delta);
         if (!old_points) {
@@ -2332,7 +2335,7 @@ bool G_HeroModifySkillPoints(edict_t *ent, int32_t delta) {
         new_points = old_points;
     }
 
-    ent->hero.skillpoints = new_points;
+    ent->unit_state->hero.skillpoints = new_points;
     owner = G_GetPlayerClientByNumber(ent->s.player);
     if (new_points != old_points) {
         if (owner && owner->ps.number == ent->s.player) G_InvalidateCommands(owner);
@@ -2372,8 +2375,8 @@ uint32_t G_UnitSetAbilityLevel(edict_t *ent, uint32_t abilcode, int32_t level) {
     /* Unit owns the skill via abilList/added but has no heroabilities slot yet. */
     memcpy(id, &abilcode, 4);
     if (!G_ActorHasSkill(ent, id)) return 0;
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t *ha = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t *ha = ent->unit_state->ranks + i;
         if (ha->level == 0) {
             ha->code = abilcode;
             ha->level = (uint32_t)level;
@@ -2389,8 +2392,8 @@ void unit_learnability(edict_t *ent, uint32_t abilcode) {
         existing->level++;
         return;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t *ha = ent->heroabilities + i;
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t *ha = ent->unit_state->ranks + i;
         if (ha->level == 0) {
             ha->level = 1;
             ha->code = abilcode;
@@ -2464,13 +2467,13 @@ heroSkillState_t G_HeroSkillState(edict_t *ent, uint32_t abilcode, uint32_t *nex
     if (current >= (uint32_t)ability->levels) {
         return HERO_SKILL_MAXED;
     }
-    if (!ent->hero.skillpoints) {
+    if (!ent->unit_state->hero.skillpoints) {
         return HERO_SKILL_NO_POINTS;
     }
 
     required = G_HeroSkillRequiredLevel(ent, abilcode);
     if (required_level) *required_level = required;
-    if (ent->hero.level < required) {
+    if (ent->unit_state->hero.level < required) {
         return HERO_SKILL_LEVEL_LOCKED;
     }
     return HERO_SKILL_AVAILABLE;
@@ -2508,15 +2511,15 @@ void G_RecomputeHeroStats(edict_t *ent) {
     if (baseStr <= 0 && baseAgi <= 0 && baseInt <= 0) {
         return;
     }
-    float const newMaxHP = balance->maxHealth + ((int32_t)ent->hero.str - baseStr) * 25.0f +
-                           ent->permanent_health_bonus + ent->temporary_health_bonus;
-    float const newMaxMana = balance->maxMana + ((int32_t)ent->hero.intel - baseInt) * 15.0f +
+    float const newMaxHP = balance->maxHealth + ((int32_t)ent->unit_state->hero.str - baseStr) * 25.0f +
+                           ent->unit_state->permanent_health_bonus + ent->unit_state->temporary_health_bonus;
+    float const newMaxMana = balance->maxMana + ((int32_t)ent->unit_state->hero.intel - baseInt) * 15.0f +
                              G_UnitUpgradeEffectBonus(ent, ID_UPGRADE_EFFECT_MAX_MANA) +
-                             ent->temporary_mana_bonus;
+                             ent->unit_state->temporary_mana_bonus;
     float const agiDefenseBonus = game.constants.combatConstantsLoaded
                                 ? game.constants.agiDefenseBonus
                                 : 0.3f;
-    float const newArmor = balance->armor + ((int32_t)ent->hero.agi - baseAgi) * agiDefenseBonus;
+    float const newArmor = balance->armor + ((int32_t)ent->unit_state->hero.agi - baseAgi) * agiDefenseBonus;
 
     bool const alive = ent->health.value > 0.0f;
     float const dHP = newMaxHP - ent->health.max_value;
@@ -2530,7 +2533,7 @@ void G_RecomputeHeroStats(edict_t *ent) {
     ent->mana.max_value = MAX(0.0f, newMaxMana);
     ent->mana.value = MAX(0.0f, MIN(ent->mana.max_value, ent->mana.value + dMana));
 
-    ent->armor_value = newArmor + ent->permanent_armor_bonus + ent->temporary_armor_bonus;
+    ent->unit_state->armor_value = newArmor + ent->unit_state->permanent_armor_bonus + ent->unit_state->temporary_armor_bonus;
 
     /* Warsmash applies Misc.StrAttackBonus to whichever attribute is primary.
      * OpenRealm does not yet split hero base-vs-bonus attributes, so the current
@@ -2538,23 +2541,23 @@ void G_RecomputeHeroStats(edict_t *ent) {
      * bonuses themselves are kept separate below. */
     {
         cstring_t const prim = balance->primaryAttribute;
-        uint32_t primVal = ent->hero.str;
+        uint32_t primVal = ent->unit_state->hero.str;
         float const strAttackBonus = game.constants.combatConstantsLoaded
                                    ? game.constants.strAttackBonus
                                    : 1.0f;
         int32_t primaryDamage;
         if (prim) {
-            if (!strcmp(prim, "AGI")) primVal = ent->hero.agi;
-            else if (!strcmp(prim, "INT")) primVal = ent->hero.intel;
+            if (!strcmp(prim, "AGI")) primVal = ent->unit_state->hero.agi;
+            else if (!strcmp(prim, "INT")) primVal = ent->unit_state->hero.intel;
         }
         primaryDamage = (int32_t)((float)primVal * strAttackBonus);
         if (ent->data.UnitWeapons) {
-            ent->attack1.damageBase = (uint32_t)MAX(0,
+            ent->unit_state->attack1.damageBase = (uint32_t)MAX(0,
                 (int32_t)ent->data.UnitWeapons->attack1.damageBase + primaryDamage
-                + (int32_t)ent->attack1.permanentDamageBonus);
-            ent->attack2.damageBase = (uint32_t)MAX(0,
+                + (int32_t)ent->unit_state->attack1.permanentDamageBonus);
+            ent->unit_state->attack2.damageBase = (uint32_t)MAX(0,
                 (int32_t)ent->data.UnitWeapons->attack2.damageBase + primaryDamage
-                + (int32_t)ent->attack2.permanentDamageBonus);
+                + (int32_t)ent->unit_state->attack2.permanentDamageBonus);
         }
     }
 }
@@ -2681,30 +2684,30 @@ void G_HeroApplyLevel(edict_t *ent, uint32_t level) {
     if (level > G_MaxHeroLevel()) level = G_MaxHeroLevel();
 
     float const steps = (float)(level - 1);
-    ent->hero.level = level;
-    ent->hero.str = (uint32_t)MAX(0, baseStr + (int32_t)(steps * balance->strengthPerLevel));
-    ent->hero.agi = (uint32_t)MAX(0, baseAgi + (int32_t)(steps * balance->agilityPerLevel));
-    ent->hero.intel = (uint32_t)MAX(0, baseInt + (int32_t)(steps * balance->intelligencePerLevel));
+    ent->unit_state->hero.level = level;
+    ent->unit_state->hero.str = (uint32_t)MAX(0, baseStr + (int32_t)(steps * balance->strengthPerLevel));
+    ent->unit_state->hero.agi = (uint32_t)MAX(0, baseAgi + (int32_t)(steps * balance->agilityPerLevel));
+    ent->unit_state->hero.intel = (uint32_t)MAX(0, baseInt + (int32_t)(steps * balance->intelligencePerLevel));
     G_RecomputeHeroStats(ent);
 }
 
 /* Update a hero's accumulated XP, leveling it up if a threshold was crossed. */
 static void G_HeroSetXPInternal(edict_t *ent, uint32_t xp, bool count_score) {
-    uint32_t const oldLevel = ent->hero.level;
+    uint32_t const oldLevel = ent->unit_state->hero.level;
     uint32_t newLevel;
 
     /* Retail/Warsmash SetHeroXP is raise-only: a lower requested XP value does
      * not reduce either XP or level.  Keeping that rule in the shared mutation
      * path also prevents internally inconsistent high-level/low-XP states. */
-    if (xp <= ent->hero.xp) {
+    if (xp <= ent->unit_state->hero.xp) {
         return;
     }
     BZ_WC3_SCORE_LOG("score hero xp transition owner=%u rawcode=%08x entity=%u old=%u new=%u level=%u credited=%u",
-        ent->s.player, ent->class_id, ent->s.number, ent->hero.xp, xp,
-        ent->hero.level, (unsigned)count_score);
-    if (count_score) G_PlayerScoreExperienceGained(ent, xp - ent->hero.xp);
-    else ent->score_level_xp = (uint32_t)MIN((uint64_t)ent->score_level_xp + xp - ent->hero.xp, (uint64_t)INT32_MAX);
-    ent->hero.xp = xp;
+        ent->s.player, ent->class_id, ent->s.number, ent->unit_state->hero.xp, xp,
+        ent->unit_state->hero.level, (unsigned)count_score);
+    if (count_score) G_PlayerScoreExperienceGained(ent, xp - ent->unit_state->hero.xp);
+    else ent->unit_state->score_level_xp = (uint32_t)MIN((uint64_t)ent->unit_state->score_level_xp + xp - ent->unit_state->hero.xp, (uint64_t)INT32_MAX);
+    ent->unit_state->hero.xp = xp;
     newLevel = G_HeroLevelForXP(xp);
     if (newLevel > oldLevel) {
         /* WC3 exposes both player-unit and unit-specific Hero level events.
@@ -2755,10 +2758,10 @@ bool G_HeroStripLevels(edict_t *ent, uint32_t levels) {
     gameClient_t *owner;
 
     if (!ent || !ent->data.UnitBalance || !G_UnitIsHero(ent) ||
-        !levels || ent->hero.level <= 1) return false;
+        !levels || ent->unit_state->hero.level <= 1) return false;
 
     balance = ent->data.UnitBalance;
-    old_level = ent->hero.level;
+    old_level = ent->unit_state->hero.level;
     removed = MIN(levels, old_level - 1);
     new_level = old_level - removed;
     old_steps = (float)(old_level - 1);
@@ -2766,20 +2769,20 @@ bool G_HeroStripLevels(edict_t *ent, uint32_t levels) {
 
     /* XP must not remain above the new level's threshold. Keep the level
      * reached by the strip operation even with custom Misc XP tables. */
-    ent->hero.xp = MIN(ent->hero.xp, G_HeroXPForLevel(new_level));
+    ent->unit_state->hero.xp = MIN(ent->unit_state->hero.xp, G_HeroXPForLevel(new_level));
 
     /* Preserve scripted/tome attribute modifications: subtract only the
      * level-derived difference, rather than rebuilding from UnitBalance. */
-    ent->hero.str = G_HeroLevelAdjustedAttribute(ent->hero.str, balance->strengthPerLevel,
+    ent->unit_state->hero.str = G_HeroLevelAdjustedAttribute(ent->unit_state->hero.str, balance->strengthPerLevel,
                                                   old_steps, new_steps);
-    ent->hero.agi = G_HeroLevelAdjustedAttribute(ent->hero.agi, balance->agilityPerLevel,
+    ent->unit_state->hero.agi = G_HeroLevelAdjustedAttribute(ent->unit_state->hero.agi, balance->agilityPerLevel,
                                                   old_steps, new_steps);
-    ent->hero.intel = G_HeroLevelAdjustedAttribute(ent->hero.intel, balance->intelligencePerLevel,
+    ent->unit_state->hero.intel = G_HeroLevelAdjustedAttribute(ent->unit_state->hero.intel, balance->intelligencePerLevel,
                                                     old_steps, new_steps);
-    ent->hero.level = new_level;
+    ent->unit_state->hero.level = new_level;
     G_RecomputeHeroStats(ent);
 
-    old_points = ent->hero.skillpoints;
+    old_points = ent->unit_state->hero.skillpoints;
     debt = removed;
     if (old_points) {
         uint32_t const spent = MIN(old_points, debt);
@@ -2791,7 +2794,7 @@ bool G_HeroStripLevels(edict_t *ent, uint32_t levels) {
      * Do not mutate ordinary abilities in heroabilities[]: only entries from
      * this Hero's candidate list are subject to level-loss reconciliation. */
     for (uint32_t i = 0; i < MAX_HERO_ABILITIES; i++) {
-        heroability_t *ha = ent->heroabilities + i;
+        heroability_t *ha = ent->unit_state->ranks + i;
         AbilityData_t const *ability;
         uint32_t base, skip;
         if (!ha->level || !G_HeroHasCandidateSkill(ent, ha->code)) continue;
@@ -2808,7 +2811,7 @@ bool G_HeroStripLevels(edict_t *ent, uint32_t levels) {
     /* A lost level also removes a spent skill point when every remaining rank
      * is individually legal. The exact retail ordering needs comparative tests. */
     for (uint32_t i = MAX_HERO_ABILITIES; debt && i > 0; i--) {
-        heroability_t *ha = ent->heroabilities + (i - 1);
+        heroability_t *ha = ent->unit_state->ranks + (i - 1);
         if (!ha->level || !G_HeroHasCandidateSkill(ent, ha->code)) continue;
         uint32_t const count = MIN(debt, ha->level);
         ha->level -= count;
@@ -3014,11 +3017,11 @@ static cstring_t G_HeroKillXPRejectReason(edict_t const *hero, edict_t const *vi
     if (!(hero->svflags & SVF_MONSTER)) return "not-monster";
     if (!hero->data.UnitBalance) return "no-unit-balance";
     if (hero->health.value <= 0) return "dead";
-    if (hero->hero.suspend_xp) return "xp-suspended";
+    if (hero->unit_state->hero.suspend_xp) return "xp-suspended";
     if (hero->aiflags & AI_ILLUSION) return "illusion";
     if (!G_UnitIsHero(hero)) return "not-hero";
     if (G_KillXPMiscNum("MaxLevelHeroesDrainExp", 1.0f) == 0.0f &&
-        hero->hero.level >= G_MaxHeroLevel()) return "max-level";
+        hero->unit_state->hero.level >= G_MaxHeroLevel()) return "max-level";
     if (range >= 0.0f && Vector2_distance(&hero->s.origin2, &victim->s.origin2) > range)
         return "out-of-range";
     if (hero->s.player != killer->s.player &&
@@ -3077,7 +3080,7 @@ void G_GrantKillXP(edict_t *victim, edict_t *killer) {
     }
 
     bool const victimHero = G_UnitIsHero(victim);
-    uint32_t const victimLevel = victimHero ? (uint32_t)MAX(1, (int32_t)victim->hero.level)
+    uint32_t const victimLevel = victimHero ? (uint32_t)MAX(1, (int32_t)victim->unit_state->hero.level)
                                          : (uint32_t)MAX(1, victim->data.UnitBalance->level);
     uint32_t baseXP;
     if (victimHero) {
@@ -3125,7 +3128,7 @@ void G_GrantKillXP(edict_t *victim, edict_t *killer) {
             if (debug && G_KillXPDebugHeroCandidate(hero))
                 fprintf(stderr, "WC3 kill XP: range candidate hero=%u code=%08x owner=%u level=%u rejected=%s distance=%.1f\n",
                     i, hero->data.UnitBalance ? hero->data.UnitBalance->id : 0,
-                    hero->s.player, hero->hero.level, reason,
+                    hero->s.player, hero->unit_state->hero.level, reason,
                     Vector2_distance(&hero->s.origin2, &victim->s.origin2));
         } else {
             receivers++;
@@ -3145,7 +3148,7 @@ void G_GrantKillXP(edict_t *victim, edict_t *killer) {
                 if (debug && G_KillXPDebugHeroCandidate(hero))
                     fprintf(stderr, "WC3 kill XP: global candidate hero=%u code=%08x owner=%u level=%u rejected=%s distance=%.1f\n",
                         i, hero->data.UnitBalance ? hero->data.UnitBalance->id : 0,
-                        hero->s.player, hero->hero.level, reason,
+                        hero->s.player, hero->unit_state->hero.level, reason,
                         Vector2_distance(&hero->s.origin2, &victim->s.origin2));
             } else {
                 receivers++;
@@ -3174,7 +3177,7 @@ void G_GrantKillXP(edict_t *victim, edict_t *killer) {
          * receiving Hero's level. Enemy player-controlled units and Heroes do
          * not use this reduction, so level-5+ Heroes can keep progressing. */
         if (victim->s.player == PLAYER_NEUTRAL_AGGRESSIVE) {
-            uint32_t const index = h->hero.level ? h->hero.level - 1 : 0;
+            uint32_t const index = h->unit_state->hero.level ? h->unit_state->hero.level - 1 : 0;
             uint32_t const fallbackIndex = MIN(index,
                 (uint32_t)(sizeof(WC3_XP_CREEP_FACTOR_DEFAULT) /
                            sizeof(WC3_XP_CREEP_FACTOR_DEFAULT[0]) - 1));
@@ -3200,17 +3203,17 @@ void G_GrantKillXP(edict_t *victim, edict_t *killer) {
         uint32_t const award = (uint32_t)awardValue;
         if (debug) fprintf(stderr,
             "WC3 kill XP: award hero=%u code=%08x owner=%u level=%u xp-before=%u victim=%u receivers=%u base=%u creep-factor=%.3f handicap-multiplier=%.3f total-factor=%.3f award=%u\n",
-            i, h->data.UnitBalance->id, h->s.player, h->hero.level, h->hero.xp,
+            i, h->data.UnitBalance->id, h->s.player, h->unit_state->hero.level, h->unit_state->hero.xp,
             (unsigned)(victim - globals.edicts), receivers, baseXP,
             creepFactor, handicap, factor,
             award);
-        if (award > 0 && UINT32_MAX - h->hero.xp >= award) {
-            G_HeroSetXP(h, h->hero.xp + award);
+        if (award > 0 && UINT32_MAX - h->unit_state->hero.xp >= award) {
+            G_HeroSetXP(h, h->unit_state->hero.xp + award);
         } else if (award > 0) {
             G_HeroSetXP(h, UINT32_MAX);
         }
         if (debug) fprintf(stderr, "WC3 kill XP: result hero=%u xp-after=%u level-after=%u\n",
-            i, h->hero.xp, h->hero.level);
+            i, h->unit_state->hero.xp, h->unit_state->hero.level);
     }
 }
 

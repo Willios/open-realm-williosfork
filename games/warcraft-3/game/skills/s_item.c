@@ -240,7 +240,7 @@ static void soul_trap_finalize_consumed_item(edict_t *item) {
     if (!target->inuse || !target->soultrap || target->spawn_time != target_spawn || !(target->aiflags & AI_SOUL_TRAPPED) ||
         !carrier || !carrier->inuse || carrier->spawn_time != carrier_spawn || M_IsDead(carrier)) return;
     slot = item->item->pending_use_slot;
-    filled = slot >= 0 && slot < (int32_t)G_InventoryCapacity(carrier) ? carrier->inventory[slot] : NULL;
+    filled = slot >= 0 && slot < (int32_t)G_InventoryCapacity(carrier) ? G_InventoryItem(carrier, slot) : NULL;
     if (filled && filled->class_id == ID_FILLED_SOUL && !filled->item->soul_target) {
         filled->item->soul_target = target;
         filled->item->soul_target_spawn_time = target_spawn;
@@ -259,7 +259,7 @@ static void soul_trap_finalize_consumed_item(edict_t *item) {
     filled->item->droppable_set = true;
     filled->item->droppable = false;
     slot = item->item->pending_use_slot;
-    if (slot < 0 || slot >= (int32_t)G_InventoryCapacity(carrier) || carrier->inventory[slot])
+    if (slot < 0 || slot >= (int32_t)G_InventoryCapacity(carrier) || G_InventoryItem(carrier, slot))
         slot = G_FindFreeInventorySlot(carrier);
     if (slot >= 0 && G_AddItemToSlotInternal(carrier, filled, (uint32_t)slot, false)) {
         filled->item->soul_target = target;
@@ -286,7 +286,7 @@ BZ_ABILITY_PROC(CAbilitySoulTrapped) {
         edict_t *item = call ? call->source_item : NULL;
         if (!soul_trap_item_linked(ent, item) || item->item->carrier != ent ||
             item->item->inventory_slot < 0 || item->item->inventory_slot >= MAX_INVENTORY ||
-            ent->inventory[item->item->inventory_slot] != item) return false;
+            G_InventoryItem(ent, item->item->inventory_slot) != item) return false;
         return G_DetachItemAtScripted(ent, (uint32_t)item->item->inventory_slot);
     }
     case A_ITEM_SCRIPT_REATTACH: {
@@ -350,8 +350,8 @@ static bool AbilityItemInvis_ItemUse(edict_t *clent) {
     if (!S_SpellIsAliveTarget(target) || duration <= 0.0f || !buff || strlen(buff) != 4)
         return false;
     if (!has_status_slot) {
-        FOR_LOOP(i, MAX_UNIT_STATUSES)
-            if (!target->abilstatus[i].level) { has_status_slot = true; break; }
+        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0)
+            if (!target->unit_state->statuses[i].level) { has_status_slot = true; break; }
     }
     if (!has_status_slot) return false;
 
@@ -438,9 +438,9 @@ BZ_ABILITY_PROC(CAbilityStrengthMod) {
     if (!target || !G_UnitIsHero(target)) {
         return false;
     }
-    target->hero.str += (uint32_t)str;
-    target->hero.agi += (uint32_t)agi;
-    target->hero.intel += (uint32_t)intel;
+    target->unit_state->hero.str += (uint32_t)str;
+    target->unit_state->hero.agi += (uint32_t)agi;
+    target->unit_state->hero.intel += (uint32_t)intel;
     G_RecomputeHeroStats(target);
     G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
     return true;
@@ -456,7 +456,7 @@ BZ_ABILITY_PROC(CAbilityExperienceMod) {
     if (!target || !G_UnitIsHero(target) || amount == 0) {
         return false;
     }
-    G_HeroSetXP(target, target->hero.xp + amount);
+    G_HeroSetXP(target, target->unit_state->hero.xp + amount);
     G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
     return true;
 }
@@ -471,9 +471,9 @@ BZ_ABILITY_PROC(CAbilityLevelMod) {
     if (!target || !G_UnitIsHero(target) || levels == 0) {
         return false;
     }
-    uint32_t target_level = MIN(target->hero.level + levels, G_MaxHeroLevel());
+    uint32_t target_level = MIN(target->unit_state->hero.level + levels, G_MaxHeroLevel());
     uint32_t target_xp = G_HeroXPForLevel(target_level);
-    if (target_xp <= target->hero.xp) {
+    if (target_xp <= target->unit_state->hero.xp) {
         return false;
     }
     G_HeroSetXP(target, target_xp);
@@ -845,8 +845,8 @@ BZ_ABILITY_PROC(CAbilityItemSpeedAoe) {
 
 bool S_ItemSpeedActive(edict_t const *unit) {
     if (!unit) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = unit->unit_state->statuses + i;
         ability_t const *ability = status->level && status->data ? S_AbilityItem(status->data).ability : NULL;
         if (ability && (ability->proc == CAbilityItemSpeed || ability->proc == CAbilityItemSpeedAoe)) return true;
     }

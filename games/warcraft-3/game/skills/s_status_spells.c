@@ -210,7 +210,7 @@ void S_PoisonOnHit(edict_t *attacker, edict_t *target) {
         if (G_UnitAbilityLevel(attacker, poison_codes[o])) poison_apply(attacker, target, poison_codes[o], seen, &count);
     if (!G_InventoryCanUseItems(attacker)) return;
     FOR_LOOP(i, MAX_INVENTORY) {
-        edict_t *item = attacker->inventory[i];
+        edict_t *item = G_InventoryItem(attacker, i);
         cstring_t abilities;
         if (!item) continue;
         abilities = G_ItemAbilityList(item);

@@ -51,12 +51,12 @@ static avFix_t avatar_setup(uint32_t rank) {
     reset_entities(); setup_test_world(); level.time = 1000;
     avFix_t fix = { .rows = parse_slk_string(avatar_slk), .unit = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0) };
     fix.old = G_SetSLKRows("AbilityData", fix.rows);
-    fix.unit->heroabilities[0] = (heroability_t){ .code = BZ_AVATAR, .level = rank };
-    fix.unit->hero.str = 22; fix.unit->hero.agi = 13; fix.unit->hero.intel = 17;
+    fix.unit->unit_state->ranks[0] = (heroability_t){ .code = BZ_AVATAR, .level = rank };
+    fix.unit->unit_state->hero.str = 22; fix.unit->unit_state->hero.agi = 13; fix.unit->unit_state->hero.intel = 17;
     fix.unit->health.value = 400; fix.unit->health.max_value = 650;
     fix.unit->mana.value = fix.unit->mana.max_value = 100;
-    fix.unit->armor_value = 5; fix.unit->temporary_armor_bonus = 1.1f;
-    fix.unit->attack1.temporaryDamageBonus = 3; fix.unit->attack2.temporaryDamageBonus = 4;
+    fix.unit->unit_state->armor_value = 5; fix.unit->unit_state->temporary_armor_bonus = 1.1f;
+    fix.unit->unit_state->attack1.temporaryDamageBonus = 3; fix.unit->unit_state->attack2.temporaryDamageBonus = 4;
     fix.unit->svflags |= SVF_MONSTER; fix.unit->movetype = MOVETYPE_NONE;
     fix.unit->stand = unit_stand; fix.unit->die = unit_die;
     return fix;
@@ -72,8 +72,8 @@ TEST(wc3_avatar, cast_expire_recast_keeps_other_bonuses) {
     T_FEQ(unit->health.max_value, 1150, 0.001f);
     T_FEQ(unit->health.value, 900, 0.001f);
     T_FEQ(G_UnitArmorValue(unit), 10, 0.001f);
-    T_FEQ(unit->attack1.temporaryDamageBonus, 23, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 24, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 23, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 24, 0.001f);
     T_ASSERT(S_UnitSpellImmune(unit));
     T_STREQ(unit->animation_props, "alternate");
     T_ASSERT(!unit_issueimmediateorder(unit, "avatar"));
@@ -82,9 +82,9 @@ TEST(wc3_avatar, cast_expire_recast_keeps_other_bonuses) {
     level.time += 2000; unit_updatestatuses(unit);
     T_FEQ(unit->health.value, 300, 0.001f);
     T_FEQ(unit->health.max_value, 650, 0.001f);
-    T_FEQ(unit->armor_value, 5, 0.001f);
-    T_FEQ(unit->attack1.temporaryDamageBonus, 3, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 4, 0.001f);
+    T_FEQ(unit->unit_state->armor_value, 5, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 3, 0.001f);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 4, 0.001f);
     T_ASSERT(!S_UnitSpellImmune(unit));
     T_STREQ(unit->animation_props, "");
     S_AvatarExpire(unit);
@@ -109,7 +109,7 @@ TEST(wc3_avatar, direct_status_removal_does_not_reenter_avatar_cleanup) {
     unit_removestatus(unit, slot, STATUS_REMOVE_DISPEL);
     T_NULL(unit_findstatus(unit, BZ_AVATAR_BUFF));
     T_FEQ(unit->health.max_value, 650.0f, 0.001f);
-    T_FEQ(unit->attack1.temporaryDamageBonus, 3.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 3.0f, 0.001f);
     T_ASSERT(!unit->avatar);
     avatar_done(fix);
 }
@@ -148,16 +148,16 @@ TEST(wc3_avatar, level_change_death_and_removal_reverse_stored_values) {
     edict_t *unit = fix.unit;
     T_ASSERT(S_CastNoTargetSpell(unit, BZ_AVATAR));
     T_FEQ(unit->health.max_value, 1250, 0.001f);
-    T_FEQ(unit->attack2.temporaryDamageBonus, 35, 0.001f);
-    unit->hero.str++; G_RecomputeHeroStats(unit);
+    T_FEQ(unit->unit_state->attack2.temporaryDamageBonus, 35, 0.001f);
+    unit->unit_state->hero.str++; G_RecomputeHeroStats(unit);
     T_FEQ(unit->health.max_value, 1275, 0.001f);
-    T_FEQ(unit->armor_value, 12, 0.001f);
-    unit->heroabilities[0].level = 1;
+    T_FEQ(unit->unit_state->armor_value, 12, 0.001f);
+    unit->unit_state->ranks[0].level = 1;
     unit_die(unit, unit);
     T_FEQ(unit->health.value, 0, 0.001f);
     T_FEQ(unit->health.max_value, 675, 0.001f);
-    T_FEQ(unit->armor_value, 5, 0.001f);
-    T_FEQ(unit->attack1.temporaryDamageBonus, 3, 0.001f);
+    T_FEQ(unit->unit_state->armor_value, 5, 0.001f);
+    T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 3, 0.001f);
     T_NULL(unit->avatar);
     T_ASSERT(!S_UnitSpellImmune(unit));
     avatar_done(fix);
@@ -170,7 +170,7 @@ TEST(wc3_avatar, ability_removal_expires_active_avatar) {
     T_ASSERT(S_CastNoTargetSpell(unit, BZ_AVATAR));
     T_ASSERT(G_ActorRemoveSkill(unit, BZ_AVATAR));
     T_NULL(unit->avatar); T_ASSERT(!S_UnitSpellImmune(unit));
-    T_FEQ(unit->health.max_value, 650, 0.001f); T_FEQ(unit->attack1.temporaryDamageBonus, 3, 0.001f);
+    T_FEQ(unit->health.max_value, 650, 0.001f); T_FEQ(unit->unit_state->attack1.temporaryDamageBonus, 3, 0.001f);
     avatar_done(fix);
 }
 
@@ -197,7 +197,7 @@ TEST(wc3_avatar, no_mana_or_capacity_does_not_commit) {
     T_ASSERT(!S_CastNoTargetSpell(unit, BZ_AVATAR));
     T_NULL(unit->avatar);
     unit->mana.value = 100;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) unit->abilstatus[i] = (heroabilitystatus_t){ .code = i + 1, .level = 1 };
+    FOR_LOOP(i, MAX_UNIT_STATUSES) unit->unit_state->statuses[i] = (heroabilitystatus_t){ .code = i + 1, .level = 1 };
     T_ASSERT(!S_CastNoTargetSpell(unit, BZ_AVATAR));
     T_FEQ(unit->mana.value, 100, 0.001f);
     T_FEQ(unit->health.max_value, 650, 0.001f);
@@ -207,7 +207,7 @@ TEST(wc3_avatar, jass_added_ability_casts_by_order_and_publishes_spell_effect) {
     avFix_t fix = avatar_setup(1);
     edict_t *unit = fix.unit;
 
-    memset(unit->heroabilities, 0, sizeof(unit->heroabilities));
+    memset(unit->unit_state->ranks, 0, sizeof(unit->unit_state->ranks));
     T_EQ(G_UnitAbilityLevel(unit, BZ_AVATAR), 0);
     T_ASSERT(G_ActorAddSkill(unit, BZ_AVATAR));
     T_EQ(G_UnitAbilityLevel(unit, BZ_AVATAR), 1);

@@ -26,8 +26,8 @@ static uint32_t cargo_actor_ability_alias(edict_t *ent, uint32_t base_code) {
             if (G_AbilityCode(code) == base_code) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const code = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.added[i];
         if (!code) continue;
         memcpy(alias, &code, 4);
         if (G_ActorHasSkill(ent, alias) && G_AbilityCode(code) == base_code) return code;
@@ -139,9 +139,9 @@ static void cargo_update_burrow_attacks(edict_t *transport) {
     weapons = G_UnitWeapons(transport->class_id);
     divisor = (float)(1u << MIN(transport->cargo->count, 30u));
     if (weapons->attack1.cooldown > 0.0f)
-        transport->attack1.cooldown = weapons->attack1.cooldown / divisor;
+        transport->unit_state->attack1.cooldown = weapons->attack1.cooldown / divisor;
     if (weapons->attack2.cooldown > 0.0f)
-        transport->attack2.cooldown = weapons->attack2.cooldown / divisor;
+        transport->unit_state->attack2.cooldown = weapons->attack2.cooldown / divisor;
 }
 
 void S_CargoInitUnit(edict_t *unit) {
@@ -528,7 +528,7 @@ BZ_ABILITY_PROC(CAbilityCargoLoad) {
         return true;
     }
     case A_AUTOCAST_ON:
-        return corpse_load && ent && ent->autocast_code == code;
+        return corpse_load && ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET:
         return corpse_load;
     case A_AUTOCAST_ACQUIRE:

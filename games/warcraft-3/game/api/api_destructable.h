@@ -171,7 +171,7 @@ uint32_t SetDestructableAnimation(jass_t *j) {
     if (G_IsDestructable(d) && animation) {
         d->queued_animation = "";
         G_SetUnitAnimation(d, animation);
-        d->animation_override = d->animation != NULL;
+        G_SetUnitFlag(d, UNIT_FLAG_ANIMATION_OVERRIDE, d->animation != NULL);
         if (d->animation) d->s.frame = d->animation->interval[0];
     }
     return 0;

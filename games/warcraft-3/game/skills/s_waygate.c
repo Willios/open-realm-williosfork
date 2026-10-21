@@ -18,8 +18,8 @@ static uint32_t waygate_actor_ability_alias(edict_t const *gate) {
             if (G_AbilityCode(alias) == BZ_AWRP) return alias;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(gate->abilities.added)) {
-        uint32_t const alias = gate->abilities.added[i];
+    FOR_LOOP(i, (gate->unit_state ? ARRAY_COUNT(gate->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = gate->unit_state->overrides.added[i];
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
         if (G_ActorHasSkill(gate, alias_name) && G_AbilityCode(alias) == BZ_AWRP)

@@ -14,8 +14,8 @@ static uint32_t militia_actor_ability_alias(edict_t *ent, uint32_t base_code) {
             if (G_AbilityCode(code) == base_code) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const code = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.added[i];
         if (!code) continue;
         memcpy(alias, &code, 4);
         if (G_ActorHasSkill(ent, alias) && G_AbilityCode(code) == base_code) return code;
@@ -25,8 +25,8 @@ static uint32_t militia_actor_ability_alias(edict_t *ent, uint32_t base_code) {
 
 static bool militia_actor_ability_removed(edict_t *ent, uint32_t base_code) {
     if (!ent) return false;
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.removed)) {
-        uint32_t const code = ent->abilities.removed[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.removed) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.removed[i];
         if (code && G_AbilityCode(code) == base_code) return true;
     }
     return false;
@@ -135,9 +135,9 @@ static bool militia_prepare_approach(edict_t *worker, edict_t *hall) {
 
 static returnResource_t militia_previous_resource(edict_t *worker) {
     if (!worker) return 0;
-    if (worker->harvested_gold || (worker->currentmove && worker->currentmove->proc == CAbilityGoldMine))
+    if ((worker->harvest ? worker->harvest->gold : 0) || (worker->currentmove && worker->currentmove->proc == CAbilityGoldMine))
         return RETURN_RESOURCE_GOLD;
-    if (worker->harvested_lumber || (worker->currentmove && worker->currentmove->proc == CAbilityHarvest))
+    if ((worker->harvest ? worker->harvest->lumber : 0) || (worker->currentmove && worker->currentmove->proc == CAbilityHarvest))
         return RETURN_RESOURCE_LUMBER;
     return 0;
 }
@@ -146,23 +146,23 @@ static void militia_return_carried_resources(edict_t *worker) {
     player_t *player;
 
     if (!worker || !(player = G_GetPlayerByNumber(worker->s.player))) return;
-    if (worker->harvested_gold) {
+    if ((worker->harvest ? worker->harvest->gold : 0)) {
         G_CreditResourceIncome(player, worker, PLAYERSTATE_RESOURCE_GOLD,
-                               (int32_t)worker->harvested_gold);
+                               (int32_t)(worker->harvest ? worker->harvest->gold : 0));
         S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 0);
     }
-    if (worker->harvested_lumber) {
+    if ((worker->harvest ? worker->harvest->lumber : 0)) {
         G_CreditResourceIncome(player, worker, PLAYERSTATE_RESOURCE_LUMBER,
-                               (int32_t)worker->harvested_lumber);
+                               (int32_t)(worker->harvest ? worker->harvest->lumber : 0));
         S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 0);
     }
 }
 
 static void militia_remove_buff(edict_t *unit) {
     uint32_t const code = MAKEFOURCC('B','m','i','l');
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == code)
-            unit_removestatus(unit, unit->abilstatus + i, STATUS_REMOVE_TRANSFORM);
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == code)
+            unit_removestatus(unit, unit->unit_state->statuses + i, STATUS_REMOVE_TRANSFORM);
     }
 }
 

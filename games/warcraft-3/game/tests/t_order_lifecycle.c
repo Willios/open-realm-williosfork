@@ -51,11 +51,11 @@ static edict_t *review_order_unit_at(float x, float y, uint32_t owner) {
     ent->stand = unit_stand;
     ent->die = unit_die;
     ent->unitinfo.MoveSpeed = 300;
-    ent->attack1.type = ATK_NORMAL;
-    ent->attack1.range = 30;
-    ent->attack1.cooldown = 1;
-    ent->attack1.damageBase = 10;
-    ent->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_STRUCTURE;
+    ent->unit_state->attack1.type = ATK_NORMAL;
+    ent->unit_state->attack1.range = 30;
+    ent->unit_state->attack1.cooldown = 1;
+    ent->unit_state->attack1.damageBase = 10;
+    ent->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_STRUCTURE;
     ent->targtype = TARG_GROUND;
     ent->runtime.acquisition_range = 600;
     unit_stand(ent);
@@ -234,7 +234,7 @@ TEST(wc3_order_lifecycle, animationless_melee_kill_preserves_resumed_follow) {
     edict_t *unit = review_order_unit(0, 0), *ally = review_order_unit(500, 0);
     edict_t *enemy = review_order_unit(20, 1);
     T_ASSERT(unit_issuetargetorder(unit, "move", ally));
-    unit->attack1.damagePoint = (float)FRAMETIME / 1000.0f;
+    unit->unit_state->attack1.damagePoint = (float)FRAMETIME / 1000.0f;
     G_SetHealth(enemy, 1);
     order_attack(unit, enemy);
     unit->currentmove->think(unit);
@@ -873,7 +873,7 @@ TEST(wc3_order_lifecycle, returning_creep_ignores_enemy_and_settles_beside_occup
     edict_t *a = scheduled_creep(128, 900, 0);
     edict_t *enemy = review_order_unit_at(160, 400, 0);
     int frame;
-    b->attack1.cooldown = 0; /* B has no weapon, so it stays parked on the anchor */
+    b->unit_state->attack1.cooldown = 0; /* B has no weapon, so it stays parked on the anchor */
     G_CreepGuardAutoCombat(b);
     T_ASSERT(G_CreepGuardCombatEnd(b));
     G_CreepGuardAutoCombat(a);

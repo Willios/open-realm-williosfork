@@ -639,7 +639,7 @@ void G_SetUnitAnimation(edict_t *unit, cstring_t animname) {
 void G_RunDestructableAnimation(edict_t *ent) {
     animation_t const *anim;
     uint32_t start, end, next;
-    if (!G_IsDestructable(ent) || !ent->animation_override || !(anim = ent->animation)) return;
+    if (!G_IsDestructable(ent) || !G_UnitHasFlag(ent, UNIT_FLAG_ANIMATION_OVERRIDE) || !(anim = ent->animation)) return;
     start = anim->interval[0];
     end = anim->interval[1];
     if (end <= start) return;

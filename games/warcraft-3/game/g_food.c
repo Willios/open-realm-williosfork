@@ -149,7 +149,7 @@ void G_ClearTrainingQueueFood(edict_t *producer) {
 
     if (!producer) return;
     queued = producer->build;
-    while (queued && queued->training) {
+    while (queued && G_UnitHasFlag(queued, UNIT_FLAG_TRAINING)) {
         G_SetUnitFoodUsed(queued, 0);
         queued = queued->build;
     }

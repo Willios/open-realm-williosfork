@@ -35,8 +35,8 @@ static edict_t *make_bot_harvest_unit(uint32_t class_id, float x, float y, uint3
     edict_t *unit = alloc_test_unit(class_id, x, y);
     unit->s.player = player; unit->data.UnitAbilities = abilities;
     unit->health.value = unit->health.max_value = 1000; unit->stand = unit_stand;
-    unit->attack1.type = ATK_NORMAL;
-    unit->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     unit->targtype = TARG_GROUND;
     return unit;
 }
@@ -129,8 +129,8 @@ TEST(wc3_bot, query_natives_read_authoritative_player_state) {
     dead->svflags |= SVF_MONSTER | SVF_DEADMONSTER; other->svflags |= SVF_MONSTER;
     if (!building->construction) building->construction = G_AllocConstruction();
     assert(building->construction);
-    training->training = true;
-    builder->s.player = 2; builder->health.value = 100; builder->build_project = MAKEFOURCC('h','b','a','r');
+    G_SetUnitFlag(training, UNIT_FLAG_TRAINING, true);
+    builder->s.player = 2; builder->health.value = 100; builder->orders->build_project = MAKEFOURCC('h','b','a','r');
     mine->resources = 1000;
     G_SetPlayerTechResearched(&game.clients[2], MAKEFOURCC('R','h','m','e'), 2);
 
@@ -154,9 +154,9 @@ TEST(wc3_bot, town_unit_count_scopes_owned_units_and_completion_to_nearest_town)
     if (!building->construction) building->construction = G_AllocConstruction();
     assert(building->construction);
     training = alloc_test_unit(footman, 1024, 0); training->s.player = 2; training->svflags |= SVF_MONSTER;
-    training->training = true;
+    G_SetUnitFlag(training, UNIT_FLAG_TRAINING, true);
     pending_builder = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 128, 0);
-    pending_builder->s.player = 2; pending_builder->health.value = 100; pending_builder->build_project = footman;
+    pending_builder->s.player = 2; pending_builder->health.value = 100; pending_builder->orders->build_project = footman;
 
     T_EQ(G_BotTown(player, 0), hall0); T_EQ(G_BotTown(player, 1), hall1);
     T_EQ(G_BotTownUnitCount(player, footman, 0, false), 3);
@@ -224,7 +224,7 @@ TEST(wc3_bot, expansion_natives_keep_one_viable_mine_and_order_hall_normally) {
     G_FreeEdict(foe);
     T_NULL(G_BotExpansionFoe(player));
     T_ASSERT(G_BotSetExpansion(player, worker, hall_id));
-    T_EQ(worker->build_project, hall_id);
+    T_EQ(worker->orders->build_project, hall_id);
     T_NOT_NULL(worker->goalentity);
     T_EQ(G_BotTown(player, 0), main_hall);
     T_EQ(G_BotExpansionMine(player), mine);
@@ -255,7 +255,7 @@ TEST(wc3_bot, expansion_native_sequence_runs_from_common_ai_context) {
     G_BotRunFrame();
     T_NOT_NULL(level.bots[2].vm);
     if (level.bots[2].vm) T_ASSERT(!jass_rterror_pending(level.bots[2].vm));
-    T_EQ(worker->build_project, MAKEFOURCC('h','h','o','u'));
+    T_EQ(worker->orders->build_project, MAKEFOURCC('h','h','o','u'));
     T_NOT_NULL(worker->goalentity);
 }
 
@@ -297,7 +297,7 @@ TEST(wc3_bot, production_uses_idle_barracks_at_the_requested_town) {
 
     T_NOT_NULL(hall);
     first->build = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
-    first->build->training = true;
+    G_SetUnitFlag(first->build, UNIT_FLAG_TRAINING, true);
     T_ASSERT(G_BotProduce(player, 1, MAKEFOURCC('h','f','o','o'), 0));
     T_NOT_NULL(second->build);
 }
@@ -354,7 +354,7 @@ TEST(wc3_bot, guard_post_replacement_trains_once_and_consumes_post_budget) {
     G_BotFillGuardPosts(player);
     T_NULL(producer->build->build); /* repeated FillGuardPosts must not queue the same replacement again */
 
-    producer->build->training = false;
+    G_SetUnitFlag(producer->build, UNIT_FLAG_TRAINING, false);
     producer->build->health.value = producer->build->health.max_value = 100;
     G_BotFillGuardPosts(player);
     T_EQ(bot->guards[0].unit, producer->build);
@@ -398,13 +398,13 @@ TEST(wc3_bot, hero_levels_callback_uses_ai_hero_context_and_normal_learning) {
     G_BotRunFrame();
     hero = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     hero->s.player = 2;
-    hero->hero.level = 1;
-    hero->hero.skillpoints = 0;
-    hero->hero.xp = 0;
+    hero->unit_state->hero.level = 1;
+    hero->unit_state->hero.skillpoints = 0;
+    hero->unit_state->hero.xp = 0;
     G_HeroSetXP(hero, G_HeroXPForLevel(2));
-    T_EQ(hero->hero.level, 2);
+    T_EQ(hero->unit_state->hero.level, 2);
     T_EQ(G_UnitAbilityLevel(hero, MAKEFOURCC('A','H','h','b')), 1);
-    T_EQ(hero->hero.skillpoints, 0);
+    T_EQ(hero->unit_state->hero.skillpoints, 0);
     T_EQ(level.bots[2].hero_id, 0);
     T_EQ(level.bots[2].hero_level, 0);
 }
@@ -418,9 +418,9 @@ TEST(wc3_bot, hero_levels_callback_runs_for_jass_created_hero) {
     hero = unit_create(2, MAKEFOURCC('H','p','a','l'), &(vec2_t){512, 512}, 0);
     T_NOT_NULL(hero);
     if (hero) {
-        T_EQ(hero->hero.level, 1);
+        T_EQ(hero->unit_state->hero.level, 1);
         T_EQ(G_UnitAbilityLevel(hero, MAKEFOURCC('A','H','h','b')), 1);
-        T_EQ(hero->hero.skillpoints, 0);
+        T_EQ(hero->unit_state->hero.skillpoints, 0);
     }
 }
 
@@ -696,10 +696,10 @@ TEST(wc3_bot, hero_item_policy_buys_makeitems_shop_merchandise) {
     G_BotUpdateHeroItems(player);
     T_EQ(bot->item_policy_last_scan, G_Time());
     T_EQ(bot->hero_buy_last_scan, G_Time());
-    T_NOT_NULL(hero->inventory[0]);
-    if (hero->inventory[0])
-        T_ASSERT(hero->inventory[0]->class_id == MAKEFOURCC('m','o','o','n') ||
-                 hero->inventory[0]->class_id == MAKEFOURCC('p','l','c','l'));
+    T_NOT_NULL(G_InventoryItem(hero, 0));
+    if (G_InventoryItem(hero, 0))
+        T_ASSERT(G_InventoryItem(hero, 0)->class_id == MAKEFOURCC('m','o','o','n') ||
+                 G_InventoryItem(hero, 0)->class_id == MAKEFOURCC('p','l','c','l'));
 }
 
 /* Bots shop from the live stock like players, including AddItemToStock. */
@@ -747,8 +747,8 @@ TEST(wc3_bot, hero_item_policy_buys_trigger_added_stock) {
     T_EQ(G_FindShopPatron(clent->client, shop), hero);
     T_ASSERT(G_ShopItemRequirementsSatisfied(clent->client, MAKEFOURCC('p','l','c','l'), NULL, 0));
     G_BotUpdateHeroItems(player);
-    T_NOT_NULL(hero->inventory[0]);
-    if (hero->inventory[0]) T_EQ(hero->inventory[0]->class_id, MAKEFOURCC('p','l','c','l'));
+    T_NOT_NULL(G_InventoryItem(hero, 0));
+    if (G_InventoryItem(hero, 0)) T_EQ(G_InventoryItem(hero, 0)->class_id, MAKEFOURCC('p','l','c','l'));
     T_EQ(shop->stock->items[0].current, 0);
 }
 
@@ -769,17 +769,17 @@ TEST(wc3_bot, stop_gathering_stops_only_owned_harvesters_and_releases_mines) {
     if (!gold->goldmine) gold->goldmine = G_AllocGoldMine();
     assert(gold->goldmine);
     gold->goldmine->mine = mine; gold->goldmine->mine_spawn_time = mine->spawn_time;
-    G_SetUnitFlag(gold, UNIT_FLAG_INVULNERABLE, true); gold->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
-    lumber->harvested_lumber = 7; gold->harvested_gold = 5;
+    G_SetUnitFlag(gold, UNIT_FLAG_INVULNERABLE, true); gold->s.renderfx |= RF_HIDDEN; G_InitGoldMine(mine); mine->goldmine->occupants = 1;
+    S_SetCarriedResource(lumber, RETURN_RESOURCE_LUMBER, 7); S_SetCarriedResource(gold, RETURN_RESOURCE_GOLD, 5);
 
     T_ASSERT(G_BotStart(&game.clients[2].ps, "test_stop_gathering.ai", BOT_CAMPAIGN));
     G_BotRunFrame();
     T_NULL(lumber->currentmove->proc);
     T_NULL(gold->currentmove->proc);
-    T_EQ(lumber->harvested_lumber, 7);
-    T_EQ(gold->harvested_gold, 5);
+    T_EQ((lumber->harvest ? lumber->harvest->lumber : 0), 7);
+    T_EQ((gold->harvest ? gold->harvest->gold : 0), 5);
     T_NULL(gold->goldmine->mine);
-    T_EQ(mine->peonsinside, 0);
+    T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
     T_ASSERT(!(gold->s.renderfx & RF_HIDDEN));
     T_ASSERT(!G_UnitHasFlag(gold, UNIT_FLAG_INVULNERABLE));
     T_EQ(other->currentmove->proc, CAbilityHarvest);
@@ -796,8 +796,8 @@ TEST(wc3_bot, harvest_gold_assigns_nearest_owned_workers_up_to_quota) {
     edict_t *far = make_bot_harvest_unit(MAKEFOURCC('h','p','e','a'), 96, 0, 2, &bot_harvester_abilities);
     edict_t *other = make_bot_harvest_unit(MAKEFOURCC('h','p','e','a'), 16, 0, 1, &bot_harvester_abilities);
     edict_t *mine = make_bot_harvest_unit(MAKEFOURCC('n','g','o','l'), 256, 0, MAX_PLAYERS, &bot_mine_abilities);
-    mine->resources = 1000; trainee->training = true; trainee->s.renderfx |= RF_HIDDEN;
-    builder->build_project = MAKEFOURCC('h','b','a','r');
+    mine->resources = 1000; G_SetUnitFlag(trainee, UNIT_FLAG_TRAINING, true); trainee->s.renderfx |= RF_HIDDEN;
+    builder->orders->build_project = MAKEFOURCC('h','b','a','r');
 
     G_BotClearHarvest(&game.clients[2].ps);
     G_BotHarvest(&game.clients[2].ps, 0, 1, true);
@@ -836,12 +836,12 @@ TEST(wc3_bot, harvest_returns_carried_resources_before_collecting) {
     edict_t *hall = make_bot_harvest_unit(MAKEFOURCC('h','t','o','w'), 0, 0, 2, &bot_hall_abilities);
     edict_t *worker = make_bot_harvest_unit(MAKEFOURCC('h','p','e','a'), 64, 0, 2, &bot_harvester_abilities);
     edict_t *mine = make_bot_harvest_unit(MAKEFOURCC('n','g','o','l'), 256, 0, MAX_PLAYERS, &bot_mine_abilities);
-    mine->resources = 1000; worker->harvested_lumber = 5;
+    mine->resources = 1000; S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 5);
 
     G_BotClearHarvest(&game.clients[2].ps);
     G_BotHarvest(&game.clients[2].ps, 0, 1, true);
     T_EQ(ARRAY_COUNT(bot->harvesters), 1); T_EQ(worker->goalentity, hall);
-    T_EQ(worker->harvested_lumber, 5); T_EQ(worker->currentmove->proc, CAbilityHarvest);
+    T_EQ((worker->harvest ? worker->harvest->lumber : 0), 5); T_EQ(worker->currentmove->proc, CAbilityHarvest);
 }
 
 TEST(wc3_bot, harvest_natives_execute_through_player_bot_vm) {
@@ -1127,7 +1127,7 @@ TEST(wc3_bot, add_defenders_fills_idempotently_from_completed_owned_units) {
     edict_t *training = alloc_test_unit(type, 64, 0), *other = alloc_test_unit(type, 96, 0);
     first->s.player = second->s.player = training->s.player = 2; other->s.player = 1;
     first->health.value = second->health.value = training->health.value = other->health.value = 100;
-    training->training = true;
+    G_SetUnitFlag(training, UNIT_FLAG_TRAINING, true);
 
     T_ASSERT(G_BotAddDefenders(&game.clients[2].ps, 2, type));
     T_EQ(ARRAY_COUNT(bot->captains[BOT_CAPTAIN_DEFENSE].units), 2);
@@ -1389,9 +1389,9 @@ TEST(wc3_bot, remove_siege_drops_siege_attack_members_without_ordering_them) {
     edict_t *normal = make_bot_harvest_unit(type, 320, 0, 2, NULL);
     edict_t *dead = make_bot_harvest_unit(type, 352, 0, 2, NULL);
 
-    siege1->attack1.type = ATK_SIEGE;
-    siege2->attack2.type = ATK_SIEGE;
-    normal->attack1.type = ATK_NORMAL;
+    siege1->unit_state->attack1.type = ATK_SIEGE;
+    siege2->unit_state->attack2.type = ATK_SIEGE;
+    normal->unit_state->attack1.type = ATK_NORMAL;
     dead->health.value = 0;
     bot->captains[BOT_CAPTAIN_ATTACK].units = gi.MemAlloc(4 * sizeof(edict_t *));
     ARRAY_COUNT(bot->captains[BOT_CAPTAIN_ATTACK].units) = 4;
@@ -1413,7 +1413,7 @@ TEST(wc3_bot, remove_siege_native_runs_in_player_bound_ai_vm) {
     bot_t *bot = level.bots + 2;
     edict_t *siege = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 256, 0, 2, NULL);
 
-    siege->attack1.type = ATK_SIEGE;
+    siege->unit_state->attack1.type = ATK_SIEGE;
     bot->captains[BOT_CAPTAIN_ATTACK].units = gi.MemAlloc(sizeof(edict_t *));
     ARRAY_COUNT(bot->captains[BOT_CAPTAIN_ATTACK].units) = 1;
     bot->captains[BOT_CAPTAIN_ATTACK].units[0] = siege;
@@ -1761,7 +1761,7 @@ TEST(wc3_bot, purchase_zeppelin_requires_nearby_hero_and_uses_neutral_shop_purch
     hero->svflags |= SVF_MONSTER;
     hero->movetype = MOVETYPE_STEP;
     hero->health.value = hero->health.max_value = 1000.0f;
-    hero->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    hero->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     hero->targtype = TARG_GROUND;
     gi.LinkEntity(hero);
 
@@ -1800,19 +1800,19 @@ TEST(wc3_bot, get_mega_target_requires_watch_and_vulnerable_hostile_main) {
     T_ASSERT(G_BotGetMegaTarget(caller) == enemy_hall);
 
     worker = make_bot_harvest_unit(MAKEFOURCC('h','p','e','a'), 3072, 0, 1, &bot_harvester_abilities);
-    worker->data.UnitWeapons = &enabled_attack; worker->attack1.type = ATK_NORMAL;
+    worker->data.UnitWeapons = &enabled_attack; worker->unit_state->attack1.type = ATK_NORMAL;
     T_ASSERT(G_BotGetMegaTarget(caller) == enemy_hall); /* economy workers alone do not protect the main */
 
     defender = make_bot_harvest_unit(MAKEFOURCC('h','f','o','o'), 3100, 0, 1, NULL);
-    defender->data.UnitWeapons = &enabled_attack; defender->attack1.type = ATK_NORMAL;
+    defender->data.UnitWeapons = &enabled_attack; defender->unit_state->attack1.type = ATK_NORMAL;
     T_NULL(G_BotGetMegaTarget(caller));
     defender->s.origin2.x = 5000;
     T_ASSERT(G_BotGetMegaTarget(caller) == enemy_hall);
 
     tower = make_bot_harvest_unit(MAKEFOURCC('h','b','a','r'), 3200, 0, 1, NULL);
-    tower->data.UnitWeapons = &enabled_attack; tower->attack1.type = ATK_PIERCE;
+    tower->data.UnitWeapons = &enabled_attack; tower->unit_state->attack1.type = ATK_PIERCE;
     T_NULL(G_BotGetMegaTarget(caller));
-    tower->attack1.type = ATK_NONE;
+    tower->unit_state->attack1.type = ATK_NONE;
     T_ASSERT(G_BotGetMegaTarget(caller) == enemy_hall);
 
     G_SetPlayerAlliance(caller, enemy, ALLIANCE_PASSIVE, true);
@@ -1835,12 +1835,12 @@ TEST(wc3_bot, is_towered_requires_nearby_base_and_attack_capable_defending_build
     assert(tower->ancient_root);
     tower->ancient_root->ability = 0;
     hall->data.UnitAbilities = &bot_hall_abilities;
-    tower->data.UnitWeapons = &enabled_attack; tower->attack1.type = ATK_PIERCE; tower->attack1.range = 0;
+    tower->data.UnitWeapons = &enabled_attack; tower->unit_state->attack1.type = ATK_PIERCE; tower->unit_state->attack1.range = 0;
 
     T_ASSERT(G_BotIsTowered(caller, target));
 
     /* Authored attack/acquisition ranges are not part of retail IsTowered classification. */
-    tower->attack1.range = 99999; tower->runtime.acquisition_range = 1;
+    tower->unit_state->attack1.range = 99999; tower->runtime.acquisition_range = 1;
     T_ASSERT(G_BotIsTowered(caller, target));
 
     /* The target owner changes with the tower so the query tests its ownership filter. */
@@ -1850,8 +1850,8 @@ TEST(wc3_bot, is_towered_requires_nearby_base_and_attack_capable_defending_build
     tower->s.player = 1;
     target->s.player = 1;
 
-    tower->attack1.type = ATK_NONE;
-    tower->attack2.type = ATK_NONE;
+    tower->unit_state->attack1.type = ATK_NONE;
+    tower->unit_state->attack2.type = ATK_NONE;
     tower->data.UnitWeapons = &no_attack;
     target->s.player = 2;
     T_ASSERT(!G_BotIsTowered(caller, target));
@@ -1883,8 +1883,8 @@ TEST(wc3_bot, town_threatened_tracks_active_hostile_attacks_on_any_owned_unit) {
     enemy->stand = friendly->stand = unit_stand;
     unit->data.UnitWeapons = enemy->data.UnitWeapons = friendly->data.UnitWeapons = NULL;
     unit->targtype = building->targtype = TARG_GROUND;
-    enemy->attack1.type = ATK_NORMAL;
-    enemy->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_STRUCTURE;
+    enemy->unit_state->attack1.type = ATK_NORMAL;
+    enemy->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND | WC3_TARGET_FLAG_STRUCTURE;
     enemy->targtype = TARG_GROUND;
     enemy->data.UnitWeapons = &(UnitWeapons_t const){ .attacksEnabled = 1 };
     G_SetPlayerAlliance(&game.clients[1].ps, player, ALLIANCE_PASSIVE, false);
@@ -1947,7 +1947,7 @@ TEST(wc3_bot, convert_units_finds_authored_added_and_ranked_abilities) {
         source->s.player = target->s.player = 2;
         source->data.UnitAbilities = i ? NULL : &abilities;
         if (i == 1) T_ASSERT(G_ActorAddSkill(source, code));
-        if (i == 2) source->heroabilities[0] = (heroability_t){ .code = code, .level = 1 };
+        if (i == 2) source->unit_state->ranks[0] = (heroability_t){ .code = code, .level = 1 };
         /* The desired target count is already present, so discovery succeeds without starting a transform. */
         T_ASSERT(G_BotConvertUnits(player, 1, source_id));
     }
@@ -1966,8 +1966,8 @@ TEST(wc3_bot, individual_flee_policy_moves_damaged_combat_unit_home) {
     unit->svflags |= SVF_MONSTER;
     G_InitUnitOrders(enemy);
     enemy->svflags |= SVF_MONSTER;
-    unit->attack1.type = ATK_NORMAL;
-    enemy->attack1.type = ATK_NORMAL;
+    unit->unit_state->attack1.type = ATK_NORMAL;
+    enemy->unit_state->attack1.type = ATK_NORMAL;
     G_SetPlayerAlliance(player, &game.clients[1].ps, ALLIANCE_PASSIVE, false);
     level.bots[2].flags = BOT_UNITS_FLEE;
     level.time = 1000;

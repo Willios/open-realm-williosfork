@@ -77,7 +77,7 @@ static void pos_setup(posFix_t *fix, cstring_t slk, uint32_t code) {
     fix->enemy->data.UnitBalance = &fix->enemy_bal;
     fix->ally->data.UnitBalance = &fix->ally_bal;
     fix->hero->data.UnitBalance = &fix->hero_bal;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 100;
     fix->caster->health.value = fix->caster->health.max_value = 300;
     fix->enemy->health.value = fix->enemy->health.max_value = 500;

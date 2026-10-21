@@ -53,8 +53,8 @@ static edict_t *make_scheduled_critter(float x, float y) {
     unit->die = unit_die;
     unit->collision = 16.0f;
     unit->unitinfo.MoveSpeed = 320.0f;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     gi.LinkEntity(unit);
     unit_stand(unit);
@@ -69,8 +69,8 @@ TEST(wc3_wander, authored_ability_dispatches_innate_idle) {
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     T_ASSERT(G_ActorHasSkill(unit, "Awan"));
     T_ASSERT(S_UnitAbilityEvent(unit, A_IDLE));
@@ -78,8 +78,8 @@ TEST(wc3_wander, authored_ability_dispatches_innate_idle) {
     T_ASSERT(unit->wander->next_time <= level.time + 10000);
     T_ASSERT(S_UnitAbilityEvent(unit, A_NO_RETALIATE));
     /* Removing the authored ability must stop innate idle consumption. */
-    unit->abilities.added[0] = 0;
-    ARRAY_COUNT(unit->abilities.added) = 0;
+    unit->unit_state->overrides.added[0] = 0;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 0;
     T_ASSERT(!G_ActorHasSkill(unit, "Awan"));
     T_ASSERT(!S_UnitAbilityEvent(unit, A_NO_RETALIATE));
 }
@@ -91,8 +91,8 @@ TEST(wc3_wander, separate_units_have_separate_deterministic_schedules) {
     level.time = 1000;
     a = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     b = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 500, 0);
-    a->abilities.added[0] = b->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(a->abilities.added) = ARRAY_COUNT(b->abilities.added) = 1;
+    a->unit_state->overrides.added[0] = b->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(a->unit_state->overrides.added) = ARRAY_COUNT(b->unit_state->overrides.added) = 1;
     T_ASSERT(S_UnitAbilityEvent(a, A_IDLE));
     T_ASSERT(S_UnitAbilityEvent(b, A_IDLE));
     T_NE(a->wander->random_state, b->wander->random_state);
@@ -106,8 +106,8 @@ TEST(wc3_wander, scheduler_ticks_schedule_only_while_idle_and_eligible) {
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit_stand(unit);
     G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
@@ -133,8 +133,8 @@ TEST(wc3_wander, retreat_does_not_override_external_move) {
     level.time = 1000;
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -64, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     goal = Waypoint_add(&destination);
     order_move(unit, goal);
@@ -155,8 +155,8 @@ TEST(wc3_wander, recycled_waypoint_does_not_authorize_flee_override) {
     level.time = 1000;
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -64, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     goal = Waypoint_add(&destination);
     order_move(unit, goal);
@@ -175,8 +175,8 @@ TEST(wc3_wander, disable_cancels_only_owned_move) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     owned_goal = unit->wander->waypoint;
@@ -205,8 +205,8 @@ TEST(wc3_wander, damage_does_not_interrupt_explicit_non_move_order) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit->currentmove = &explicit_attack;
     T_ASSERT(G_UnitHasActiveOrder(unit));
@@ -222,8 +222,8 @@ TEST(wc3_wander, idle_does_not_start_while_an_explicit_order_is_active) {
     reset_entities();
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit->currentmove = &explicit_attack;
     T_ASSERT(G_UnitHasActiveOrder(unit));
@@ -239,8 +239,8 @@ TEST(wc3_wander, active_goal_round_trips_with_generation) {
     reset_entities();
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     goal = Waypoint_add(&destination);
     order_move(unit, goal);
@@ -267,8 +267,8 @@ TEST(wc3_wander, private_destination_cannot_be_recycled_by_shared_ring) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     private_goal = unit->wander->waypoint;
@@ -296,8 +296,8 @@ TEST(wc3_wander, stable_goal_survives_save_load) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -317,8 +317,8 @@ TEST(wc3_wander, disabling_after_ownership_retired_frees_stale_private_goal) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -342,8 +342,8 @@ TEST(wc3_wander, ordinary_external_move_survives_private_goal_cleanup) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     T_NOT_NULL(unit->wander->waypoint);
@@ -364,8 +364,8 @@ TEST(wc3_wander, scheduler_starts_actual_wander_move) {
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit_stand(unit);
     monster_think(unit);
@@ -392,8 +392,8 @@ TEST(wc3_wander, combat_damage_uses_wander_defensive_response) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     before = unit->health.value;
     T_ASSERT(before > 1);
@@ -411,8 +411,8 @@ TEST(wc3_wander, blocked_private_move_returns_idle_after_ownership_retirement) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -439,8 +439,8 @@ TEST(wc3_wander, blocked_recovery_does_not_intercept_external_move) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     T_NOT_NULL(unit->wander->waypoint);
@@ -460,8 +460,8 @@ TEST(wc3_wander, repeated_damage_retargets_private_goal_without_leak) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -483,8 +483,8 @@ TEST(wc3_wander, saved_private_destination_continues_after_reload) {
     setup_test_world();
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     attacker = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), -100, 0);
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -540,8 +540,8 @@ TEST(wc3_wander, real_move_arrival_then_scheduler_rearms_wander) {
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
     unit->unitinfo.MoveSpeed = 320.0f;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -568,8 +568,8 @@ TEST(wc3_wander, save_load_move_reaches_goal_and_rearms) {
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
     unit->unitinfo.MoveSpeed = 320.0f;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     test_wander_damage(unit, attacker);
     goal = unit->wander->waypoint;
@@ -738,8 +738,8 @@ TEST(wc3_wander, autonomous_idle_move_arrival_second_move) {
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
     unit->unitinfo.MoveSpeed = 320.0f;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit_stand(unit);
     initial = unit->s.origin2;
@@ -787,8 +787,8 @@ TEST(wc3_wander, autonomous_move_leaves_lumber_mill_collision_edge) {
     unit->unitinfo.MoveSpeed = 320.0f;
     unit->stand = unit_stand;
     unit->svflags |= SVF_MONSTER;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     gi.LinkEntity(mill);
     gi.LinkEntity(unit);
@@ -823,8 +823,8 @@ TEST(wc3_wander, custom_wander_alias_enable_disable_lifecycle) {
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0, 0);
     unit->svflags |= SVF_MONSTER;
     unit->stand = unit_stand;
-    unit->abilities.added[0] = alias;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = alias;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     S_EnableAbility(unit, alias);
     unit_stand(unit);
@@ -834,8 +834,8 @@ TEST(wc3_wander, custom_wander_alias_enable_disable_lifecycle) {
     S_DisableAbility(unit, alias);
     T_ASSERT(!unit->wander || unit->wander->next_time == 0);
     T_ASSERT(!unit->wander || !unit->wander->waypoint);
-    unit->abilities.added[0] = 0;
-    ARRAY_COUNT(unit->abilities.added) = 0;
+    unit->unit_state->overrides.added[0] = 0;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 0;
     T_ASSERT(!S_UnitAbilityEvent(unit, A_NO_RETALIATE));
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);
@@ -860,8 +860,8 @@ TEST(wc3_wander, destroyed_building_does_not_restrict_wander_destination) {
     mill->runtime.flags |= UNIT_BALANCE_BUILDING;
     mill->s.flags |= EF_BUILDING;
     unit->collision = 16.0f;
-    unit->abilities.added[0] = ID_AWAN;
-    ARRAY_COUNT(unit->abilities.added) = 1;
+    unit->unit_state->overrides.added[0] = ID_AWAN;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     gi.LinkEntity(mill);
     gi.LinkEntity(unit);
@@ -890,8 +890,8 @@ static uint32_t wander_lethal_hit_edict_growth(bool with_wander) {
     unit->stand = unit_stand;
     unit->die = unit_die;
     if (with_wander) {
-        unit->abilities.added[0] = ID_AWAN;
-        ARRAY_COUNT(unit->abilities.added) = 1;
+        unit->unit_state->overrides.added[0] = ID_AWAN;
+        ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     }
     unit_stand(unit);

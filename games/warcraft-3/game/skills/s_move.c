@@ -1631,8 +1631,8 @@ static bool follow_target_is_valid(edict_t const *self, edict_t const *target) {
 }
 
 static bool follow_can_auto_attack(edict_t const *self) {
-    if (!self || !S_CargoAttacksEnabled(self) || self->attack1.cooldown <= 0.0f ||
-        (self->attack1.damageBase <= 0 && self->attack1.numberOfDice <= 0)) {
+    if (!self || !S_CargoAttacksEnabled(self) || self->unit_state->attack1.cooldown <= 0.0f ||
+        (self->unit_state->attack1.damageBase <= 0 && self->unit_state->attack1.numberOfDice <= 0)) {
         return false;
     }
     return !level.mapinfo || level.mapinfo->players[self->s.player].playerType != kPlayerTypeNeutral;
@@ -1946,7 +1946,7 @@ void order_move(edict_t *self, edict_t *target) {
         S_UnitAbilityEventWithCall(self, A_MOVE_START, &call);
     }
     self->goalentity = target;
-    self->attack_target_spawn_time = 0;
+    self->unit_state->attack_target_spawn_time = 0;
     self->orders->attackmove_waypoint = NULL;
     self->orders->patrol_a = NULL;
     self->orders->patrol_b = NULL;

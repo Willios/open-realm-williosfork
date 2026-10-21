@@ -72,7 +72,7 @@ static void ens_setup(ensFix_t *fix, cstring_t slk) {
     fix->caster->svflags |= SVF_MONSTER; fix->ground->svflags |= SVF_MONSTER; fix->flyer->svflags |= SVF_MONSTER;
     fix->caster->targtype = fix->ground->targtype = TARG_GROUND;
     fix->flyer->targtype = TARG_AIR;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_AENS, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AENS, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 100;
     fix->ground->health.value = fix->ground->health.max_value = 500;
     fix->flyer->health.value = fix->flyer->health.max_value = 500;
@@ -247,8 +247,8 @@ TEST(wc3_spell, ensnare_dispel_mid_land_starts_rise) {
     level.time += 1000; S_RunAbilityUpdates(fix.flyer);
     T_ASSERT(fix.flyer->unitinfo.FlyHeight > 1.0f && fix.flyer->unitinfo.FlyHeight < 159.0f);
     FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (fix.flyer->abilstatus[i].level && S_StatusIsEnsnare(fix.flyer->abilstatus[i].code))
-            slot = fix.flyer->abilstatus + i;
+        if (fix.flyer->unit_state->statuses[i].level && S_StatusIsEnsnare(fix.flyer->unit_state->statuses[i].code))
+            slot = fix.flyer->unit_state->statuses + i;
     T_NOT_NULL(slot);
     unit_expirestatus(fix.flyer, slot); /* what Dispel Magic and Purge call per slot */
     unit_refreshstatusflags(fix.flyer);
@@ -271,8 +271,8 @@ TEST(wc3_spell, ensnare_second_bind_keeps_lock_after_first_expires) {
     unit_addtimedstatus(fix.flyer, "Beng", 1, 20);
     T_ASSERT(!(fix.flyer->aiflags & AI_FLYING));
     FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (fix.flyer->abilstatus[i].level && fix.flyer->abilstatus[i].code == BZ_BENA)
-            slot = fix.flyer->abilstatus + i;
+        if (fix.flyer->unit_state->statuses[i].level && fix.flyer->unit_state->statuses[i].code == BZ_BENA)
+            slot = fix.flyer->unit_state->statuses + i;
     T_NOT_NULL(slot);
     unit_expirestatus(fix.flyer, slot);
     unit_refreshstatusflags(fix.flyer);
@@ -297,8 +297,8 @@ TEST(wc3_spell, ensnare_expiry_restores_attack_and_move_orders) {
     victim = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 300, 0);
     victim->s.player = 0; victim->svflags |= SVF_MONSTER; victim->targtype = TARG_GROUND;
     victim->health.value = victim->health.max_value = 500;
-    fix.flyer->attack1.type = ATK_PIERCE; fix.flyer->attack1.range = 300.0f;
-    fix.flyer->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    fix.flyer->unit_state->attack1.type = ATK_PIERCE; fix.flyer->unit_state->attack1.range = 300.0f;
+    fix.flyer->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     order_attack(fix.flyer, victim);
     T_ASSERT(fix.flyer->goalentity == victim);
     ens_done(fix);

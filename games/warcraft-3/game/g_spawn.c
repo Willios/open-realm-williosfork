@@ -929,7 +929,7 @@ void G_SpawnEntities(cstring_t map_path) {
         }
         ent->class_id = doodad->doodID;
         ent->variation = doodad->variation;
-        ent->hero = doodad->hero;
+        ent->unit_state->hero = doodad->hero;
         ent->s.player = G_NormalizeMapObjectPlayer(doodad->player);
         ent->s.origin = doodad->position;
         ent->s.angle = doodad->angle;
@@ -1005,6 +1005,7 @@ static edict_t *SP_SpawnAtLocationInternal(uint32_t class_id, uint32_t player, v
         return NULL;
     }
     G_InitUnitOrders(ent);
+    G_InitUnitState(ent);
     ent->class_id = class_id;
     ent->s.class_id = class_id;
     ent->spawn_time = G_Time();

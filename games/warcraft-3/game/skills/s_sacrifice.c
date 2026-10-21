@@ -121,8 +121,8 @@ bool G_QueueSacrifice(edict_t *producer, edict_t *worker, uint32_t result_id) {
         return false;
     }
 
-    result->training = true;
-    result->training_food_wait_notified = false;
+    G_SetUnitFlag(result, UNIT_FLAG_TRAINING, true);
+    G_SetUnitFlag(result, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
     G_SetHealth(result, 0);
     result->s.renderfx |= RF_HIDDEN;
     if (!result->sacrifice) result->sacrifice = G_AllocSacrifice();

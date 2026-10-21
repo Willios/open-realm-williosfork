@@ -131,7 +131,7 @@ BZ_ABILITY_PROC(CAbilitySelfDestruct) {
 		self_destruct_explode(ent, code);
 		return true;
 	case A_AUTOCAST_ON:
-		return ent && code && ent->autocast_code == code;
+		return ent && code && ent->unit_state->autocast == code;
 	case A_AUTOCAST_SET:
 		return true;
 	case A_AUTOCAST_ACQUIRE:

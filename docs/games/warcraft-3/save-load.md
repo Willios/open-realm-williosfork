@@ -196,20 +196,23 @@ Saving is allowed only at a VM safe point. `jass_writesnapshot()` rejects a requ
 
 ## Field Table
 
-`games/warcraft-3/game/g_save.c` keeps the `field_t fields[]` table synchronized with `struct edict_s` in `g_local.h`. Fixed-size
-`edict_t` and `GAMECLIENT` records are still copied as one block. Embedded non-pointer state such as `abilstatus[]` (including each
-timed status's `timestamp`, `duration_ms`, and `source_spawn_time`), `abilitycooldowns[]` (cooldown rawcode/start/end), and the inline WC3 animation-property strings (`animation_props` and
-`animation_request`) therefore round-trip with that raw record and need no `field_t` entry. The adjacent `runtime_fields[]` and
-`client_runtime_fields[]` tables describe the process-owned bytes that must be zeroed before that copy. This keeps the
-common path memcpy-shaped while making pointer exceptions declarative rather than a hand-maintained assignment list.
+`games/warcraft-3/game/g_save.c` keeps `edict_fields[]`, `client_fields[]` and
+per-pool schemas synchronized with their declarations. Fixed edict/client records
+and each owned pool record are copied as blocks; `field_t` describes pointer fixups,
+content serialization and process-owned exclusions. Unit statuses, cooldowns, Hero
+progression and weapon profiles live in the entity-owned `unit_state` pool.
+Status source pointers require nested fixups; scalar timestamps and incarnation
+IDs persist with the raw pool record. Animation request/property strings are
+interned content and use `F_ANIMSTRING`, never raw process addresses.
 
-`EDICTFIELD(x, type)` describes one scalar field with `array_size == 0`. `EDICTFIELD(x, type, count)` describes a contiguous array from the base offset; the serializer walks `count` elements using the field type's element size. For example, the six inventory pointers use `EDICTFIELD(inventory, F_EDICT, MAX_INVENTORY)` rather than six duplicate descriptors.
+`F` and `TF` describe struct-tag and typedef-backed members. For example, inventory
+slots use `TF(inventory_t, slots, F_EDICT, MAX_INVENTORY, FIELD_NONE)`.
 
 - Add every persistent `edict_t` entity pointer to `fields[]` as `F_EDICT`, including array elements and nested fields.
 - Use `TFC(type, field, kind, capacity, count_field)` for a bounded typedef-backed array. The descriptor writes and restores `count_field` itself, then processes that many elements; do not map the count separately.
 - Persistent movement defaults are part of that rule: Attack-Move/Patrol waypoints and `orders->follow_target` must be encoded as entity indexes rather than raw pointers.
 - Do not add process-owned pointers such as path textures, metadata rows, or animations. `WriteEdict()` clears `FIELD_RUNTIME` pointers and `ReadEdict()` rebinds class metadata; spatial links are rebuilt with `gi.LinkEntity`.
-- Edict C callbacks (`think`, `stand`, `birth`, `prethink`, `die`, `idle`, `move`, `run`, `attack`, `pain`) use `F_CFUNCTION`, not `F_IGNORE`. Add every production assignment to the versioned `save_cfunctions[]` roster in `g_save.c`; an unrostered pointer fails the save instead of writing an address.
+- Edict C callbacks (`think`, `stand`, `birth`, `prethink`, `die`, `pain`) use `F_CFUNCTION`, not `F_IGNORE`. Add every production assignment to the versioned `save_cfunctions[]` roster in `g_save.c`; an unrostered pointer fails the save instead of writing an address.
 - JASS `F_FUNCTION` remains name-string identity for timers and triggers. Do not overload it with C symbols.
 - Add remaining process-owned edict or client pointers to the corresponding runtime-field table so the fixed record copy cannot write an address into the save file.
 - When adding a new pointer or changing an existing edict field, update the table and the round-trip test together. A raw pointer omitted from the table can write an address into the save file.
@@ -413,7 +416,7 @@ CI covers that contract without retail maps in
 (`games/warcraft-3/game/tests/t_hero_saveload.c`). The test learns two Paladin
 skills, inserts two charged items, issues `unit_issueorder(..., "move", ...)`,
 steps until origin changes while `currentmove` is still `walk`, then
-`WriteGame`/`ReadGame` and checks origin, `heroabilities[]`, `abilities.added[]`,
+`WriteGame`/`ReadGame` and checks origin, `unit_state->ranks[]`, `unit_state->overrides.added[]`,
 inventory class/charges, and that one more walk think still advances.
 `wc3_save.hero_audit_*` drives `G_HeroSaveLoadAuditFrame` for hidden-first-Hero,
 paused/cinematic wait, and dest-snap retries. The audit saves through
@@ -988,3 +991,25 @@ The derived `stunned` field is removed rather than serialized as a bit. Loaded
 status records supply built-in and explicit STUNNED contributions immediately;
 expired records are ignored even before the next status cleanup. Version 104
 rejects older saves. Network fields and wire layouts do not change.
+
+## Whole-edict ownership extraction (version 105)
+
+Version 105 moves unit combat/progression/skills/statuses/cooldowns, sound response
+state, basic-attack missile state, physical inventory, carried resources and sight
+overrides to typed pools. Worker build project/preview fields move into retained
+orders; client placement selection moves into transient client menu state. More
+independent switches join `unit_flags`; four unused entity callbacks disappear.
+Older layouts are rejected. Network structures are unchanged.
+
+New records use the same owner-index and nested-field fixup contract as the older
+pools. The loader checks each pool's own capacity, including `MAX_ENTITIES` unit
+pools. The initialized move anchor stays beside authored moves instead of being
+placed after large pool BSS. Status slot addresses remain stable during gameplay;
+source pointers and instance IDs survive load, while runtime Hero shortcut pulses
+are cleared. Inventory slots retain entity references; missile reflection/profile,
+vision references and carry amounts retain their scalar values.
+
+The regressions cover absent-role queries, release/reuse/reset, every new pool's
+round trip, moved field descriptors, all unit flag bits, and pool admission before
+allocation. See [the ownership audit](state-review.md#whole-edict-ownership-pass)
+for lifetime and retained-base-field decisions.

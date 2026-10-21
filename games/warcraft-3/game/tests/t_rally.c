@@ -271,7 +271,7 @@ TEST(wc3_rally, selected_producer_owns_one_snapshot_indicator) {
     indicator = client->rally_indicator;
     T_NOT_NULL(indicator);
     T_ASSERT(indicator->inuse);
-    T_ASSERT(indicator->rally_indicator);
+    T_ASSERT(G_UnitHasFlag(indicator, UNIT_FLAG_RALLY_INDICATOR));
     T_ASSERT(indicator->svflags & SVF_OWNER_ONLY);
     T_EQ(indicator->s.player, 0);
     T_EQ((indicator->s.effect_flags & EFX_TEAM_COLOR_MASK) >> EFX_TEAM_COLOR_SHIFT, 7);
@@ -357,7 +357,7 @@ TEST(wc3_rally, training_completion_reads_latest_rally_target) {
     trained->stand = unit_stand;
     trained->data.UnitBalance = &balance;
     trained->health.value = trained->health.max_value = 100.0f;
-    trained->training = true;
+    G_SetUnitFlag(trained, UNIT_FLAG_TRAINING, true);
     trained->s.renderfx |= RF_HIDDEN;
     producer->build = trained;
 
@@ -365,7 +365,7 @@ TEST(wc3_rally, training_completion_reads_latest_rally_target) {
     T_ASSERT(G_SetRallyPoint(producer, &latest));
     ai_train_build(producer);
 
-    T_ASSERT(!trained->training);
+    T_ASSERT(!G_UnitHasFlag(trained, UNIT_FLAG_TRAINING));
     T_ASSERT(!(trained->s.renderfx & RF_HIDDEN));
     T_EQ(game.clients[0].score.values[WC3_PLAYER_SCORE_UNITS_TRAINED], 1);
     T_NOT_NULL(trained->goalentity);
@@ -391,7 +391,7 @@ TEST(wc3_rally, training_completion_leaves_unit_idle_on_default_rally) {
     trained->stand = unit_stand;
     trained->data.UnitBalance = &balance;
     trained->health.value = trained->health.max_value = 100.0f;
-    trained->training = true;
+    G_SetUnitFlag(trained, UNIT_FLAG_TRAINING, true);
     trained->s.renderfx |= RF_HIDDEN;
     producer->build = trained;
     producer->health.max_value = 1000.0f;
@@ -399,7 +399,7 @@ TEST(wc3_rally, training_completion_leaves_unit_idle_on_default_rally) {
 
     ai_train_build(producer);
 
-    T_ASSERT(!trained->training);
+    T_ASSERT(!G_UnitHasFlag(trained, UNIT_FLAG_TRAINING));
     T_ASSERT(!(trained->s.renderfx & RF_HIDDEN));
     T_NULL(trained->goalentity);
     T_NULL(trained->orders->follow_target);

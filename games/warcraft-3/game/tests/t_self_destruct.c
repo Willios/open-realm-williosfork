@@ -74,7 +74,7 @@ static sdFix_t sd_setup(uint32_t code) {
 	fix.goblin->health.value = fix.goblin->health.max_value = 100;
 	fix.near_enemy->health.value = fix.near_enemy->health.max_value = 500;
 	fix.far_enemy->health.value = fix.far_enemy->health.max_value = 500;
-	fix.goblin->armor_value = 0; fix.near_enemy->armor_value = 0; fix.far_enemy->armor_value = 0;
+	fix.goblin->unit_state->armor_value = 0; fix.near_enemy->unit_state->armor_value = 0; fix.far_enemy->unit_state->armor_value = 0;
 	fix.goblin->die = unit_die;
 	T_ASSERT(G_ActorAddSkill(fix.goblin, code));
 	return fix;
@@ -297,7 +297,7 @@ TEST(wc3_spell, self_destruct_pocket_factory_goblin_btlf_detonates) {
 	caster = alloc_test_unit(MAKEFOURCC('N', 't', 'i', 'n'), 0, 0);
 	caster->s.player = 0; caster->svflags |= SVF_MONSTER; caster->targtype = TARG_GROUND;
 	caster->mana.value = caster->mana.max_value = 500;
-	caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_ANSY, .level = 1);
+	caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_ANSY, .level = 1);
 	T_ASSERT(S_CastPointTargetSpell(caster, BZ_ANSY, &point));
 	level.time += 2000; G_RunEntities();
 	FILTER_EDICTS(ent, ent->inuse && ent->class_id == BZ_OGRU) goblin = ent;
@@ -305,11 +305,11 @@ TEST(wc3_spell, self_destruct_pocket_factory_goblin_btlf_detonates) {
 	/* Test fixtures may omit UnitUI.modelFile, so SP_CallSpawn skips SP_monster_unit. */
 	goblin->die = unit_die;
 	T_ASSERT(G_ActorAddSkill(goblin, BZ_ASDG));
-	goblin->health.value = goblin->health.max_value = 100; goblin->armor_value = 0;
+	goblin->health.value = goblin->health.max_value = 100; goblin->unit_state->armor_value = 0;
 	/* Place the probe after spawn so factory DataD offset cannot miss the full-radius ring. */
 	enemy = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), goblin->s.origin2.x + 40, goblin->s.origin2.y);
 	enemy->s.player = 1; enemy->svflags |= SVF_MONSTER; enemy->targtype = TARG_GROUND;
-	enemy->health.value = enemy->health.max_value = 500; enemy->armor_value = 0;
+	enemy->health.value = enemy->health.max_value = 500; enemy->unit_state->armor_value = 0;
 	level.time += 7999; unit_updatestatuses(goblin);
 	T_ASSERT(goblin->health.value > 0);
 	level.time += 1; unit_updatestatuses(goblin);

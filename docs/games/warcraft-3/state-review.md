@@ -38,9 +38,51 @@ The audit also covered fields outside the old embedded movement struct:
   and configuration even while standing. `velocity` is used by missiles and spell
   thinkers, not as the unit travel-state flag.
 
-On the local arm64 build, the combined refactor reduces `sizeof(edict_t)` from 5,800 to 4,224 bytes (1,576 bytes smaller), including 64 bytes removed by the Soul Trap extraction and 8 bytes by the unit-switch conversion.
+On the local arm64 build, the combined refactor reduces `sizeof(edict_t)` from 5,800 to 856 bytes (4,944 bytes smaller). The broader ownership pass alone reduces the previous 4,224-byte layout by 3,368 bytes.
 This is an edict-layout measurement, not a claim about total resident RAM: the
 existing typed-pool implementation also reserves backing storage for optional roles.
+
+## Whole-edict ownership pass
+
+The pass checks all remaining private fields for ownership, lifetime, producers,
+consumers, redundant mirrors and persistence. The base entity no longer reserves
+fixed unit status, ability, cooldown, weapon, progression, inventory or sound arrays.
+
+| State | Owner and lifetime |
+|---|---|
+| `unitState_t *unit_state` | Unit combat profiles, armor/stat modifiers, attack clocks and target incarnation; Hero progression/ranks/XP/shortcut pulse; status slots and incarnation counter; cooldowns, ability overrides and autocast. Unit spawn initializes it, and explicit skill/status mutations can attach it. Stable slots and counters remain until entity teardown. Ordinary effects and waypoints do not acquire it through queries. |
+| `visibility_t *vision` | Forced-visibility reference counts, explicit shared-sight recipients and permanent-invisibility reveal deadline. First explicit vision/reveal mutation attaches it; FOW reads absence as no override. |
+| `harvest_t *harvest` | Carried gold/lumber. `S_SetCarriedResource` attaches on positive cargo and releases on empty cargo, updating carry art and command UI in the same transaction. Mine occupancy belongs to `goldMine_t`, alongside its existing worker/mine relationship. |
+| `inventory_t *inventory` | Physical item slots, attached on first successful item ownership. Retained until entity teardown. `G_InventoryItem` is a non-allocating physical-slot query; current ability capacity remains a separate eligibility rule. |
+| `attackMissile_t *missile` | Captured basic-attack damage type and Defend reflection state, attached at missile launch. Spell projectiles use their own behavior contracts. |
+| `unitSounds_t *sound` | Resolved selection/order/ready/chop/death variants and pending channels. Sound registration/queueing attaches it; silent entities need no record. The unused attack-sound member was removed. |
+| Worker build intent | Accepted project and preview live in retained `orders`; the player's placement cursor choice lives in `client->menu.build_project`. These had different owners despite sharing the old edict field. |
+| Independent switches | Training, supply-wait notification, rally-marker identity, alternate icon, animation override and explicit vertex-color flags join `unit_flags`. Stun remains derived from status records. |
+| Entity callbacks | Removed unused `idle`, `move`, `run` and `attack` callback slots and save descriptors. Kept the six callbacks with live producers/consumers. |
+
+The retained base fields have shared entity contracts:
+
+- The server prefix, spatial links, collision, bounds and snapshot state serve all
+  entity classes. Class/spawn identity, metadata views and owner/target links are
+  also common to units, items, destructables and effects.
+- Health/mana pairs and damage/resource/velocity/lifetime scalars are used by
+  destructables, resource entities, missiles and spell thinkers as well as units.
+  Moving them into unit state would introduce unrelated allocations.
+- `summon_ability`, `status_effect_code` and `aura_effect_role` identify summons and
+  owned visual effects. Their consumers include generic effect sweeps and removal;
+  they must not require the unit combat/status buffers.
+- Animation requests, properties, sequence clocks, callbacks and current behavior
+  serve destructables and visual effects too. Physics type, mutable movement/sight
+  configuration, race/target classification, script flags and tint are persistent
+  entity configuration, independent of active travel or a particular ability.
+- `old_origin` is event sampling, and `goalentity`/`combatentity`/`wait` are shared
+  behavior dispatch state. Their use by movement does not make them travel scratch.
+
+Every new role participates in release/reset, peak reporting and entity-owned
+save/load. Save admission uses each pool's actual capacity instead of applying
+one destructable-specific limit to all pools. The move relocation anchor is
+initialized data beside authored moves, avoiding displacement into the enlarged
+pool BSS while preserving the existing validation range.
 
 ## Review checklist
 
@@ -72,7 +114,7 @@ failed first (null dereferences and a missing turn), then passed in classic/TFT.
 
 ## Attack timing
 
-Weapon cooldown retains only `attack_cooldown_end_time` in simulation milliseconds.
+Weapon cooldown retains only `unit_state->attack_cooldown_end_time` in simulation milliseconds.
 Active state and remaining seconds are derived when queried, including after a
 replacement order. The former active flag and remaining-time mirror are gone.
 `attack_backswing_end_time` is a different post-hit gate, and `wait` is the
@@ -153,7 +195,7 @@ real stun statuses rather than writing the removed mirror. The native flag test 
 
 ## Save and network contracts
 
-Save version 104 rejects prior layouts. Movement, orders, route and wander records
+Save version 105 rejects prior layouts. Movement, orders, route and wander records
 use the existing entity-owned typed-pool serialization. Entity references have
 explicit fixups; route jobs, resumable steering and destination flow generations
 are process-local caches cleared on load. Guard intent and waypoint incarnations
@@ -166,6 +208,8 @@ into WC3 state/orders and does not belong to the StarCraft II game module.
 
 ## Verification
 
+- `wc3_unit.unrelated_entities_have_no_unit_state`: pure effect queries leave unit and optional feature records absent.
+- `wc3_save.pool_capacity_is_checked_before_allocating_records`: per-pool admission and no partial allocation on rejection.
 - `wc3_unit.movement_storage_is_optional`: optional pointer storage contract.
 - `wc3_order_lifecycle.optional_movement_stop_pause_arrival_and_reuse`: real orders,
   scheduler pause/arrival, Stop, death, release and a fresh trip.

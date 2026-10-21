@@ -198,6 +198,7 @@ typedef struct {
 
 /* Game-authored targeting callbacks and item identity retained while the command cursor is armed. */
 typedef struct {
+    uint32_t build_project; /* transient player cursor rawcode; worker intent belongs to orders */
     bool (*on_entity_selected)(edict_t *, edict_t *);
     bool (*on_location_selected)(edict_t *, vec2_t const *);
     void (*cmdbutton)(edict_t *, uint32_t);
@@ -1871,6 +1872,7 @@ typedef struct {
 typedef struct {
     edict_t *mine;
     uint32_t mine_spawn_time;
+    uint32_t occupants; /* mine-owned admission count; worker-owned records use mine instead */
     bool restore_invulnerable;
 } goldMine_t;
 
@@ -2046,6 +2048,8 @@ typedef struct {
 
 /* Orders survive stationary pauses and combat detours; consumed by Move, Patrol, guard and interaction abilities. */
 typedef struct {
+    uint32_t build_project; /* accepted worker construction rawcode, independent of player cursor */
+    edict_t *build_preview; /* accepted order's translucent Construction Site Indicator */
     uint32_t waygate_target_spawn_time; /* guards the target edict while explicitly approaching a Way Gate */
     edict_t *waygate_target; /* authoritative gate target owned by CAbilityWarp */
     edict_t *waygate_goal; /* CAbilityWarp-owned approach waypoint/entity */
@@ -2107,7 +2111,7 @@ typedef struct {
     int owner_pending;                  /* owner-only one-shot queued for next snapshot */
     int world_pending;                  /* unfiltered world one-shot queued for next snapshot */
     uint8_t world_pending_event;
-    int attack, death;
+    int death;
 } unitSounds_t;
 
 /* Process-owned table row views; spawn binds them and save/load reconstructs them by class identity. */
@@ -2123,13 +2127,66 @@ typedef struct edictData_s {
     DestructableData_t const *DestructableData;
 } entityData_t;
 
+/* Unit combat, progression and ability state; effects and waypoints do not reserve these fixed buffers.
+ * Retained after first use so status incarnation IDs and callback slot addresses remain stable. */
+typedef struct {
+    uint32_t attack_cooldown_end_time, attack_backswing_end_time; /* independent weapon/hit gates, simulation ms */
+    uint32_t attack_target_spawn_time; /* active Attack target incarnation */
+    unitAttack_t attack1;
+    unitAttack_t attack2;
+    uint32_t defense_type;   /* WC3 defType index: small/medium/large/fort/normal/hero/divine/none */
+    float armor_value;    /* computed armor ('realdef', incl. hero AGI/modifiers) */
+    float permanent_armor_bonus; /* research/permanent modifiers preserved across hero recompute */
+    float temporary_armor_bonus; /* item/temporary modifiers preserved across hero recompute */
+    float permanent_health_bonus; /* research/permanent maximum-health modifiers preserved across hero recompute */
+    float temporary_health_bonus; /* temporary maximum-health modifiers restored on expiration */
+    float temporary_mana_bonus; /* item/temporary maximum-mana modifiers preserved across hero recompute */
+    float mana_regen_bonus; /* research/permanent mana regeneration modifiers */
+    doodadHero_t hero; /* authored/native Hero progression; zero for ordinary units */
+    uint32_t score_level_xp; /* scripted XP retained across ownership changes */
+    uint32_t shortcut_alert_until; /* transient Hero-button damage pulse */
+    heroability_t ranks[MAX_HERO_ABILITIES];
+    heroabilitystatus_t statuses[MAX_UNIT_STATUSES];
+    uint32_t next_status_id;
+    abilityCooldown_t cooldowns[MAX_UNIT_COOLDOWNS];
+    edictAbilities_s overrides;
+    uint32_t autocast;
+} unitState_t;
+
+/* Unit-specific sight overrides and Apiv reveal state; owner-level alliances remain level state. */
+typedef struct {
+    uint16_t forced[MAX_PLAYERS]; /* forced references by capture/reveal owner */
+    uint32_t shared; /* explicit recipients of this unit's ordinary sight */
+    uint32_t reveal_until; /* Apiv server-time deadline after spawn/attack/cast */
+} visibility_t;
+/* Carried-resource transaction state; an empty worker needs no record. */
+typedef struct {
+    uint32_t gold, lumber;
+} harvest_t;
+/* Unit-owned physical item slots; independent of the currently authored inventory capacity. */
+typedef struct {
+    edict_t *slots[MAX_INVENTORY];
+} inventory_t;
+/* Basic-attack missile launch snapshot and one-time Defend reflection ownership. */
+typedef struct {
+    uint32_t attack_type;
+    bool reflected;
+} attackMissile_t;
+
 /* Independent game-owned switches, also used by items/destructables; stun is derived from statuses. */
 typedef enum {
     UNIT_FLAG_IGNORE_ALARM = 1u << 0, /* UnitIgnoreAlarm: suppress automatic attacked notifications */
     UNIT_FLAG_INVULNERABLE = 1u << 1, /* explicit damage immunity, independent of timed statuses */
     UNIT_FLAG_PAUSED = 1u << 2, /* suspend AI/travel; independent of stun and timed life */
     UNIT_FLAG_NO_PATHING = 1u << 3, /* bypass pathfinding for scripted movement */
-    UNIT_FLAG_TIMED_LIFE_PAUSED = 1u << 4 /* UnitPauseTimedLife: freeze BTLF expiry */
+    UNIT_FLAG_TIMED_LIFE_PAUSED = 1u << 4, /* UnitPauseTimedLife: freeze BTLF expiry */
+    UNIT_FLAG_TRAINING = 1u << 5, /* hidden unfinished production result */
+    UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED = 1u << 6, /* one-shot queue-head Nofood notification */
+    UNIT_FLAG_RALLY_INDICATOR = 1u << 7, /* presentation-only Rally marker entity */
+    UNIT_FLAG_USES_ALT_ICON = 1u << 8, /* scripted alternate command icon */
+    UNIT_FLAG_ANIMATION_OVERRIDE = 1u << 9, /* advance authored animation while paused */
+    UNIT_FLAG_VERTEX_COLOR_SET = 1u << 10, /* runtime vertex tint has a value */
+    UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET = 1u << 11, /* vertex tint was explicitly overridden */
 } unitFlags_t;
 
 /* Authoritative game entity; server-shared prefix stays fixed and optional roles own their lifecycle state. */
@@ -2149,14 +2206,10 @@ struct edict_s {
     // keep above in sync with server.h
     uint32_t class_id;
     uint32_t variation;
-    uint32_t build_project;
-    edict_t *build_preview; /* translucent Construction Site Indicator for an accepted build order */
-    bool rally_indicator;
+    uint32_t summon_ability; /* creating ability identity for summoned units and owned visual effects */
     uint32_t status_effect_code; /* presentation-only ownership identity; saved so removal can find effects after load */
     auraEffectRole_t aura_effect_role; /* stable source/recipient identity; independent of alias and current art */
     construction_t *construction; /* pool slot; null if this unit is not under construction */
-    bool training; /* spawned in a production queue but not yet completed */
-    bool training_food_wait_notified; /* one-shot Nofood feedback for the active queue head */
     research_t *research;
     rally_t *rally;
     food_t *food;
@@ -2171,25 +2224,20 @@ struct edict_s {
     sacrifice_t *sacrifice;
     unsummon_t *unsummon;
     uint32_t spawn_time;
-    uint32_t summon_ability; /* ability rawcode that created this summoned unit; 0 for ordinary units */
     wander_t *wander;
     routeCache_t *route;
-    uint32_t permanent_invisibility_reveal_until; /* Apiv: visible until this server-time deadline after spawn/attack/cast */
     shadowMeld_t *shadowmeld;
-    uint16_t forced_visibility_count[MAX_PLAYERS]; /* active unit-specific reveals, indexed by the sight-sharing player */
-    uint32_t shared_vision; /* players that receive this unit's ordinary sight via UnitShareVision */
-    uint32_t harvested_lumber;
-    uint32_t harvested_gold;
+    visibility_t *vision; /* optional forced/shared sight and invisibility reveal deadline */
+    harvest_t *harvest; /* carried resources; absent while empty */
     militia_t *militia;
     polymorph_t *polymorph;
     raven_t *raven;
     blightGrowth_t *blight_growth;
     ensnare_t *ensnare;
     ancientRoot_t *ancient_root;
-    uint32_t peonsinside;
     uint32_t aiflags;
     uint32_t damage;
-    uint32_t projectile_attack_type; /* basic missile attack type captured at launch */
+    attackMissile_t *missile; /* basic-attack launch profile; absent on spell missiles */
     /* Impact behavior captured by fixed-point artillery shots. */
     artillery_t *artillery; /* projectile splash profile; null on units */
     uint32_t resources;
@@ -2201,23 +2249,14 @@ struct edict_s {
     /* Acolyte harvesting is a visible fixed-slot relationship rather than the
      * conventional hidden-inside/carry/return Gold Mine state above. */
     acolyteMine_t *acolyte_mine;
-    edict_t *inventory[MAX_INVENTORY];
+    inventory_t *inventory; /* physical slots attach on first item ownership */
     item_t *item;
     destructable_t *destructable;
     cargo_t *cargo;
     edict_t *ground_next;
     stock_t *stock; /* shop merchandise; null unless this edict is a shop */
     float velocity;
-    doodadHero_t hero;
-    /* XP supplied by scripted level assignments, retained with the hero when ownership changes. */
-    uint32_t score_level_xp;
-    uint32_t hero_shortcut_alert_until; /* transient server clock deadline for the owning player's Hero-button damage pulse */
-    heroability_t heroabilities[MAX_HERO_ABILITIES];
-    heroabilitystatus_t abilstatus[MAX_UNIT_STATUSES];
-    uint32_t next_status_instance_id;
-    abilityCooldown_t abilitycooldowns[MAX_UNIT_COOLDOWNS];
-    edictAbilities_s abilities;
-    uint32_t autocast_code; /* one selected autocast ability; zero means disabled */
+    unitState_t *unit_state; /* unit-owned combat, progression, skills, statuses and cooldowns */
     avatar_t *avatar;
     uint32_t unit_flags; /* independent entity gameplay switches; unitFlags_t */
     uint32_t script_unit_types; /* UnitAddType/UnitRemoveType bitmask; bit N = UNIT_TYPE N */
@@ -2225,7 +2264,6 @@ struct edict_s {
     channel_t *channel;
     uint32_t unit_color;   // WC3_UNIT_COLOR_OVERRIDE_FLAG | playercolor; zero uses owner color
     int32_t user_data;     /* SetUnitUserData script scratch; no gameplay consumer reads it yet */
-    bool uses_alt_icon; /* UnitSetUsesAltIcon presentation flag; no minimap consumer reads it yet */
     vec2_t old_origin; /* prior event sample: region/proximity events also track teleports, independent of travel */
     waygate_t *waygate;
     movement_t *movement; /* non-null while a travel operation owns routing scratch */
@@ -2233,17 +2271,14 @@ struct edict_s {
     edictStat_t health;
     edictStat_t mana;
     MOVETYPE movetype;
-    bool projectile_reflected; /* basic attack missile has already been returned by Defend */
     TARGTYPE targtype;
     edict_t *goalentity; /* current behavior target: attacks, spells, missiles and travel share this lifecycle slot */
-    uint32_t attack_target_spawn_time; /* active CAbilityAttack target incarnation */
     soulTrap_t *soultrap; /* optional carrier/target relationship, owned by Soul Trap */
     edict_t *combatentity;
     edict_t *owner;
     edict_t *build;
     animation_t const *animation;
     float animation_speed; /* JASS SetUnitTimeScale multiplier for the simulation animation clock */
-    bool animation_override; /* JASS presentation animation may advance while gameplay is paused */
     /* Warcraft Required Animation Names (UnitProfile.animProps/uani) plus
      * AddUnitAnimationProperties mutations. The request is retained separately
      * so a property change can reselect the same logical animation family.
@@ -2253,35 +2288,17 @@ struct edict_s {
     cstring_t animation_props; /* interned normalized tag set */
     unitbalance_t runtime;
     color32_t vertex_color;
-    bool vertex_color_set;
-    bool vertex_color_override_set;
     umove_t *currentmove;
     unitRace_t race;
     float wait;
-    uint32_t attack_cooldown_end_time; /* simulation ms; weapon gate survives replacement orders */
-    uint32_t attack_backswing_end_time;
     unitInfo_t unitinfo;
-    unitAttack_t attack1;
-    unitAttack_t attack2;
-    uint32_t defense_type;   /* WC3 defType index: small/medium/large/fort/normal/hero/divine/none */
-    float armor_value;    /* computed armor ('realdef', incl. hero AGI/modifiers) */
-    float permanent_armor_bonus; /* research/permanent modifiers preserved across hero recompute */
-    float temporary_armor_bonus; /* item/temporary modifiers preserved across hero recompute */
-    float permanent_health_bonus; /* research/permanent maximum-health modifiers preserved across hero recompute */
-    float temporary_health_bonus; /* temporary maximum-health modifiers restored on expiration */
-    float temporary_mana_bonus; /* item/temporary maximum-mana modifiers preserved across hero recompute */
-    float mana_regen_bonus; /* research/permanent mana regeneration modifiers */
-    unitSounds_t sound;
+    unitSounds_t *sound; /* optional resolved responses and pending sound channels */
 
     void (*stand)(edict_t *);
     void (*birth)(edict_t *);
     void (*prethink)(edict_t *);
     void (*think)(edict_t *);
     void (*die)(edict_t *, edict_t *);
-    void (*idle)(edict_t *);
-    void (*move)(edict_t *);
-    void (*run)(edict_t *);
-    void (*attack)(edict_t *);
     void (*pain)(edict_t *);
 
     entityData_t data;
@@ -2289,6 +2306,11 @@ struct edict_s {
 
 typedef struct edictData_s edictData_s;
 typedef struct clientCamera_s clientCamera_s;
+
+/* Borrow a physical inventory slot without synthesizing storage or changing ability capacity. */
+static inline edict_t *G_InventoryItem(edict_t const *unit, uint32_t slot) {
+    return unit && unit->inventory && slot < MAX_INVENTORY ? unit->inventory->slots[slot] : NULL;
+}
 
 /* Normalize flag reads for script booleans and saved temporary-state snapshots. */
 static inline bool G_UnitHasFlag(edict_t const *ent, unitFlags_t flag) {
@@ -4271,6 +4293,7 @@ void G_FreeAncientRoot(edict_t *ent);
 ancientRoot_t *G_AllocAncientRoot(void);
 void G_FreeGoldMine(edict_t *ent);
 goldMine_t *G_AllocGoldMine(void);
+void G_InitGoldMine(edict_t *ent);
 void G_FreeMineOverlay(edict_t *ent);
 mineOverlay_t *G_AllocMineOverlay(void);
 void G_FreeAcolyteMine(edict_t *ent);
@@ -4292,6 +4315,24 @@ avatar_t *G_AllocAvatar(void);
 void G_FreeSleep(edict_t *ent);
 sleep_t *G_AllocSleep(void);
 soulTrap_t *G_AllocSoulTrap(void);
+unitState_t *G_AllocUnitState(void);
+void G_FreeUnitState(edict_t *ent);
+void G_InitUnitState(edict_t *ent);
+unitSounds_t *G_AllocSounds(void);
+void G_FreeSounds(edict_t *ent);
+void G_InitSounds(edict_t *ent);
+attackMissile_t *G_AllocMissile(void);
+void G_FreeMissile(edict_t *ent);
+void G_InitMissile(edict_t *ent);
+inventory_t *G_AllocInventory(void);
+void G_FreeInventory(edict_t *ent);
+void G_InitInventory(edict_t *ent);
+harvest_t *G_AllocHarvest(void);
+void G_FreeHarvest(edict_t *ent);
+void G_InitHarvest(edict_t *ent);
+visibility_t *G_AllocVisibility(void);
+void G_FreeVisibility(edict_t *ent);
+void G_InitVisibility(edict_t *ent);
 void G_FreeSoulTrap(edict_t *ent);
 void G_FreeChannel(edict_t *ent);
 unitOrders_t *G_AllocOrders(void);

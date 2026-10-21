@@ -24,9 +24,9 @@ typedef struct {
 
 bool S_UnitHasStatus(edict_t const *unit, uint32_t code) {
     if (!unit) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == code &&
-            (!unit->abilstatus[i].timestamp || unit->abilstatus[i].timestamp > G_Time())) return true;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == code &&
+            (!unit->unit_state->statuses[i].timestamp || unit->unit_state->statuses[i].timestamp > G_Time())) return true;
     return false;
 }
 

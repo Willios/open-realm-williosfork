@@ -63,7 +63,7 @@ static bool G_ClientVertexColor(edict_t *client_ent, edict_t const *unit, color3
     float presentation_alpha = 1.0f;
 
     if (!unit || !unit->inuse || !out) return false;
-    color = unit->vertex_color_set ? unit->vertex_color : COLOR32_WHITE;
+    color = G_UnitHasFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET) ? unit->vertex_color : COLOR32_WHITE;
     presentation_alpha = G_UnitDissipatePresentationAlpha(unit);
 
     if (client_ent && client_ent->client) {
@@ -76,7 +76,7 @@ static bool G_ClientVertexColor(edict_t *client_ent, edict_t const *unit, color3
         }
     }
 
-    if (!unit->vertex_color_set && presentation_alpha >= 1.0f) return false;
+    if (!G_UnitHasFlag(unit, UNIT_FLAG_VERTEX_COLOR_SET) && presentation_alpha >= 1.0f) return false;
     color.a = (uint8_t)MIN(255, MAX(0, (int)((float)color.a * presentation_alpha + 0.5f)));
     *out = color;
     return true;

@@ -88,7 +88,7 @@ BZ_ABILITY_PROC(CAbilitySimpleSpell) {
 BZ_ABILITY_PROC(CAbilityModalSpell) {
     uint32_t code = call && call->item ? call->item->code : 0;
     switch (msg) {
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     default: return CAbilitySimpleSpell(ent, msg, call);
     }
@@ -123,8 +123,8 @@ uint32_t S_SpellLevel(edict_t *caster, uint32_t code) {
     if (!caster) {
         return 1;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        heroability_t const *ha = caster->heroabilities + i;
+    FOR_LOOP(i, caster->unit_state ? MAX_HERO_ABILITIES : 0) {
+        heroability_t const *ha = caster->unit_state->ranks + i;
         if (ha->level && ha->code == code) {
             return ha->level;
         }
@@ -206,8 +206,8 @@ static abilityCooldown_t *S_SpellFindCooldown(edict_t *caster, uint32_t code) {
     uint32_t const cooldown_code = S_SpellCooldownCode(code);
 
     if (!caster || !cooldown_code) return NULL;
-    FOR_LOOP(i, MAX_UNIT_COOLDOWNS) {
-        abilityCooldown_t *cooldown = caster->abilitycooldowns + i;
+    FOR_LOOP(i, caster->unit_state ? MAX_UNIT_COOLDOWNS : 0) {
+        abilityCooldown_t *cooldown = caster->unit_state->cooldowns + i;
         if (cooldown->code == cooldown_code) return cooldown;
     }
     return NULL;
@@ -219,8 +219,9 @@ static abilityCooldown_t *S_SpellAllocCooldown(edict_t *caster, uint32_t code) {
     abilityCooldown_t *available = NULL;
 
     if (!caster || !cooldown_code) return NULL;
-    FOR_LOOP(i, MAX_UNIT_COOLDOWNS) {
-        abilityCooldown_t *cooldown = caster->abilitycooldowns + i;
+    G_InitUnitState(caster);
+    FOR_LOOP(i, caster->unit_state ? MAX_UNIT_COOLDOWNS : 0) {
+        abilityCooldown_t *cooldown = caster->unit_state->cooldowns + i;
         if (cooldown->code == cooldown_code) return cooldown;
         if (!available && (!cooldown->code || (int32_t)(cooldown->end_time - now) <= 0)) available = cooldown;
     }
@@ -301,7 +302,8 @@ void S_SpellEndCooldown(edict_t *caster, uint32_t code) {
 
 void S_SpellResetCooldowns(edict_t *caster) {
     if (!caster) return;
-    memset(caster->abilitycooldowns, 0, sizeof(caster->abilitycooldowns));
+    if (!caster->unit_state) return;
+    memset(caster->unit_state->cooldowns, 0, sizeof(caster->unit_state->cooldowns));
     S_SpellInvalidateCooldownUI(caster);
 }
 
@@ -549,8 +551,8 @@ void S_SpellReleaseCorpse(edict_t *corpse, uint32_t code) {
     if (!corpse) return;
     corpse->aiflags &= ~AI_CORPSE_RESERVED;
     if (!code) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = corpse->abilstatus + i;
+    FOR_LOOP(i, corpse->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = corpse->unit_state->statuses + i;
         if (status->level && status->code == code) {
             unit_removestatus(corpse, status, STATUS_REMOVE_SCRIPT);
             G_InvalidateUnitInfoPanel(corpse);
@@ -1636,8 +1638,8 @@ void S_SpellDamageEnemiesInRadius(edict_t *caster, vec2_t const *center, float r
  * keep their own wrapper so animation and expiry policy remain ability-owned. */
 void S_ToggleUnitAbilityStatus(edict_t *unit, uint32_t code, uint32_t level) {
     if (!unit || !code) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = unit->unit_state->statuses + i;
         if (status->level && status->code == code) {
             unit_removestatus(unit, status, STATUS_REMOVE_SCRIPT);
             return;
