@@ -43,7 +43,7 @@ Some state must remain independent of record presence:
 
 ## Save/load and verification
 
-Save format 102 includes the four additional movement/order/route/wander roles alongside the original 27 pools. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
+Save format 103 includes Soul Trap plus the movement/order/route/wander roles alongside the original 27 pools. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
 
 `wc3_pools.release_reuses_zeroed_owned_state` checks initial absence, release, reuse and reset. `wc3_save.all_sparse_pools_restore_records_and_entity_references` checks all pool attachments, absent state on another entity, scalar state and entity references. Construction tests verify release on stop, cancellation and completion, a fresh lifecycle after stop, worker restoration, and completion events/food happening once. Existing ability, combat, construction, mining, item, cargo and save tests exercise the lifecycle entry points in both ROC and TFT modes.
 
@@ -60,3 +60,17 @@ private waypoint. `G_UnitIsMoving()` checks travel-record presence, including pa
 or route-waiting operations. Stationary facing never needs a movement record.
 See [entity and player state](state-review.md) for allocation/release, save fixups,
 and the fields moved out of the old embedded edict state.
+
+## Soul Trap relationships
+
+`edict_t.soultrap` points to `soulTrap_t` only while a unit carries souls or is
+trapped. `CAbilitySoulTrap` explicitly attaches carrier/target records at capture;
+merely owning `Asou` does not allocate. The record owns list links, spawn-incarnation
+checks, the filled-item binding, capture-time visibility owner and temporary skill
+ownership. A unit may occupy both roles, so releasing one must preserve the other.
+
+Release unlinks targets before removing filled items or injected skills, then
+frees empty records. Carrier death/disable/removal releases its captured targets;
+target removal cleans its bound item. Generic edict teardown remains the final
+pool release. Queries accept null without allocating. Save format 103 persists all
+four entity links with explicit fixups and retains role/visibility metadata.

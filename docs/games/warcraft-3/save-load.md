@@ -967,3 +967,12 @@ Animation request/queue/property strings are immutable interned text in memory;
 that content while reading. A save must not depend on the old string arena surviving.
 Version 102 rejects older layouts. The network protocol is unchanged.
 See [entity and player state](state-review.md) for ownership and regression tests.
+
+## Optional Soul Trap relationships (version 103)
+
+The carrier/target Soul Trap fields now live in the optional `soultrap` pool,
+not the raw edict. Its schema fixes `head`, `carrier`, `next` and `item` entity
+references and preserves their spawn incarnations, visibility owner and injected
+skill flags. Empty records are released by the ability lifecycle. Version 103
+rejects older saves; the network wire format remains unchanged. See
+[pooled state](pooled-entity-state.md#soul-trap-relationships).

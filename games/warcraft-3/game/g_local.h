@@ -1975,6 +1975,21 @@ typedef struct {
     bool sleeping;  /* natural creep sleep only; intentionally excludes spell-induced BUsL */
 } sleep_t;
 
+/* Soul Trap-owned carrier list and trapped-target identity; absent outside active captures. */
+typedef struct {
+    edict_t *head; /* carrier-owned list of trapped unit edicts */
+    uint32_t head_spawn_time;
+    edict_t *carrier; /* target-side back reference */
+    uint32_t carrier_spawn_time;
+    edict_t *next; /* target-side next link for the carrier list */
+    uint32_t next_spawn_time;
+    edict_t *item; /* filled item bound to this trapped unit */
+    uint32_t item_spawn_time;
+    uint32_t viewer; /* owner whose forced-visibility reference was installed */
+    bool trapped_ability_added; /* Asou was added by the trap to this target */
+    bool possession_added; /* Asou was added by the trap to this carrier */
+} soulTrap_t;
+
 /* Spell channel identity and cast serial; stale callbacks cannot match a replacement cast. */
 typedef struct {
     uint32_t code;     // ability code being channeled (0 = none)
@@ -2218,17 +2233,7 @@ struct edict_s {
     TARGTYPE targtype;
     edict_t *goalentity; /* current behavior target: attacks, spells, missiles and travel share this lifecycle slot */
     uint32_t attack_target_spawn_time; /* active CAbilityAttack target incarnation */
-    edict_t *soul_trap_head; /* carrier-owned list of trapped unit edicts */
-    uint32_t soul_trap_head_spawn_time;
-    edict_t *soul_trap_carrier; /* target-side back reference */
-    uint32_t soul_trap_carrier_spawn_time;
-    edict_t *soul_trap_next; /* target-side next link for the carrier list */
-    uint32_t soul_trap_next_spawn_time;
-    edict_t *soul_trap_item; /* filled item bound to this trapped unit */
-    uint32_t soul_trap_item_spawn_time;
-    uint32_t soul_trap_viewer; /* owner whose forced-visibility reference was installed */
-    bool soul_trapped_ability_added; /* Asou was added by the trap to this target */
-    bool soul_possession_added; /* Asou was added by the trap to this carrier */
+    soulTrap_t *soultrap; /* optional carrier/target relationship, owned by Soul Trap */
     edict_t *combatentity;
     edict_t *owner;
     edict_t *build;
@@ -4270,6 +4275,8 @@ void G_FreeAvatar(edict_t *ent);
 avatar_t *G_AllocAvatar(void);
 void G_FreeSleep(edict_t *ent);
 sleep_t *G_AllocSleep(void);
+soulTrap_t *G_AllocSoulTrap(void);
+void G_FreeSoulTrap(edict_t *ent);
 void G_FreeChannel(edict_t *ent);
 unitOrders_t *G_AllocOrders(void);
 void G_FreeOrders(edict_t *ent);

@@ -5573,16 +5573,16 @@ SAVE_PTR_FIELD_TEST(field_patrol_target_round_trip, "orders->patrol_target", ord
 SAVE_PTR_FIELD_TEST(field_goal_entity_round_trip, "goalentity", goalentity, 0)
 SAVE_PTR_FIELD_TEST(field_item_drop_round_trip, "orders->item_drop", orders->item_drop, 0)
 SAVE_PTR_FIELD_TEST(field_spell_item_round_trip, "channel->source_item", channel->source_item, 0)
-SAVE_PTR_FIELD_TEST(field_soul_trap_head_round_trip, "soul_trap_head", soul_trap_head, 0)
-SAVE_PTR_FIELD_TEST(field_soul_trap_carrier_round_trip, "soul_trap_carrier", soul_trap_carrier, 0)
-SAVE_PTR_FIELD_TEST(field_soul_trap_next_round_trip, "soul_trap_next", soul_trap_next, 0)
+SAVE_PTR_FIELD_TEST(field_soul_trap_head_round_trip, "soultrap->head", soultrap->head, 0)
+SAVE_PTR_FIELD_TEST(field_soul_trap_carrier_round_trip, "soultrap->carrier", soultrap->carrier, 0)
+SAVE_PTR_FIELD_TEST(field_soul_trap_next_round_trip, "soultrap->next", soultrap->next, 0)
 SAVE_PTR_FIELD_TEST(field_item_pending_use_carrier_round_trip, "item->pending_use_carrier", item->pending_use_carrier, 0)
 SAVE_PTR_FIELD_TEST(field_item_soul_target_round_trip, "item->soul_target", item->soul_target, 0)
-SAVE_INT_FIELD_TEST(field_soul_trap_head_spawn_round_trip, soul_trap_head_spawn_time, 210)
-SAVE_INT_FIELD_TEST(field_soul_trap_carrier_spawn_round_trip, soul_trap_carrier_spawn_time, 220)
-SAVE_INT_FIELD_TEST(field_soul_trap_next_spawn_round_trip, soul_trap_next_spawn_time, 230)
-SAVE_INT_FIELD_TEST(field_soul_trapped_ability_added_round_trip, soul_trapped_ability_added, 1)
-SAVE_INT_FIELD_TEST(field_soul_possession_added_round_trip, soul_possession_added, 1)
+SAVE_INT_FIELD_TEST(field_soul_trap_head_spawn_round_trip, soultrap->head_spawn_time, 210)
+SAVE_INT_FIELD_TEST(field_soul_trap_carrier_spawn_round_trip, soultrap->carrier_spawn_time, 220)
+SAVE_INT_FIELD_TEST(field_soul_trap_next_spawn_round_trip, soultrap->next_spawn_time, 230)
+SAVE_INT_FIELD_TEST(field_soul_trapped_ability_added_round_trip, soultrap->trapped_ability_added, 1)
+SAVE_INT_FIELD_TEST(field_soul_possession_added_round_trip, soultrap->possession_added, 1)
 SAVE_INT_FIELD_TEST(field_item_pending_use_carrier_spawn_round_trip, item->pending_use_carrier_spawn_time, 240)
 SAVE_INT_FIELD_TEST(field_item_pending_use_slot_round_trip, item->pending_use_slot, 4)
 SAVE_INT_FIELD_TEST(field_item_soul_target_spawn_round_trip, item->soul_target_spawn_time, 250)
@@ -5604,9 +5604,11 @@ TEST(wc3_save, soul_trap_links_and_world_state_survive_round_trip) {
     filled->class_id = MAKEFOURCC('s','o','u','l');
     filled->targtype = TARG_ITEM;
     carrier->s.player = 0; target->s.player = 1;
-    carrier->soul_trap_head = target; carrier->soul_trap_head_spawn_time = target->spawn_time;
-    target->soul_trap_carrier = carrier; target->soul_trap_carrier_spawn_time = carrier->spawn_time;
-    target->soul_trap_item = filled; target->soul_trap_item_spawn_time = filled->spawn_time;
+    carrier->soultrap = G_AllocSoulTrap();
+    target->soultrap = G_AllocSoulTrap();
+    carrier->soultrap->head = target; carrier->soultrap->head_spawn_time = target->spawn_time;
+    target->soultrap->carrier = carrier; target->soultrap->carrier_spawn_time = carrier->spawn_time;
+    target->soultrap->item = filled; target->soultrap->item_spawn_time = filled->spawn_time;
     if (!filled->item) filled->item = G_AllocItem();
     assert(filled->item);
     filled->item->soul_target = target; filled->item->soul_target_spawn_time = target->spawn_time;
@@ -5615,19 +5617,19 @@ TEST(wc3_save, soul_trap_links_and_world_state_survive_round_trip) {
     target->s.renderfx |= RF_HIDDEN; target->svflags |= SVF_NOCLIENT; target->s.flags |= EF_NOT_SELECTABLE;
 
     T_ASSERT(WriteGame(filename));
-    carrier->soul_trap_head = NULL; carrier->soul_trap_head_spawn_time = 0;
-    target->soul_trap_carrier = NULL; target->soul_trap_carrier_spawn_time = 0;
-    target->soul_trap_item = NULL; target->soul_trap_item_spawn_time = 0;
+    carrier->soultrap->head = NULL; carrier->soultrap->head_spawn_time = 0;
+    target->soultrap->carrier = NULL; target->soultrap->carrier_spawn_time = 0;
+    target->soultrap->item = NULL; target->soultrap->item_spawn_time = 0;
     filled->item->soul_target = NULL; filled->item->soul_target_spawn_time = 0;
     carrier->forced_visibility_count[1] = 0;
     target->aiflags = 0; target->s.renderfx = 0; target->svflags = 0; target->s.flags = 0;
     T_ASSERT(ReadGame(filename));
-    T_ASSERT(carrier->soul_trap_head == target);
-    T_EQ(carrier->soul_trap_head_spawn_time, target->spawn_time);
-    T_ASSERT(target->soul_trap_carrier == carrier);
-    T_EQ(target->soul_trap_carrier_spawn_time, carrier->spawn_time);
-    T_ASSERT(target->soul_trap_item == filled);
-    T_EQ(target->soul_trap_item_spawn_time, filled->spawn_time);
+    T_ASSERT(carrier->soultrap->head == target);
+    T_EQ(carrier->soultrap->head_spawn_time, target->spawn_time);
+    T_ASSERT(target->soultrap->carrier == carrier);
+    T_EQ(target->soultrap->carrier_spawn_time, carrier->spawn_time);
+    T_ASSERT(target->soultrap->item == filled);
+    T_EQ(target->soultrap->item_spawn_time, filled->spawn_time);
     T_ASSERT(filled->item->soul_target == target);
     T_EQ(filled->item->soul_target_spawn_time, target->spawn_time);
     T_ASSERT(target->aiflags & AI_SOUL_TRAPPED);

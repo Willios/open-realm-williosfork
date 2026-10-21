@@ -38,7 +38,7 @@ The audit also covered fields outside the old embedded movement struct:
   and configuration even while standing. `velocity` is used by missiles and spell
   thinkers, not as the unit travel-state flag.
 
-On the local arm64 build, `sizeof(edict_t)` changed from 5,800 to 4,296 bytes (1,504 bytes smaller).
+On the local arm64 build, the combined refactor reduces `sizeof(edict_t)` from 5,800 to 4,232 bytes (1,568 bytes smaller), including 64 bytes removed by the Soul Trap extraction.
 This is an edict-layout measurement, not a claim about total resident RAM: the
 existing typed-pool implementation also reserves backing storage for optional roles.
 
@@ -132,7 +132,7 @@ and `AGENTS.md` requires those comments for future declarations.
 
 ## Save and network contracts
 
-Save version 102 rejects prior layouts. Movement, orders, route and wander records
+Save version 103 rejects prior layouts. Movement, orders, route and wander records
 use the existing entity-owned typed-pool serialization. Entity references have
 explicit fixups; route jobs, resumable steering and destination flow generations
 are process-local caches cleared on load. Guard intent and waypoint incarnations

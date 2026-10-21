@@ -133,7 +133,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 100 retains VM-owned item pools rather than dropping them as unknown host handles. */
 /* Version 101 removes derived attack cooldown fields; only the simulation deadline is persisted. */
 /* Version 102 separates optional movement, route and wander records from retained orders. */
-static uint32_t const save_version = 102;
+/* Version 103 moves Soul Trap relationships into an optional owned pool. */
+static uint32_t const save_version = 103;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -864,6 +865,21 @@ static field_t const client_camera_fields[] = {
     { NULL, 0, 0, 0, 0, 0 }
 };
 
+static field_t const soultrap_fields[] = {
+    TF(soulTrap_t, head, F_EDICT, 0, FIELD_NONE),
+    TF(soulTrap_t, carrier, F_EDICT, 0, FIELD_NONE),
+    TF(soulTrap_t, next, F_EDICT, 0, FIELD_NONE),
+    TF(soulTrap_t, item, F_EDICT, 0, FIELD_NONE),
+    TF(soulTrap_t, head_spawn_time, F_INT),
+    TF(soulTrap_t, carrier_spawn_time, F_INT),
+    TF(soulTrap_t, next_spawn_time, F_INT),
+    TF(soulTrap_t, item_spawn_time, F_INT),
+    TF(soulTrap_t, viewer, F_INT),
+    TF(soulTrap_t, trapped_ability_added, F_INT),
+    TF(soulTrap_t, possession_added, F_INT),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
 static field_t const sleep_fields[] = {
     TF(sleep_t, can_sleep, F_INT),
     TF(sleep_t, sleeping, F_INT),
@@ -936,6 +952,7 @@ field_t edict_fields[] = {
     F(edict_s, artillery, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, avatar, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, sleep, F_IGNORE, 0, FIELD_RUNTIME),
+    F(edict_s, soultrap, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, channel, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, movement, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, route, F_IGNORE, 0, FIELD_RUNTIME),
@@ -975,17 +992,6 @@ field_t edict_fields[] = {
     F(edict_s, orders, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, goalentity, F_EDICT, 0, FIELD_NONE),
     F(edict_s, attack_target_spawn_time, F_INT),
-    F(edict_s, soul_trap_head, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, soul_trap_carrier, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, soul_trap_next, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, soul_trap_item, F_EDICT, 0, FIELD_NONE),
-    F(edict_s, soul_trap_head_spawn_time, F_INT),
-    F(edict_s, soul_trap_carrier_spawn_time, F_INT),
-    F(edict_s, soul_trap_next_spawn_time, F_INT),
-    F(edict_s, soul_trap_item_spawn_time, F_INT),
-    F(edict_s, soul_trap_viewer, F_INT),
-    F(edict_s, soul_trapped_ability_added, F_INT),
-    F(edict_s, soul_possession_added, F_INT),
     F(edict_s, combatentity, F_EDICT, 0, FIELD_NONE),
     F(edict_s, owner, F_EDICT, 0, FIELD_NONE),
     F(edict_s, build, F_EDICT, 0, FIELD_NONE),
@@ -2167,6 +2173,7 @@ POOL_ALLOC(Waygate)
 POOL_ALLOC(Artillery)
 POOL_ALLOC(Avatar)
 POOL_ALLOC(Sleep)
+POOL_ALLOC(SoulTrap)
 POOL_ALLOC(Orders)
 POOL_ALLOC(Movement)
 POOL_ALLOC(Route)
@@ -2204,6 +2211,7 @@ static savePool_t const save_pools[] = {
     { "artillery", offsetof(edict_t, artillery), sizeof(artillery_t), artillery_fields, SaveAllocArtillery },
     { "avatar", offsetof(edict_t, avatar), sizeof(avatar_t), avatar_fields, SaveAllocAvatar },
     { "sleep", offsetof(edict_t, sleep), sizeof(sleep_t), sleep_fields, SaveAllocSleep },
+    { "soultrap", offsetof(edict_t, soultrap), sizeof(soulTrap_t), soultrap_fields, SaveAllocSoulTrap },
     { "channel", offsetof(edict_t, channel), sizeof(channel_t), channel_fields, SaveAllocChannel },
 };
 
