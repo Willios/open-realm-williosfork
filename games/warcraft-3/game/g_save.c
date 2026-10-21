@@ -136,7 +136,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 103 moves Soul Trap relationships into an optional owned pool. */
 /* Version 104 replaces independent unit booleans with flags and removes the derived stun mirror. */
 /* Version 105 extracts unit feature records from the base edict. */
-static uint32_t const save_version = 105;
+/* Version 106 guards Wander private destination ownership across entity-slot reuse. */
+static uint32_t const save_version = 106;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -833,6 +834,7 @@ static field_t const wander_fields[] = {
     TF(wander_t, next_time, F_INT),
     TF(wander_t, random_state, F_INT),
     TF(wander_t, goal_generation, F_INT),
+    TF(wander_t, waypoint_spawn_time, F_INT),
     TF(wander_t, goal, F_EDICT, 0, FIELD_NONE),
     TF(wander_t, waypoint, F_EDICT, 0, FIELD_NONE),
     { NULL, 0, 0, 0, 0, 0 }
@@ -2323,6 +2325,8 @@ static bool ReadPools(FILE *f) {
     FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
         if (!ReadPool(f, save_pools + i)) {
             fprintf(stderr, "WC3 LoadGame: failed at %s pool\n", save_pools[i].name);
+            /* Raw records may contain undecoded references; detach without gameplay callbacks. */
+            G_PoolsReset();
             return false;
         }
     }
@@ -2544,24 +2548,25 @@ bool ReadGame(cstring_t filename) {
      * spatial tree before raw records overwrite their area links, then rebuild
      * one authoritative set below; retaining both creates cyclic area lists. */
     gi.ClearWorld();
+    G_PoolsReset();
     memset(g_edicts, 0, sizeof(edict_t) * globals.max_edicts);
     globals.num_edicts = header.num_edicts;
     FOR_LOOP(i, header.num_edicts) {
         bool used;
         if (!LoadBytes(f, &used, sizeof(used))) {
-            fprintf(stderr, "WC3 LoadGame: failed at edict %d inuse\n", i); fclose(f); return false;
+            fprintf(stderr, "WC3 LoadGame: failed at edict %d inuse\n", i); goto failed_entities;
         }
         if (!used) continue;
         if (!LoadBytes(f, &index, sizeof(index)) || index >= globals.max_edicts || !ReadEdict(f, g_edicts + index)) {
-            fprintf(stderr, "WC3 LoadGame: failed at edict %d data\n", i); fclose(f); return false;
+            fprintf(stderr, "WC3 LoadGame: failed at edict %d data\n", i); goto failed_entities;
         }
     }
-    if (!ReadPools(f)) { fprintf(stderr, "WC3 LoadGame: failed at lifecycle pools\n"); fclose(f); return false; }
+    if (!ReadPools(f)) { fprintf(stderr, "WC3 LoadGame: failed at lifecycle pools\n"); goto failed_entities; }
     /* Nested hashtable unit/item handles resolve here, after edict inuse is restored. */
-    if (!ReadHashtables(f)) { fprintf(stderr, "WC3 LoadGame: failed at hashtables\n"); fclose(f); return false; }
+    if (!ReadHashtables(f)) { fprintf(stderr, "WC3 LoadGame: failed at hashtables\n"); goto failed_entities; }
     /* Sound-handle presentation state is part of the VM-owned handle payload;
      * the snapshot version rejects older layouts before reconstruction. */
-    if (!ReadJass(f)) { fprintf(stderr, "WC3 LoadGame: failed at jass\n"); fclose(f); return false; }
+    if (!ReadJass(f)) { fprintf(stderr, "WC3 LoadGame: failed at jass\n"); goto failed_entities; }
     {
         saveFooter_t footer;
         /* ReadFooter already verified the checksum. The current payload must
@@ -2569,7 +2574,7 @@ bool ReadGame(cstring_t filename) {
         if (!LoadBytes(f, &footer, sizeof(footer)) || footer.commit != save_commit ||
             fgetc(f) != EOF || ferror(f)) {
             fprintf(stderr, "WC3 LoadGame: payload does not match the current save layout\n");
-            fclose(f); return false;
+            goto failed_entities;
         }
     }
     G_ResetSelectionSoundState();
@@ -2623,6 +2628,11 @@ bool ReadGame(cstring_t filename) {
     G_DisableStartingResourceCheatForLoadedGame();
     fprintf(stderr, "WC3 LoadGame: restored %s edicts=%u\n", filename, header.num_edicts);
     return true;
+failed_entities:
+    /* A rejected restore owns no usable gameplay records, even after a late VM/footer error. */
+    G_PoolsReset();
+    fclose(f);
+    return false;
 }
 
 #ifdef BZ_TESTS
@@ -3188,6 +3198,75 @@ TEST(wc3_save, rejects_mismatched_entity_layout) {
 #endif
 
 #ifdef BZ_TESTS
+/* A failed restoration must not expose earlier pools or a half-read final record. */
+TEST(wc3_save, failed_pool_restore_detaches_all_partial_records) {
+    reset_entities();
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
+    FILE *f = tmpfile();
+    T_NOT_NULL(f);
+    if (!f) return;
+    FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0])) {
+        savePool_t const *pool = save_pools + i;
+        if (!SavePoolSlot(unit, pool)) {
+            void *slot = pool->alloc();
+            memcpy((uint8_t *)unit + pool->offset, &slot, sizeof(slot));
+        }
+        if (!strcmp(pool->name, "channel")) {
+            uint32_t count = 1, index = (uint32_t)(unit - g_edicts);
+            T_ASSERT(SaveBytes(f, &count, sizeof(count)));
+            T_ASSERT(SaveBytes(f, &index, sizeof(index)));
+            T_ASSERT(SaveBytes(f, &(uint8_t){0xA5}, 1)); /* truncated raw record */
+        } else {
+            T_ASSERT(WritePool(f, pool));
+        }
+    }
+    rewind(f);
+    T_ASSERT(!ReadPools(f));
+    FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0]))
+        T_NULL(SavePoolSlot(unit, save_pools + i));
+    fclose(f);
+    G_PoolsReset();
+}
+
+/* A valid checksum does not permit trailing payload after the VM snapshot. */
+TEST(wc3_save, late_restore_failure_releases_loaded_pools) {
+    cstring_t original = Test_TempPath("wc3-owned-valid.bin");
+    cstring_t invalid = Test_TempPath("wc3-owned-trailing.bin");
+    reset_entities();
+    setup_test_world();
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
+    G_InitInventory(unit);
+    G_InitVisibility(unit);
+    T_ASSERT(WriteGame(original));
+    FILE *input = fopen(original, "rb");
+    FILE *output = fopen(invalid, "w+b");
+    T_NOT_NULL(input); T_NOT_NULL(output);
+    if (!input || !output) {
+        if (input) fclose(input);
+        if (output) fclose(output);
+        remove(original); remove(invalid);
+        return;
+    }
+    T_EQ(fseek(input, 0, SEEK_END), 0);
+    long payload = ftell(input) - (long)sizeof(saveFooter_t);
+    rewind(input);
+    uint8_t bytes[65536];
+    T_ASSERT(payload > 0);
+    while (payload > 0) {
+        size_t count = MIN((size_t)payload, sizeof(bytes));
+        T_ASSERT(LoadBytes(input, bytes, count));
+        T_ASSERT(SaveBytes(output, bytes, count));
+        payload -= (long)count;
+    }
+    fputc(0xA5, output);
+    T_ASSERT(WriteFooter(output));
+    fclose(input); fclose(output);
+    T_ASSERT(!ReadGame(invalid));
+    FOR_LOOP(i, sizeof(save_pools) / sizeof(save_pools[0]))
+        T_NULL(SavePoolSlot(unit, save_pools + i));
+    remove(original); remove(invalid);
+}
+
 TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     cstring_t const filename = Test_TempPath("wc3-pools.bin");
     reset_entities();

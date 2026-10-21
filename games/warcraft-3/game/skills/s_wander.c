@@ -84,9 +84,15 @@ static bool wander_choose_destination(edict_t *unit, vec2_t *result) {
     return false;
 }
 
+/* A freed private destination can be reused by an unrelated unit or route owner. */
+static bool wander_waypoint_valid(edict_t const *unit) {
+    edict_t const *goal = unit && unit->wander ? unit->wander->waypoint : NULL;
+    return goal && goal->inuse && goal->spawn_time == unit->wander->waypoint_spawn_time && goal->route;
+}
+
 /* Pointer equality alone is unsafe: waypoints are reused in a fixed ring. */
 static bool wander_owns_move(edict_t const *unit) {
-    return unit && unit->wander && unit->wander->goal &&
+    return wander_waypoint_valid(unit) && unit->wander->goal == unit->wander->waypoint &&
            unit->goalentity == unit->wander->goal &&
            unit->wander->goal->inuse &&
            unit->wander->goal_generation == unit->wander->goal->route->serial &&
@@ -110,16 +116,20 @@ static void wander_release_waypoint(edict_t *unit) {
     if (unit->goalentity == goal) unit->goalentity = NULL;
     unit->wander->waypoint = NULL;
     if (unit->wander->goal == goal) wander_clear(unit);
-    if (goal->inuse) G_FreeEdict(goal);
+    bool const owned = goal->inuse && goal->spawn_time == unit->wander->waypoint_spawn_time;
+    unit->wander->waypoint_spawn_time = 0;
+    if (owned) G_FreeEdict(goal);
 }
 
 static void wander_start(edict_t *unit, vec2_t const *point) {
-    edict_t *goal = unit->wander->waypoint;
+    edict_t *goal = wander_waypoint_valid(unit) ? unit->wander->waypoint : NULL;
     if (!goal) {
         goal = G_Spawn();
         if (!goal) return;
         goal->svflags |= SVF_NOCLIENT;
+        goal->spawn_time = G_Time();
         unit->wander->waypoint = goal;
+        unit->wander->waypoint_spawn_time = goal->spawn_time;
     }
     /* Only rewrite a private waypoint when no Move currently uses it. */
     if (unit->goalentity == goal && move_is_active_order_walk(unit)) return;
@@ -144,7 +154,7 @@ static void wander_start(edict_t *unit, vec2_t const *point) {
  * already have retired wander->goal, so the stable private target is the
  * authoritative identity here. Never intercept ordinary player Move targets. */
 static bool wander_recover_blocked_move(edict_t *unit) {
-    if (!unit || !unit->wander->waypoint ||
+    if (!wander_waypoint_valid(unit) ||
         unit->goalentity != unit->wander->waypoint ||
         !unit->wander->waypoint->inuse ||
         !move_is_active_order_walk(unit)) return false;

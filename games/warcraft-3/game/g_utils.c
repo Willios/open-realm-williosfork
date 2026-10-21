@@ -61,6 +61,10 @@ void G_FreeEdict(edict_t *ent) {
     if (!ent) return;
     G_ClearUnitResponses(ent);
     G_CancelDeferredFree(ent);
+    /* An accepted-build indicator may be removed independently of its worker. */
+    if (ent->owner && ent->owner->inuse && ent->owner->orders &&
+        ent->owner->orders->build_preview == ent)
+        ent->owner->orders->build_preview = NULL;
     S_UnitAbilityEvent(ent, A_UNIT_REMOVE);
     /* The carrier is still a valid entity here. Retire its items before the
      * edict and its pooled state can be reused; a prior StoreUnit snapshot is

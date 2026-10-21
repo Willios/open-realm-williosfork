@@ -43,7 +43,7 @@ Some state must remain independent of record presence:
 
 ## Save/load and verification
 
-Save format 105 includes unit combat/progression/ability state, sounds, inventory, harvest, vision and basic-attack missile roles, alongside Soul Trap and the movement/order/route/wander roles. Each pool validates its own capacity on read. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
+Save format 106 includes unit combat/progression/ability state, sounds, inventory, harvest, vision and basic-attack missile roles, alongside Soul Trap and the movement/order/route/wander roles. Each pool validates its own capacity on read. Only pointer fixups and process-owned exclusions need descriptors; unlisted scalar state still persists. Records retain their owning entity identity, not pool-slot indexes or process addresses. See [save/load](save-load.md).
 
 `wc3_pools.release_reuses_zeroed_owned_state` checks initial absence, release, reuse and reset. `wc3_save.all_sparse_pools_restore_records_and_entity_references` checks all pool attachments, absent state on another entity, scalar state and entity references. Construction tests verify release on stop, cancellation and completion, a fresh lifecycle after stop, worker restoration, and completion events/food happening once. Existing ability, combat, construction, mining, item, cargo and save tests exercise the lifecycle entry points in both ROC and TFT modes.
 
@@ -90,3 +90,15 @@ becomes empty. Mine occupancy lives on the mine's `goldmine` record.
 Accepted worker build intent lives in `orders`; client placement choice lives in
 `client->menu`. See the complete retained-field rationale in
 [state review](state-review.md#whole-edict-ownership-pass).
+
+## Rejected restores and owned child entities
+
+A truncated pool restore resets all typed pools, detaching both decoded and
+partially read records without running gameplay callbacks. Whole-game restore
+also clears attachments on later payload/VM errors. It resets old pools before
+replacing raw edicts; this does not provide full level/VM rollback.
+
+Wander's private waypoint is an owned child with a saved spawn incarnation in
+addition to its local route serial. Cleanup validates that identity before
+freeing it. Build indicators have a reciprocal worker `owner` reference; direct
+indicator removal detaches accepted-build intent before entity-slot reuse.

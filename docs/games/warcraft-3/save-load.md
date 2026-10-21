@@ -1013,3 +1013,21 @@ The regressions cover absent-role queries, release/reuse/reset, every new pool's
 round trip, moved field descriptors, all unit flag bits, and pool admission before
 allocation. See [the ownership audit](state-review.md#whole-edict-ownership-pass)
 for lifetime and retained-base-field decisions.
+
+## Ownership rereview (version 106)
+
+The Wander record now persists its private waypoint's spawn incarnation, so a
+reused slot or repeated route serial cannot transfer ownership. Version 106 rejects
+older layouts. Build indicators' worker `owner` and retained-order preview pointer
+both use existing entity-reference fixups.
+
+`ReadPools` resets all typed pools when any record fails, including partial raw
+reads or invalid references. `ReadGame` resets old pools before replacing edicts
+and clears all new attachments if entity reading, pool loading or subsequent
+hashtable/VM/footer validation fails. It does not dispatch gameplay cleanup through
+partially decoded records. Early header/checksum rejection leaves the old entity
+world alone; later rejection does not promise level or VM rollback.
+
+Regressions cover a truncated final pool after every earlier pool loaded, and a
+checksummed extra payload byte after a valid VM snapshot. Both rejection paths
+must leave no typed records attached.

@@ -76,6 +76,13 @@ TEST(wc3_unit, unrelated_entities_have_no_unit_state) {
     T_ASSERT(!unit_hasstatusstate(effect, WC3_STATUS_STATE_STUNNED));
     T_ASSERT(S_SpellCooldownReady(effect, MAKEFOURCC('A','H','t','c')));
     T_NULL(effect->unit_state);
+    T_EQ(G_AttackDamage(effect, effect, 10), G_AttackDamageWithType(effect, effect, 10, 0));
+    T_FEQ(G_UnitArmorValue(effect), 0.0f, 0.001f);
+    T_ASSERT(!S_AttackCanTarget(effect, effect));
+    T_ASSERT(!G_UnitSharesVisionWith(effect, 0));
+    T_ASSERT(!G_UnitIsForcedVisibleToPlayer(effect, 0));
+    T_ASSERT(!G_UnitAutocastIsOn(effect, MAKEFOURCC('A','h','a','r')));
+    T_NULL(effect->unit_state);
     T_NULL(G_InventoryItem(effect, 0));
     T_NULL(effect->inventory);
     T_NULL(effect->harvest);

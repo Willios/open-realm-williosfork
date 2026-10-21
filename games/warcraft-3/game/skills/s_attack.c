@@ -322,7 +322,7 @@ static float const g_default_damage_table[8][8] = {
 static int attack_damage_type(edict_t *attacker, edict_t *target, int base, uint32_t atk);
 int G_AttackDamage(edict_t *attacker, edict_t *target, int base) {
     return attack_damage_type(attacker, target, base,
-                              attacker && target ? attack_profile(attacker, target)->type : 0);
+                              attacker && attacker->unit_state && target ? attack_profile(attacker, target)->type : 0);
 }
 
 int G_AttackDamageWithType(edict_t *attacker, edict_t *target, int base, uint32_t type) {

@@ -195,7 +195,7 @@ real stun statuses rather than writing the removed mirror. The native flag test 
 
 ## Save and network contracts
 
-Save version 105 rejects prior layouts. Movement, orders, route and wander records
+Save version 106 rejects prior layouts. Movement, orders, route and wander records
 use the existing entity-owned typed-pool serialization. Entity references have
 explicit fixups; route jobs, resumable steering and destination flow generations
 are process-local caches cleared on load. Guard intent and waypoint incarnations
@@ -235,3 +235,52 @@ Network tests also require local UDP access outside the test sandbox.
 See [pooled state](pooled-entity-state.md), [ability implementation](ability-implementation.md),
 [animation properties](unit-animation-properties.md), [save/load](save-load.md),
 [SC2API adapter](sc2api-agent-interface.md), and [camera sampling](../../architecture/client.md).
+
+## Ownership rereview
+
+The whole diff was traced from allocation sites through consumers, teardown and
+save schemas. All 38 typed roles have save, release, reset and peak-report entries.
+For the extracted roles, persistent pointers are either explicit `F_EDICT` fields
+(inventory slots, status sources, retained order targets/previews, Wander goals,
+Soul Trap links and channel item origin) or process-owned exclusions (routing
+scratch). Queue entries contain entity numbers/incarnations, not pointers.
+Scalar profiles, ranks, cooldowns, Hero progression and switches persist in their
+owning raw records; they do not need pointer fixups.
+
+The rereview added regressions and fixes for four boundary cases:
+
+- `G_AttackDamage` accepts an entity without `unit_state`, using the original
+  default damage category without allocating a record. The absent-role test also
+  exercises armor, targeting, autocast, inventory, status/cooldown and sight queries.
+- Failed pool reads detach every partially restored record without gameplay
+  callbacks: raw records can still contain undecoded references. Whole-game reads
+  reset old pools before replacing edicts and detach loaded records on later
+  entity/pool/hashtable/VM/footer failure. This is rejection cleanup, not rollback
+  of the entire level or VM. Early header/checksum rejection retains the old world.
+- Wander records now save `waypoint_spawn_time`. Active ownership, blocked-move
+  recovery and private-destination cleanup check incarnation, in-use state and
+  routing presence where needed. A reused slot can have the same local route
+  serial, so the serial alone is insufficient. Disable/removal cannot free the
+  replacement entity. The saved field requires format 106.
+- Build previews keep a reciprocal `owner` reference to their worker. Direct
+  preview removal clears `orders->build_preview` before the slot can be reused;
+  normal worker cleanup still clears its pointer before freeing the preview.
+  Both references use the existing entity-reference save schema.
+
+Named inline player records retain their enclosing `game.clients` lifetime:
+`playerScript_t` owns the separately allocated disabled-ability list (cleared by
+player/map teardown); `clientCamera_t` borrows a target entity and stores scalar
+controllers; HUD caches/shortcut state are rebuilt authoring caches; active message
+and message-log records retain text by value. They are not independently allocated.
+`entityData_t` contains borrowed metadata views rebound by class on load.
+`abilityCall_t` is a borrowed synchronous dispatch message; callees must copy any
+context needed beyond the call into their owning lifecycle record. Animation names
+are immutable shared allocations owned by the game-wide intern arena, released
+at full game shutdown and serialized as content.
+
+Targeted failures were reproduced before each fix. Regression names:
+`wc3_unit.unrelated_entities_have_no_unit_state`,
+`wc3_save.failed_pool_restore_detaches_all_partial_records`,
+`wc3_save.late_restore_failure_releases_loaded_pools`,
+`wc3_wander.removal_does_not_free_replacement_of_private_waypoint`, and
+`wc3_building.removing_active_preview_detaches_worker_before_slot_reuse`.

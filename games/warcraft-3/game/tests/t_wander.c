@@ -256,6 +256,7 @@ TEST(wc3_wander, active_goal_round_trips_with_generation) {
     T_ASSERT(ReadGame(filename));
     T_ASSERT(unit->wander->goal == goal);
     T_EQ(unit->wander->goal_generation, goal->route->serial);
+    T_EQ(unit->wander->waypoint_spawn_time, goal->spawn_time);
     T_EQ(unit->wander->next_time, 9400);
     T_EQ(unit->wander->random_state, 12345);
     remove(filename);
@@ -289,6 +290,30 @@ TEST(wc3_wander, private_destination_cannot_be_recycled_by_shared_ring) {
     T_ASSERT(!move_is_active_order_walk(unit));
 }
 
+/* Entity-slot reuse must not transfer ownership of the old private destination. */
+TEST(wc3_wander, removal_does_not_free_replacement_of_private_waypoint) {
+    reset_entities();
+    setup_test_world();
+    level.time = 1000;
+    edict_t *unit = make_scheduled_critter(0, 0);
+    edict_t *attacker = alloc_test_unit(MAKEFOURCC('h','f','o','o'), -100, 0);
+    test_wander_damage(unit, attacker);
+    edict_t *goal = unit->wander->waypoint;
+    T_NOT_NULL(goal);
+    if (!goal) return;
+    uint32_t index = (uint32_t)(goal - g_edicts);
+    G_FreeEdict(goal);
+    level.time += 1001;
+    edict_t *replacement = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 300, 400);
+    T_EQ((uint32_t)(replacement - g_edicts), index);
+    replacement->route = G_AllocRoute();
+    replacement->route->serial = 1; /* a new destination can repeat the old local serial */
+    G_FreeEdict(unit);
+    T_ASSERT(replacement->inuse);
+    T_NOT_NULL(replacement->unit_state);
+    T_NOT_NULL(replacement->route);
+}
+
 TEST(wc3_wander, stable_goal_survives_save_load) {
     cstring_t filename = Test_TempPath("wc3-wander-private.bin");
     edict_t *unit, *attacker, *goal;
@@ -308,6 +333,7 @@ TEST(wc3_wander, stable_goal_survives_save_load) {
     T_ASSERT(unit->wander->goal == goal);
     T_ASSERT(unit->goalentity == goal);
     T_EQ(unit->wander->goal_generation, goal->route->serial);
+    T_EQ(unit->wander->waypoint_spawn_time, goal->spawn_time);
     remove(filename);
 }
 

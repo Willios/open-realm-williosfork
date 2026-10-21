@@ -6258,6 +6258,24 @@ TEST(wc3_building, queued_build_payload_and_indicator_survive_save_load) {
     remove(filename);
 }
 
+TEST(wc3_building, removing_active_preview_detaches_worker_before_slot_reuse) {
+    edict_t *clent;
+    edict_t *worker = building_begin_barracks_placement(&clent);
+    cstring_t point[] = { "point", "64", "64" };
+    G_ClientCommand(clent, 3, point);
+    edict_t *preview = worker->orders->build_preview;
+    T_NOT_NULL(preview);
+    if (!preview) return;
+    G_FreeEdict(preview);
+    T_NULL(worker->orders->build_preview);
+    level.time += 1001;
+    edict_t *replacement = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 300, 400);
+    T_ASSERT(replacement == preview);
+    G_FreeEdict(worker);
+    T_ASSERT(replacement->inuse);
+    T_NOT_NULL(replacement->unit_state);
+}
+
 TEST(wc3_building, removing_worker_clears_active_and_queued_build_placeholders) {
     edict_t *clent;
     edict_t *worker = building_begin_barracks_placement(&clent);

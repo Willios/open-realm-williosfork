@@ -2095,10 +2095,11 @@ typedef struct {
 /* Awan scheduling and private waypoint ownership; persists between autonomous trips, released on disable/death. */
 typedef struct {
     uint32_t next_time, random_state, goal_generation;
+    uint32_t waypoint_spawn_time; /* private destination incarnation; slot/route serial alone can repeat */
     edict_t *goal, *waypoint;
 } wander_t;
 
-/* Resolved unit sound variants and pending one-shot channels used by entity snapshot/audio dispatch. */
+/* Sound variants/pending channels; registration or queueing attaches, entity teardown releases. */
 typedef struct {
     uint16_t select[MAX_UNIT_SELECT_SOUNDS];
     uint8_t num_select;
@@ -2153,7 +2154,7 @@ typedef struct {
     uint32_t autocast;
 } unitState_t;
 
-/* Unit-specific sight overrides and Apiv reveal state; owner-level alliances remain level state. */
+/* Unit-specific sight overrides and Apiv reveal state; attached on mutation, retained until teardown. */
 typedef struct {
     uint16_t forced[MAX_PLAYERS]; /* forced references by capture/reveal owner */
     uint32_t shared; /* explicit recipients of this unit's ordinary sight */
@@ -2163,11 +2164,11 @@ typedef struct {
 typedef struct {
     uint32_t gold, lumber;
 } harvest_t;
-/* Unit-owned physical item slots; independent of the currently authored inventory capacity. */
+/* Physical item slots; attach on first ownership, retain until teardown independently of ability capacity. */
 typedef struct {
     edict_t *slots[MAX_INVENTORY];
 } inventory_t;
-/* Basic-attack missile launch snapshot and one-time Defend reflection ownership. */
+/* Basic-attack launch snapshot and one-time Defend reflection state; launch to projectile teardown. */
 typedef struct {
     uint32_t attack_type;
     bool reflected;

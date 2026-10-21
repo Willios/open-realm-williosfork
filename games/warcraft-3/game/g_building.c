@@ -30,6 +30,7 @@ edict_t *G_CreateBuildPreview(edict_t *builder, uint32_t building_id, vec2_t con
     preview->s.angle = -M_PI / 2;
     preview->s.player = builder->s.player;
     SP_CallSpawn(preview);
+    preview->owner = builder; /* lets direct indicator removal detach accepted build intent */
     /* Pending construction is private player feedback, unlike the real
      * building that replaces it when construction starts. Keep the normal
      * entity/model path, but never send this marker to allies or opponents. */
