@@ -86,6 +86,34 @@ static edict_t *ancient_test_unit(bool rooted) {
     return unit;
 }
 
+/* Rooted Turning permits facing a weapon target without allocating travel. */
+TEST(wc3_ancient_root, rooted_turning_faces_target_without_travel) {
+    reset_entities();
+    setup_test_world();
+    edict_t *unit = ancient_test_unit(true);
+    edict_t *target = alloc_test_unit(TEST_HBAR, 64, 164);
+    unit->ancient_root->rooted_turning = true;
+    unit->goalentity = target;
+    unit->s.angle = 0;
+    T_ASSERT(S_AncientIsRooted(unit));
+    unit_facegoal(unit);
+    T_ASSERT(unit->s.angle > 0);
+    T_NULL(unit->movement);
+    unit->s.angle = 0;
+    unit_changeangle(unit);
+    T_ASSERT(unit->s.angle > 0);
+    T_NULL(unit->movement);
+    unit->s.angle = 0;
+    unit_changeangle_for_radius(unit, unit->collision);
+    T_ASSERT(unit->s.angle > 0);
+    T_NULL(unit->movement);
+    unit->ancient_root->rooted_turning = false;
+    unit->s.angle = 0;
+    unit_facegoal(unit);
+    T_FEQ(unit->s.angle, 0, 0.001f);
+    T_NULL(unit->movement);
+}
+
 static void ancient_update(edict_t *unit) {
     abilityitem_t item = S_AbilityItem(TEST_AROO);
     abilityCall_t call = MAKE(abilityCall_t, .item = &item);

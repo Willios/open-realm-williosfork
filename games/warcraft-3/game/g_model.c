@@ -579,7 +579,7 @@ static void AnimationTagSetWrite(animationTagSet_t const *set, string_t out, siz
     }
 }
 
-/* Animation names outlive JASS arguments and are shared by units until model shutdown. */
+/* Animation names outlive JASS arguments and are shared by units until game shutdown. */
 typedef struct animationName_s {
     struct animationName_s *next;
     char text[];

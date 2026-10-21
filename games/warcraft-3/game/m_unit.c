@@ -1173,6 +1173,7 @@ static bool unit_issueorder_now(edict_t *self, cstring_t order, vec2_t const *po
      * clicked point and allow immobile artillery to accept it. */
     if (!strcmp(order, "attackground")) return S_OrderAttackGround(self, point);
     if (self->aiflags & AI_IMMOBILE) return false;
+    if ((!strcmp(order, "smart") || !strcmp(order, "move")) && !S_UnitCanTranslate(self)) return false;
     if (!strcmp(order, "attack") && S_UnitPolymorphed(self)) return false;
 
     target = *point;

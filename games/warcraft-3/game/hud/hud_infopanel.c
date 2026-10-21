@@ -984,8 +984,8 @@ void UI_SeedInfoPanelCache(edict_t *ent, edict_t * *selected, uint32_t count) {
         ent->client->infopanel.entity = 0;
         /* HP/mana no longer drive the live portrait bars. Reuse hp as the
          * non-single selection-count cache so async removals (death/fog/hide)
-         * can invalidate a still-multiselect info panel without changing the
-         * serialized GAMECLIENT layout. -1 distinguishes the build queue. */
+         * can invalidate a still-multiselect info panel. -1 distinguishes
+         * the building queue from an empty selection. */
         ent->client->infopanel.count = count == 1 ? -1 : (int32_t)count;
         ent->client->infopanel.xp = 0;
     }

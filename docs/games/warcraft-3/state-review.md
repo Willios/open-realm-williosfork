@@ -42,6 +42,35 @@ On the local arm64 build, `sizeof(edict_t)` changed from 5,800 to 4,296 bytes (1
 This is an edict-layout measurement, not a claim about total resident RAM: the
 existing typed-pool implementation also reserves backing storage for optional roles.
 
+## Review checklist
+
+| Original review area | Completed result |
+|---|---|
+| Struct/enum purpose and consumers | Documented declarations in `g_local.h`; named player/HUD/entity-data records replace anonymous bundles. |
+| Player JASS state | Named `playerScript_t`; retained because spawn, natives, HUD, XP and saves use it. |
+| Camera redundancy | Named camera record and grouped pan; independent scalar, pan, controller and noise contracts remain explicit. |
+| Optional movement, including fields outside Movement | Active scratch, retained orders/FIFO/waypoints, destination cache and Awan schedule have separate owned records. |
+| Animation names | Immutable interned content replaces fixed per-edict arrays; saves store text and restore shared identity. |
+| Cooldown duplication | One authoritative deadline; recovery derives remaining time. |
+| Ability payload duplication | One related-entity slot plus typed message payload; registry class derives from the bound ability. |
+| Event/message enums | Audited production phases; JASS numeric ABI slots remain stable. Unsupported events are not implemented by deleting constants. |
+| SC2API placement | Remains a WC3-owned protocol adapter; no SC2 simulation dependency introduced. |
+
+The remaining inline fields that movement also touches are general entity contracts,
+not hidden travel scratch: the fixed server prefix (`s`, collision, bounds, area
+links) describes every entity; `movetype`/`unitinfo` retain physics and configuration;
+`goalentity`, `combatentity`, `currentmove`, callbacks and `wait` dispatch attacks,
+spells, work and missiles as well as travel. `paused`, `stunned`, `no_pathing` and
+`aiflags` are persistent simulation rules. `velocity` belongs to missiles/thinkers;
+`old_origin` samples region/proximity events even for stationary teleports. None
+should be used instead of `G_UnitIsMoving()` to infer active unit travel.
+
+A second full-diff audit found and fixed rejected point/selection Move paths that
+assumed `order_move` always attached scratch. Translation-disabled units now reject
+before destination/formation work. It also restored authored Rooted Turning through
+stationary facing and steering entry points without allocating travel. Regressions
+failed first (null dereferences and a missing turn), then passed in classic/TFT.
+
 ## Attack timing
 
 Weapon cooldown retains only `attack_cooldown_end_time` in simulation milliseconds.

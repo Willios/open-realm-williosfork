@@ -694,7 +694,8 @@ static void unit_turn_toward(edict_t *self, float target) {
 
 /* Stationary attacks/work can face their target without owning route scratch. */
 void unit_facegoal(edict_t *self) {
-    if (!self->goalentity || (self->aiflags & AI_IMMOBILE)) return;
+    if (!self || !self->goalentity || ((self->aiflags & AI_IMMOBILE) &&
+        !(S_AncientIsRooted(self) && self->ancient_root->rooted_turning))) return;
     vec2_t delta = Vector2_sub(&self->goalentity->s.origin2, &self->s.origin2);
     if (Vector2_len(&delta) > 0.001f) unit_turn_toward(self, atan2f(delta.y, delta.x));
 }
@@ -834,12 +835,9 @@ static bool move_displacement_steer(edict_t *self, moveAvoidPolicy_t policy) {
 
 static void unit_changeangle_towards_point_policy(edict_t *self, vec2_t const *point,
                                                    moveAvoidPolicy_t policy) {
-    if (self->aiflags & AI_IMMOBILE) return;
+    if (!self || !point || (self->aiflags & AI_IMMOBILE)) return;
     G_BeginMovement(self);
     vec2_t dir;
-
-    if (!self || !point || (self->aiflags & AI_IMMOBILE))
-        return;
     if (move_displacement_steer(self, policy)) return;
     self->movement->heading = self->s.angle;
     self->movement->flow_generation = 0;
@@ -873,12 +871,9 @@ void unit_changeangle_towards_point_worker(edict_t *self, vec2_t const *point) {
 }
 
 bool unit_changeangle_towards_point_ignore_units(edict_t *self, vec2_t const *point) {
-    if (self->aiflags & AI_IMMOBILE) return false;
+    if (!self || !point || (self->aiflags & AI_IMMOBILE)) return false;
     G_BeginMovement(self);
     vec2_t dir;
-
-    if (!self || !point || (self->aiflags & AI_IMMOBILE))
-        return false;
 
     self->movement->heading = self->s.angle;
     self->movement->flow_generation = 0;
@@ -904,10 +899,9 @@ bool unit_changeangle_towards_point_ignore_units(edict_t *self, vec2_t const *po
 }
 
 static void unit_changeangle_policy(edict_t *self, moveAvoidPolicy_t policy) {
-    if (self->aiflags & AI_IMMOBILE) return;
+    if (!self) return;
+    if (self->aiflags & AI_IMMOBILE) { unit_facegoal(self); return; }
     G_BeginMovement(self);
-    if ((self->aiflags & AI_IMMOBILE) && !(S_AncientIsRooted(self) && self->ancient_root->rooted_turning))
-        return;
     if (move_displacement_steer(self, policy))
         return;
     if (move_wisp_egress_tree_valid(self)) {
@@ -1059,10 +1053,9 @@ void unit_changeangle_worker(edict_t *self) {
 static void unit_changeangle_for_radius_policy(edict_t *self, float radius,
                                                moveAvoidPolicy_t policy,
                                                bool continue_to_target) {
-    if (self->aiflags & AI_IMMOBILE) return;
+    if (!self) return;
+    if (self->aiflags & AI_IMMOBILE) { unit_facegoal(self); return; }
     G_BeginMovement(self);
-    if ((self->aiflags & AI_IMMOBILE) && !(S_AncientIsRooted(self) && self->ancient_root->rooted_turning))
-        return;
     vec2_t to_goal = Vector2_sub(&self->goalentity->s.origin2, &self->s.origin2);
     vec2_t dir;
     uint8_t const blocked_flags = M_UnitStaticPathingFlags(self);
@@ -1423,7 +1416,7 @@ static uint32_t move_collect_selected(gameClient_t *client,
         if (count >= max_units) {
             break;
         }
-        if ((ent->aiflags & AI_IMMOBILE) || ent->data.UnitBalance->speed <= 0) {
+        if (!S_UnitCanTranslate(ent) || S_GoldMineWorkerIsInside(ent) || ent->data.UnitBalance->speed <= 0) {
             continue;
         }
         units[count++] = ent;

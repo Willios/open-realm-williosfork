@@ -4129,6 +4129,29 @@ TEST(wc3_movement, unit_does_not_overshoot_goal) {
     T_FEQ(dist, 0.0f, 0.01f);
 }
 
+/* Rejected orders must not assume optional travel was attached by order_move. */
+TEST(wc3_movement, rooted_point_order_keeps_travel_absent) {
+    edict_t *unit = make_moving_unit(0, 0);
+    vec2_t destination = {100, 100};
+    unit->abilstatus[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
+    T_NULL(unit->movement);
+    T_ASSERT(!G_IssueUnitPointOrder(unit, "move", &destination, false, 0, 100));
+    T_NULL(unit->movement);
+    T_NULL(unit->goalentity);
+}
+
+TEST(wc3_movement, rooted_selected_order_keeps_travel_absent) {
+    edict_t *unit = make_moving_unit(0, 0);
+    edict_t *clent = &g_edicts[0];
+    vec2_t destination = {100, 100};
+    unit->selected = 1 << clent->client->ps.number;
+    unit->abilstatus[0] = (heroabilitystatus_t){ .level = 1, .state_mask = WC3_STATUS_STATE_ROOTED };
+    T_NULL(unit->movement);
+    T_ASSERT(!move_selectlocation(clent, &destination));
+    T_NULL(unit->movement);
+    T_NULL(unit->goalentity);
+}
+
 TEST(wc3_movement, group_move_assigns_distinct_reserved_destinations) {
     reset_entities();
     edict_t *clent = alloc_test_unit(0, 0.0f, 0.0f);
