@@ -110,10 +110,10 @@ TEST(wc3_wander, scheduler_ticks_schedule_only_while_idle_and_eligible) {
     ARRAY_COUNT(unit->abilities.added) = 1;
     S_UnitAbilityEvent(unit, A_UNIT_INIT);
     unit_stand(unit);
-    unit->paused = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
     monster_think(unit);
     T_ASSERT(!unit->wander || unit->wander->next_time == 0);
-    unit->paused = false;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, false);
     monster_think(unit);
     T_ASSERT(unit->wander->next_time >= level.time + 8000);
     T_ASSERT(unit->wander->next_time <= level.time + 10000);

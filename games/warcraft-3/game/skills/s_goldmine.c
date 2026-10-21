@@ -252,8 +252,8 @@ static void goldmine_register_miner(edict_t *worker, edict_t *mine) {
     assert(worker->goldmine);
     worker->goldmine->mine = mine;
     worker->goldmine->mine_spawn_time = mine->spawn_time;
-    worker->goldmine->restore_invulnerable = worker->invulnerable;
-    worker->invulnerable = true;
+    worker->goldmine->restore_invulnerable = G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, true);
     worker->s.renderfx |= RF_HIDDEN;
     mine->peonsinside++;
     if (mine->peonsinside == 1) G_AddUnitAnimationProperties(mine, "work", true);
@@ -270,7 +270,7 @@ static edict_t *goldmine_unregister_miner(edict_t *worker) {
     }
     worker->goldmine->mine = NULL;
     worker->goldmine->mine_spawn_time = 0;
-    worker->invulnerable = worker->goldmine->restore_invulnerable;
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, worker->goldmine->restore_invulnerable);
     worker->goldmine->restore_invulnerable = false;
     worker->s.renderfx &= ~RF_HIDDEN;
     return mine;
@@ -703,7 +703,7 @@ bool S_MineOverlayBind(edict_t *overlay, edict_t *parent) {
     overlay->mineoverlay->income_time = 0;
     overlay->mineoverlay->active_interval_index = 0;
     parent->s.renderfx |= RF_HIDDEN;
-    parent->paused = true;
+    G_SetUnitFlag(parent, UNIT_FLAG_PAUSED, true);
     G_InvalidateUnitShortcutsForUnit(parent);
     if (parent->s.flags & EF_FOW_BLOCKER) G_FowMarkBlockersDirty();
     gi.LinkEntity(parent);
@@ -713,7 +713,7 @@ bool S_MineOverlayBind(edict_t *overlay, edict_t *parent) {
             (long)(overlay - globals.edicts), (cstring_t)&overlay->class_id,
             (long)(parent - globals.edicts), (cstring_t)&parent->class_id,
             (unsigned)overlay->spawn_time, (unsigned)parent->spawn_time,
-            !!(parent->s.renderfx & RF_HIDDEN), parent->paused,
+            !!(parent->s.renderfx & RF_HIDDEN), G_UnitHasFlag(parent, UNIT_FLAG_PAUSED),
             !!(parent->svflags & SVF_NOCLIENT), !!parent->s.model, (unsigned)parent->resources);
 #endif
     return true;
@@ -849,14 +849,14 @@ void S_MineOverlayRelease(edict_t *overlay) {
     overlay->mineoverlay->active_interval_index = 0;
     if (!parent) return;
     parent->s.renderfx &= ~RF_HIDDEN;
-    parent->paused = false;
+    G_SetUnitFlag(parent, UNIT_FLAG_PAUSED, false);
     G_InvalidateUnitShortcutsForUnit(parent);
     if (parent->s.flags & EF_FOW_BLOCKER) G_FowMarkBlockersDirty();
     gi.LinkEntity(parent);
 #ifdef WC3_DEBUG_MINING
     fprintf(stderr, "WC3_MINING restored parent=%ld id=%.4s hidden=%d paused=%d noclient=%d "
             "model=%d dead=%d gold=%u\n", (long)(parent - globals.edicts), (cstring_t)&parent->class_id,
-            !!(parent->s.renderfx & RF_HIDDEN), parent->paused,
+            !!(parent->s.renderfx & RF_HIDDEN), G_UnitHasFlag(parent, UNIT_FLAG_PAUSED),
             !!(parent->svflags & SVF_NOCLIENT), !!parent->s.model, M_IsDead(parent),
             (unsigned)parent->resources);
 #endif

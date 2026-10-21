@@ -976,3 +976,15 @@ references and preserves their spawn incarnations, visibility owner and injected
 skill flags. Empty records are released by the ability lifecycle. Version 103
 rejects older saves; the network wire format remains unchanged. See
 [pooled state](pooled-entity-state.md#soul-trap-relationships).
+
+## Unit flags and derived stun (version 104)
+
+The raw edict stores `uint32_t unit_flags` instead of the independent alarm,
+invulnerability, pause, pathing and timed-life-pause booleans. Its explicit F_INT
+descriptor preserves every bit; ability-owned restore snapshots still store
+normalized booleans and change only their corresponding bit on restoration.
+
+The derived `stunned` field is removed rather than serialized as a bit. Loaded
+status records supply built-in and explicit STUNNED contributions immediately;
+expired records are ignored even before the next status cleanup. Version 104
+rejects older saves. Network fields and wire layouts do not change.

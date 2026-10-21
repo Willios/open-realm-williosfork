@@ -537,7 +537,7 @@ TEST(wc3_ability_lifecycle, mass_teleport_delays_caps_and_excludes_allies_and_st
 
     T_ASSERT(S_CastUnitTargetSpell(caster, FS_SLKKey("AHmt"), target));
     edict_t *thinker = review_thinker(caster);
-    T_NOT_NULL(thinker); T_ASSERT(target->paused); T_FEQ(caster->s.origin2.x, 0, .001f);
+    T_NOT_NULL(thinker); T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_FEQ(caster->s.origin2.x, 0, .001f);
     level.time = thinker->freetime - 1; G_RunEntity(thinker);
     T_FEQ(caster->s.origin2.x, 0, .001f);
     level.time = thinker->freetime; G_RunEntity(thinker);
@@ -554,7 +554,7 @@ TEST(wc3_ability_lifecycle, mass_teleport_delays_caps_and_excludes_allies_and_st
     /* Relocation must also update the server broad phase: the caster vacated
      * x=0, so an unmoved unit can legally occupy that point after completion. */
     T_ASSERT(G_CanRepositionUnitAt(own3, &MAKE(vec2_t, 0, 0)));
-    T_ASSERT(!target->paused); T_ASSERT(!caster->channel || caster->channel->code == 0); T_ASSERT(!thinker->inuse);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_ASSERT(!caster->channel || caster->channel->code == 0); T_ASSERT(!thinker->inuse);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
@@ -567,9 +567,9 @@ TEST(wc3_ability_lifecycle, mass_teleport_accepts_structure_target_and_cleans_ca
     target->s.flags |= EF_BUILDING;
     T_ASSERT(S_CastUnitTargetSpell(caster, FS_SLKKey("AHmt"), target));
     edict_t *thinker = review_thinker(caster);
-    T_NOT_NULL(thinker); T_ASSERT(target->paused);
+    T_NOT_NULL(thinker); T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     S_SpellCancelChannel(caster);
-    T_ASSERT(!target->paused); T_ASSERT(!caster->channel || caster->channel->code == 0);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_ASSERT(!caster->channel || caster->channel->code == 0);
     if (thinker && thinker->inuse) G_RunEntity(thinker);
     T_ASSERT(!thinker || !thinker->inuse);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
@@ -585,9 +585,9 @@ TEST(wc3_ability_lifecycle, mass_teleport_old_thinker_preserves_recast_destinati
     T_ASSERT(S_CastUnitTargetSpell(caster, code, target));
     retired = review_thinker(caster);
     T_NOT_NULL(retired);
-    T_ASSERT(target->paused);
+    T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     S_SpellCancelChannel(caster);
-    T_ASSERT(!target->paused);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     /* Model an immediately restarted channel without bypassing the real
      * channel thinker identity capture or running an unrelated cooldown. */
     caster->channel->serial++;
@@ -597,11 +597,11 @@ TEST(wc3_ability_lifecycle, mass_teleport_old_thinker_preserves_recast_destinati
     replacement->think = mass_teleport_think;
     replacement->wait = 0.0f;
     replacement->freetime = G_Time() + 5000;
-    target->paused = true;
+    G_SetUnitFlag(target, UNIT_FLAG_PAUSED, true);
     if (retired->inuse) G_RunEntity(retired);
-    T_ASSERT(target->paused);
+    T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     S_SpellCancelChannel(caster);
-    T_ASSERT(!target->paused);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     if (replacement->inuse) G_RunEntity(replacement);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -616,7 +616,7 @@ TEST(wc3_ability_lifecycle, mass_teleport_target_death_cancels) {
     target->health.value = 0;
     G_RunEntity(thinker);
     T_FEQ(caster->s.origin2.x, 0, .001f);
-    T_ASSERT(!target->paused); T_ASSERT(!caster->channel || caster->channel->code == 0); T_ASSERT(!thinker->inuse);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_ASSERT(!caster->channel || caster->channel->code == 0); T_ASSERT(!thinker->inuse);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
@@ -628,14 +628,14 @@ TEST(wc3_ability_lifecycle, mass_teleport_continues_after_save_load) {
     slkTestData_t *rows = parse_slk_string(review_slk), *old = G_SetSLKRows("AbilityData", rows);
     T_ASSERT(S_CastUnitTargetSpell(caster, FS_SLKKey("AHmt"), target));
     edict_t *thinker = review_thinker(caster);
-    T_NOT_NULL(thinker); T_ASSERT(target->paused); T_ASSERT(WriteGame(path));
+    T_NOT_NULL(thinker); T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_ASSERT(WriteGame(path));
     if (!caster->channel) caster->channel = G_AllocChannel();
     assert(caster->channel);
-    caster->channel->code = 0; thinker->think = NULL; target->paused = false;
+    caster->channel->code = 0; thinker->think = NULL; G_SetUnitFlag(target, UNIT_FLAG_PAUSED, false);
     T_ASSERT(ReadGame(path));
-    T_ASSERT(thinker->think == mass_teleport_think); T_ASSERT(target->paused);
+    T_ASSERT(thinker->think == mass_teleport_think); T_ASSERT(G_UnitHasFlag(target, UNIT_FLAG_PAUSED));
     level.time = thinker->freetime; G_RunEntity(thinker);
-    T_ASSERT(caster->s.origin2.x > 1000); T_ASSERT(!target->paused); T_ASSERT(!thinker->inuse);
+    T_ASSERT(caster->s.origin2.x > 1000); T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_PAUSED)); T_ASSERT(!thinker->inuse);
     remove(path); G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
@@ -1368,9 +1368,9 @@ TEST(wc3_ability_lifecycle, scripted_status_removal_updates_derived_stun_immedia
         .buff = "Bstu", .level = 1, .duration = 8.0f
     });
     T_NOT_NULL(slot);
-    T_ASSERT(unit->stunned);
+    T_ASSERT(unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
     unit_removestatus(unit, slot, STATUS_REMOVE_SCRIPT);
-    T_ASSERT(!unit->stunned);
+    T_ASSERT(!unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
 }
 
 TEST(wc3_ability_lifecycle, status_source_lookup_does_not_return_expired_record) {
@@ -1394,11 +1394,11 @@ TEST(wc3_ability_lifecycle, status_deferred_removal_reconciles_after_batch) {
     first = unit_findstatus(unit, MAKEFOURCC('B','s','t','u'));
     second = unit_findstatus(unit, MAKEFOURCC('B','s','t','a'));
     T_NOT_NULL(first); T_NOT_NULL(second);
-    T_ASSERT(unit->stunned);
+    T_ASSERT(unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
     unit_removestatus_deferred(unit, first, STATUS_REMOVE_DISPEL);
     unit_removestatus_deferred(unit, second, STATUS_REMOVE_DISPEL);
     unit_refreshstatusflags(unit);
-    T_ASSERT(!unit->stunned);
+    T_ASSERT(!unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
     T_NULL(unit_findstatus(unit, MAKEFOURCC('B','s','t','u')));
     T_NULL(unit_findstatus(unit, MAKEFOURCC('B','s','t','a')));
 }

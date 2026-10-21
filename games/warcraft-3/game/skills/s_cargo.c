@@ -166,7 +166,7 @@ static void cargo_add_unit(edict_t *transport, edict_t *unit) {
     unit->orders->resource_goal = NULL;
     unit_stand(unit);
     unit->s.renderfx |= RF_HIDDEN;
-    unit->paused = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
     G_InvalidateUnitShortcutsForUnit(unit);
     cargo_update_burrow_attacks(transport);
     cargo_update_entangled_animation(transport, old_count);
@@ -207,7 +207,7 @@ static edict_t *cargo_drop_unit(edict_t *transport, uint32_t index) {
         bool const was_corpse = S_CorpseCargoIsStored(unit);
         cargo_place_unloaded_unit(transport, unit);
         unit->s.renderfx &= ~RF_HIDDEN;
-        unit->paused = false;
+        G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, false);
         unit->aiflags &= ~AI_CORPSE_IN_CARGO;
         if (was_corpse) G_RestartCorpseBoneDecayAfterCargo(unit);
     }
@@ -263,7 +263,7 @@ static void cargo_unload_all(edict_t *transport) {
 
 bool S_CargoBeginUnloadAll(edict_t *transport) {
     if (!transport || !transport->inuse || !transport->cargo || !transport->cargo->count || M_IsDead(transport) ||
-        transport->paused || transport->stunned || !cargo_living_hold_alias(transport)) return false;
+        G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit_hasstatusstate(transport, WC3_STATUS_STATE_STUNNED) || !cargo_living_hold_alias(transport)) return false;
     if (transport->currentmove == &cargo_move_unload) return true;
     order_stop_cleanup(transport);
     unit_setmove(transport, &cargo_move_unload);
@@ -285,7 +285,7 @@ static bool cargo_begin_unload_at(edict_t *transport, vec2_t const *point, uint3
     edict_t *waypoint;
 
     if (!transport || !point || !transport->inuse || !transport->cargo || !transport->cargo->count || M_IsDead(transport) ||
-        transport->paused || transport->stunned || !cargo_living_hold_alias(transport) || !ability_code) return false;
+        G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit_hasstatusstate(transport, WC3_STATUS_STATE_STUNNED) || !cargo_living_hold_alias(transport) || !ability_code) return false;
     destination = *point;
     if (!CM_ClosestPathablePointForRadiusFlags(point, transport->collision,
                                                M_UnitStaticPathingFlags(transport), &destination)) return false;
@@ -546,7 +546,7 @@ static uint32_t battlestations_alias(edict_t *transport) {
 
 static bool cargo_board_target_valid(edict_t *unit, edict_t *transport) {
     if (!unit || !transport || unit == transport || M_IsDead(unit) || M_IsDead(transport)) return false;
-    if (unit->paused || transport->paused || unit->s.player != transport->s.player) return false;
+    if (G_UnitHasFlag(unit, UNIT_FLAG_PAUSED) || G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit->s.player != transport->s.player) return false;
     if (!cargo_living_hold_alias(transport) || !cargo_has_capacity(transport, 1)) return false;
     /* Keep the approach order alive through Entangled Mine construction. The
      * final load attempt is retried by this same movement order on completion. */

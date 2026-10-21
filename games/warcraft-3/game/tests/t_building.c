@@ -3592,14 +3592,14 @@ TEST(wc3_building, shared_build_order_releases_builder_from_gold_mine) {
     if (!builder->goldmine) builder->goldmine = G_AllocGoldMine();
     assert(builder->goldmine);
     builder->goldmine->mine = mine; builder->goldmine->mine_spawn_time = mine->spawn_time;
-    builder->invulnerable = true; builder->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
+    G_SetUnitFlag(builder, UNIT_FLAG_INVULNERABLE, true); builder->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
     client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = G_UnitBalance(barracks)->goldCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = G_UnitBalance(barracks)->lumberCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
     T_ASSERT(!S_GoldMineWorkerIsInside(builder)); T_EQ(mine->peonsinside, 0);
-    T_ASSERT(!(builder->s.renderfx & RF_HIDDEN)); T_ASSERT(!builder->invulnerable);
+    T_ASSERT(!(builder->s.renderfx & RF_HIDDEN)); T_ASSERT(!G_UnitHasFlag(builder, UNIT_FLAG_INVULNERABLE));
     T_EQ(builder->build_project, barracks); T_NOT_NULL(builder->goalentity);
 }
 
@@ -3668,11 +3668,11 @@ TEST(wc3_building, human_birth_emission_tracks_active_repair_not_assigned_worker
     T_ASSERT(!(building->s.flags & EF_MDX_EMISSION_PAUSED));
     T_ASSERT(!(building->s.flags & EF_MDX_ANIMATION_PAUSED));
 
-    worker->paused = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
     G_RunConstructionFrame(building);
     T_ASSERT(building->s.flags & EF_MDX_EMISSION_PAUSED);
     T_ASSERT(building->s.flags & EF_MDX_ANIMATION_PAUSED);
-    worker->paused = false;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, false);
     G_RunConstructionFrame(building);
     T_ASSERT(!(building->s.flags & EF_MDX_EMISSION_PAUSED));
     T_ASSERT(!(building->s.flags & EF_MDX_ANIMATION_PAUSED));
@@ -3918,8 +3918,8 @@ TEST(wc3_building, orc_construction_hides_worker_and_progresses_autonomously) {
     T_ASSERT(building->construction->worker == worker);
     T_ASSERT(building->construction->worker_inside);
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->build == building);
     T_FEQ(building->health.value, 100.0f, 0.001f);
 
@@ -3952,8 +3952,8 @@ TEST(wc3_building, naga_construction_hides_worker_and_progresses_autonomously) {
     T_ASSERT(building->construction->worker_inside);
     T_ASSERT(!building->construction->consumes_worker);
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_FEQ(building->health.value, 100.0f, 0.001f);
 
     hp_before = building->health.value;
@@ -4131,8 +4131,8 @@ TEST(wc3_building, removing_orc_construction_releases_internal_worker) {
     T_ASSERT(!building->inuse);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
-    T_ASSERT(!worker->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }
@@ -4144,18 +4144,18 @@ TEST(wc3_building, orc_construction_restores_worker_state_after_cancel) {
     setup_test_world();
     worker = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0, 0);
     building = alloc_test_unit(MAKEFOURCC('h', 'b', 'a', 'r'), 64, 0);
-    worker->paused = true;
-    worker->invulnerable = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, true);
     worker->s.renderfx |= RF_HIDDEN;
 
     T_ASSERT(G_StartOrcConstruction(worker, building));
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
     G_StopConstruction(building);
 
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
 }
 
@@ -4179,8 +4179,8 @@ TEST(wc3_building, undead_construction_releases_summoner_and_keeps_progressing) 
     T_ASSERT(building->construction->worker == worker);
     T_ASSERT(!building->construction || !building->construction->worker_inside);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
-    T_ASSERT(!worker->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(release_time > level.time);
 
     level.time = release_time;
@@ -4281,8 +4281,8 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
     T_NULL(acolyte->build);
     T_ASSERT(acolyte->goalentity && acolyte->goalentity->s.origin2.x == build_point.x);
     T_ASSERT(!(acolyte->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!acolyte->paused);
-    T_ASSERT(!acolyte->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(acolyte, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(acolyte, UNIT_FLAG_INVULNERABLE));
 
     order_move(acolyte, Waypoint_add(&move_point));
     FOR_LOOP(i, 20) {
@@ -4366,7 +4366,7 @@ TEST(wc3_building, night_elf_ancient_cancel_restores_wisp_and_food) {
     G_StopConstruction(building);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_EQ(worker->food->used, worker_balance.foodUsed);
     T_NULL(building->construction);
 }
@@ -4413,7 +4413,7 @@ TEST(wc3_building, night_elf_non_ancient_completion_releases_wisp) {
     G_CompleteConstruction(building);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }
@@ -4430,7 +4430,7 @@ TEST(wc3_building, cancelling_night_elf_non_ancient_construction_releases_wisp) 
 
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }

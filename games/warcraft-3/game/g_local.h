@@ -2123,6 +2123,15 @@ typedef struct edictData_s {
     DestructableData_t const *DestructableData;
 } entityData_t;
 
+/* Independent game-owned switches, also used by items/destructables; stun is derived from statuses. */
+typedef enum {
+    UNIT_FLAG_IGNORE_ALARM = 1u << 0, /* UnitIgnoreAlarm: suppress automatic attacked notifications */
+    UNIT_FLAG_INVULNERABLE = 1u << 1, /* explicit damage immunity, independent of timed statuses */
+    UNIT_FLAG_PAUSED = 1u << 2, /* suspend AI/travel; independent of stun and timed life */
+    UNIT_FLAG_NO_PATHING = 1u << 3, /* bypass pathfinding for scripted movement */
+    UNIT_FLAG_TIMED_LIFE_PAUSED = 1u << 4 /* UnitPauseTimedLife: freeze BTLF expiry */
+} unitFlags_t;
+
 /* Authoritative game entity; server-shared prefix stays fixed and optional roles own their lifecycle state. */
 struct edict_s {
     entityState_t s;
@@ -2210,12 +2219,7 @@ struct edict_s {
     edictAbilities_s abilities;
     uint32_t autocast_code; /* one selected autocast ability; zero means disabled */
     avatar_t *avatar;
-    bool ignore_alarm; /* UnitIgnoreAlarm: suppress this unit's automatic attacked notifications */
-    bool invulnerable;  // unit cannot take damage when true
-    bool paused;        // unit AI and movement suspended when true
-    bool stunned;       // unit AI and movement suspended by timed status
-    bool no_pathing;    // pathfinding disabled when true
-    bool timed_life_paused; /* UnitPauseTimedLife: freeze BTLF expiry while set */
+    uint32_t unit_flags; /* independent entity gameplay switches; unitFlags_t */
     uint32_t script_unit_types; /* UnitAddType/UnitRemoveType bitmask; bit N = UNIT_TYPE N */
     sleep_t *sleep;
     channel_t *channel;
@@ -2285,6 +2289,18 @@ struct edict_s {
 
 typedef struct edictData_s edictData_s;
 typedef struct clientCamera_s clientCamera_s;
+
+/* Normalize flag reads for script booleans and saved temporary-state snapshots. */
+static inline bool G_UnitHasFlag(edict_t const *ent, unitFlags_t flag) {
+    return ent && (ent->unit_flags & flag) != 0;
+}
+
+/* Change one explicit switch without disturbing unrelated state or derived status contributions. */
+static inline void G_SetUnitFlag(edict_t *ent, unitFlags_t flag, bool enabled) {
+    assert(ent);
+    if (enabled) ent->unit_flags |= flag;
+    else ent->unit_flags &= ~flag;
+}
 
 /* An active travel operation may be paused/turning/waiting; absence means no routing owner. */
 static inline bool G_UnitIsMoving(edict_t const *ent) { return ent && ent->movement != NULL; }

@@ -150,7 +150,7 @@ static bool hsa_in_cinematic(edict_t const *hero) {
 }
 
 static bool hsa_ready_to_walk(edict_t const *hero, bool timed_out) {
-    if (!hsa_hero_ok(hero) || hero->paused) return false;
+    if (!hsa_hero_ok(hero) || G_UnitHasFlag(hero, UNIT_FLAG_PAUSED)) return false;
     return timed_out || !hsa_in_cinematic(hero);
 }
 
@@ -300,7 +300,7 @@ void G_HeroSaveLoadAuditFrame(void) {
     }
     /* PauseAllUnitsBJ freezes think; keep waiting. Cinematic UI already gated
      * WAIT_HERO; finale timeout fallback must still count walk frames. */
-    if (hero->paused) return;
+    if (G_UnitHasFlag(hero, UNIT_FLAG_PAUSED)) return;
     if (!walking && !hsa_issue_walk(hero)) {
         hsa_finish("fail_order", hero);
         return;

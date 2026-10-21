@@ -131,7 +131,7 @@ static bool filter_sight(edict_t const *ent) {
         return false;
     /* Warsmash excludes invulnerable units from automatic attack acquisition;
      * explicit orders still perform their own target validation. */
-    if (ent->invulnerable || unit_hasstatusstate(ent, WC3_STATUS_STATE_INVULNERABLE))
+    if (G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE) || unit_hasstatusstate(ent, WC3_STATUS_STATE_INVULNERABLE))
         return false;
     if (S_UnitAbilityEvent((edict_t *)ent, A_NO_ACQUIRE))
         return false;
@@ -537,7 +537,7 @@ void G_CreepGuardTick(edict_t *unit) {
         /* Temporary disables postpone the attempt, but do not spend its
          * bounded failure budget. A three-second root is not three path
          * failures. Use the simulation clock for the next eligible check. */
-        if ((unit->aiflags & AI_IMMOBILE) || unit->paused || unit->stunned ||
+        if ((unit->aiflags & AI_IMMOBILE) || G_UnitHasFlag(unit, UNIT_FLAG_PAUSED) || unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED) ||
             S_UnitIsCycloned(unit) || unit_hasstatusstate(unit, WC3_STATUS_STATE_ROOTED) ||
             S_PurgeIsImmobilized(unit)) {
             unit->orders->creep_guard_retry_at_ms = level.time + CREEP_GUARD_RETRY_DELAY_MS;

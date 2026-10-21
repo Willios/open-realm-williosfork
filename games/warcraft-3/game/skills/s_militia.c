@@ -96,7 +96,7 @@ static void militia_sync_form(edict_t *unit, uint32_t ability) {
 
 static bool militia_partner_valid(edict_t *worker, edict_t *hall) {
     if (!worker || !hall || !hall->inuse || M_IsDead(worker) || M_IsDead(hall)) return false;
-    if (worker->s.player != hall->s.player || worker->paused || hall->paused) return false;
+    if (worker->s.player != hall->s.player || G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) return false;
     if (hall != worker->militia->partner || hall->spawn_time != worker->militia->partner_spawn_time) return false;
     if (!militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'))) return false;
     return militia_hall_ability_alias(hall, false) != 0;
@@ -283,7 +283,7 @@ bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     if (worker->s.player != hall->s.player) {
         return false;
     }
-    if (worker->paused || hall->paused) {
+    if (G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) {
         return false;
     }
     if (!militia_hall_ability_alias(hall, true)) {
@@ -348,7 +348,7 @@ static edict_t *militia_find_partner(edict_t *worker, uint32_t worker_ability) {
 
         if (hall->s.player != worker->s.player) continue;
         if (!G_UnitIsStructure(hall)) continue;
-        if (M_IsDead(hall) || hall->paused) continue;
+        if (M_IsDead(hall) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) continue;
         hall_ability = militia_hall_ability_alias(hall, true);
         if (!hall_ability) continue;
         distance = Vector2_distance(&worker->s.origin2, &hall->s.origin2);
@@ -379,7 +379,7 @@ static void militia_cmd(edict_t *clent) {
         uint32_t const ability = militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'));
         edict_t *hall;
         cstring_t order;
-        if (!ability || worker->paused || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) {
+        if (!ability || G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) {
             continue;
         }
         militia_sync_form(worker, ability);
@@ -424,10 +424,10 @@ BZ_COMMAND_PROC(AbilityMilitiaConvert) {
     FOR_CONTROLLABLE_SELECTED_UNITS(client, hall) {
         uint32_t const hall_ability = militia_hall_ability_alias(hall, true);
         float radius;
-        if (!hall_ability || hall->paused) continue;
+        if (!hall_ability || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) continue;
         radius = S_MilitiaPairSearchRadius(hall_ability);
         FILTER_EDICTS(worker, worker->inuse && (worker->svflags & SVF_MONSTER) && !M_IsDead(worker) &&
-                      !worker->paused && worker->s.player == hall->s.player) {
+                      !G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) && worker->s.player == hall->s.player) {
             uint32_t const worker_ability = militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'));
             float const distance = Vector2_distance(&worker->s.origin2, &hall->s.origin2);
             if (!worker_ability || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) continue;

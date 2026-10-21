@@ -107,7 +107,7 @@ TEST(wc3_spell, exhume_spawns_corpse_after_dur_interval) {
 	T_NOT_NULL(corpse);
 	T_FEQ(corpse->s.origin2.x, fix.wagon->s.origin2.x, 0.001f);
 	T_FEQ(corpse->s.origin2.y, fix.wagon->s.origin2.y, 0.001f);
-	T_ASSERT(S_CorpseCargoIsStored(corpse)); T_ASSERT(corpse->paused);
+	T_ASSERT(S_CorpseCargoIsStored(corpse)); T_ASSERT(G_UnitHasFlag(corpse, UNIT_FLAG_PAUSED));
 	T_EQ((int)S_CargoCapacity(fix.wagon), 8);
 	T_ASSERT(S_CargoUnloadAt(fix.wagon, 0)); T_ASSERT(!fix.wagon->cargo || fix.wagon->cargo->count == 0);
 	exh_done(&fix);
@@ -129,7 +129,7 @@ TEST(wc3_spell, meat_wagon_corpse_hold_rejects_living_unit_boarding) {
     T_ASSERT(!S_CargoOrderBoard(living, fix.wagon));
     T_ASSERT(!fix.wagon->cargo || fix.wagon->cargo->count == 0);
     T_ASSERT(!(living->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!living->paused);
+    T_ASSERT(!G_UnitHasFlag(living, UNIT_FLAG_PAUSED));
     T_NULL(S_CargoTransportForUnit(living));
     exh_done(&fix);
 }

@@ -2315,7 +2315,7 @@ static void G_CustomizeEntity(uint32_t player, edict_t const *ent, entityState_t
             /* TFT authors breakable selectability explicitly. ROC predates
              * that column, where the debris target contract is the available
              * gate after normal destructable attackability checks. */
-            if (!ent->invulnerable &&
+            if (!G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE) &&
                 (ent->data.DestructableData->selectable ||
                  atoi(gi.CvarString ? gi.CvarString("fs_expansion", "0") : "0") == 0))
                 state->flags |= EF_HOVER_HEALTH;
@@ -2341,7 +2341,7 @@ static void G_CustomizeEntity(uint32_t player, edict_t const *ent, entityState_t
         /* Name remains the hover gate for invulnerable units with no mana bar. */
         state->name = G_UnitNameConfigstring(G_UnitName(ent->s.class_id));
         state->hover_value = G_HoverResourceValue(ent);
-        if (!ent->invulnerable) state->flags |= EF_HOVER_HEALTH;
+        if (!G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE)) state->flags |= EF_HOVER_HEALTH;
         if (ent->mana.max_value > 0.0f) state->flags |= EF_HOVER_MANA;
     }
 

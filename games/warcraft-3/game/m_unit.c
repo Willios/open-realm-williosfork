@@ -1177,7 +1177,7 @@ static bool unit_issueorder_now(edict_t *self, cstring_t order, vec2_t const *po
     if (!strcmp(order, "attack") && S_UnitPolymorphed(self)) return false;
 
     target = *point;
-    if (!self->no_pathing)
+    if (!G_UnitHasFlag(self, UNIT_FLAG_NO_PATHING))
         CM_ClosestPathablePointForRadiusFlags(point, self->collision, M_UnitStaticPathingFlags(self), &target);
     waypoint = Waypoint_add(&target);
     if (!waypoint) return false;
@@ -1888,18 +1888,14 @@ float unit_status_modifier_total(edict_t const *unit, wc3_status_modifier_type_t
     return result;
 }
 
-/* Derived locks come only from statuses that actually remain; owners
- * reconcile their own flight/height state through A_STATUS_REFRESH. */
+/* Notify live status owners to reconcile flight/height and other inverse state.
+ * Categorical locks are queried directly; no stun mirror needs refreshing. */
 void unit_refreshstatusflags(edict_t *ent) {
-    bool stunned = false;
     FOR_LOOP(i, MAX_UNIT_STATUSES) {
         heroabilitystatus_t *status = ent->abilstatus + i;
         if (!status->level || (status->timestamp && status->timestamp <= G_Time())) continue;
-        if ((status->state_mask | unit_builtin_status_states(status->code)) & WC3_STATUS_STATE_STUNNED)
-            if (!status->timestamp || status->timestamp > G_Time()) stunned = true;
         UnitDispatchStatus(ent, status, (status->source_ability ? status->source_ability : status->data), A_STATUS_REFRESH, STATUS_REMOVE_SCRIPT);
     }
-    ent->stunned = stunned;
 }
 
 /* Dispatch the inverse while the old record is still available. Callers may

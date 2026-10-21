@@ -454,7 +454,7 @@ static bool move_is_valid_policy(edict_t *self, vec2_t const *cand,
     trymove_blocker = NULL;
     /* Pathing-disabled units (SetUnitPathing(false), scripted moves) ignore
      * all collision, matching the old unconditional translate. */
-    if (self->no_pathing)
+    if (G_UnitHasFlag(self, UNIT_FLAG_NO_PATHING))
         return true;
 
     /* Static world: terrain + baked building footprints (pathmap.original). */
@@ -1833,7 +1833,7 @@ static void ai_move_walk(edict_t *ent) {
         /* Plain Move owns a private destination, so location-aware steering
          * uses the mover footprint and retargets a disconnected click before
          * this behavior treats an unresolved route as terminal. */
-        if (ent->no_pathing) {
+        if (G_UnitHasFlag(ent, UNIT_FLAG_NO_PATHING)) {
             /* Scripted pathing-disabled units must keep their authored point
              * order. Static route fields can redirect them away from the
              * trigger even though movement itself ignores those blockers. */

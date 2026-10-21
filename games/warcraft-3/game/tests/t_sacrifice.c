@@ -118,7 +118,7 @@ TEST(wc3_spell, sacrifice_pit_target_hides_acolyte_and_queues_shade) {
     T_ASSERT(result->sacrifice);
     T_ASSERT(result->sacrifice->worker == fix.acolyte);
     T_ASSERT(fix.acolyte->s.renderfx & RF_HIDDEN);
-    T_ASSERT(fix.acolyte->paused);
+    T_ASSERT(G_UnitHasFlag(fix.acolyte, UNIT_FLAG_PAUSED));
     /* Sacrifice does not reserve the Shade's food while the Acolyte still owns
      * its slot. */
     T_EQ(fix.client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_USED], 1);
@@ -164,7 +164,7 @@ TEST(wc3_spell, sacrifice_cancel_restores_acolyte_and_removes_queued_shade) {
     T_NULL(fix.pit->build);
     T_ASSERT(fix.acolyte->inuse);
     T_ASSERT(!(fix.acolyte->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!fix.acolyte->paused);
+    T_ASSERT(!G_UnitHasFlag(fix.acolyte, UNIT_FLAG_PAUSED));
     T_ASSERT(!result->inuse);
     T_EQ(fix.client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_USED], 1);
     sac_done(&fix);
@@ -323,7 +323,7 @@ TEST(wc3_save, sacrifice_queue_round_trips_then_cancels) {
     T_NULL(fix.pit->build);
     T_ASSERT(fix.acolyte->inuse);
     T_ASSERT(!(fix.acolyte->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!fix.acolyte->paused);
+    T_ASSERT(!G_UnitHasFlag(fix.acolyte, UNIT_FLAG_PAUSED));
     remove(filename);
     sac_done(&fix);
 }

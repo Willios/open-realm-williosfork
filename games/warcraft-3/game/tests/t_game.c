@@ -257,12 +257,12 @@ TEST(wc3_game, selected_unit_cheats_preserve_controller_and_run_death) {
     G_SelectEntity(clent->client, unit);
     gi.CvarString = give_resources_cheat_cvar;
     G_ClientCommand(clent, 1, god);
-    T_ASSERT(unit->invulnerable);
-    T_ASSERT(!clent->invulnerable);
+    T_ASSERT(G_UnitHasFlag(unit, UNIT_FLAG_INVULNERABLE));
+    T_ASSERT(!G_UnitHasFlag(clent, UNIT_FLAG_INVULNERABLE));
     T_Damage(unit, unit, 10);
     T_EQ(unit->health.value, unit->health.max_value);
     G_ClientCommand(clent, 1, kill);
-    T_ASSERT(!clent->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(clent, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(unit->svflags & SVF_DEADMONSTER);
     T_EQ(unit->health.value, 0);
     T_ASSERT(!unit->selected);
@@ -689,7 +689,7 @@ TEST(wc3_game, unit_cheats_reject_disabled_missing_and_enemy_selection) {
     G_ClientCommand(clent, 1, kill);
     G_ClientCommand(clent, 2, health);
     G_ClientCommand(clent, 2, mana);
-    T_ASSERT(!clent->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(clent, UNIT_FLAG_INVULNERABLE));
     unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 64);
     unit->s.player = 1;
     unit->svflags |= SVF_MONSTER;
@@ -703,7 +703,7 @@ TEST(wc3_game, unit_cheats_reject_disabled_missing_and_enemy_selection) {
     G_ClientCommand(clent, 1, kill);
     G_ClientCommand(clent, 2, health);
     G_ClientCommand(clent, 2, mana);
-    T_ASSERT(!unit->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(unit, UNIT_FLAG_INVULNERABLE));
     T_EQ((int)unit->health.value, 75);
     T_EQ((int)unit->mana.value, 20);
     unit->s.player = 0;
@@ -712,7 +712,7 @@ TEST(wc3_game, unit_cheats_reject_disabled_missing_and_enemy_selection) {
     G_ClientCommand(clent, 1, kill);
     G_ClientCommand(clent, 2, health);
     G_ClientCommand(clent, 2, mana);
-    T_ASSERT(!unit->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(unit, UNIT_FLAG_INVULNERABLE));
     T_EQ((int)unit->health.value, 75);
     T_EQ((int)unit->mana.value, 20);
     gi.CvarString = old_cvar;
@@ -988,12 +988,12 @@ TEST(wc3_game, unit_ignore_alarm_suppresses_ping_without_changing_combat) {
     alert_ping_count = 0;
     gi.MinimapPing = alert_test_minimap_ping;
     gi.configstring = alert_test_configstring;
-    victim->ignore_alarm = true;
+    G_SetUnitFlag(victim, UNIT_FLAG_IGNORE_ALARM, true);
     G_WC3_AttackAlert(victim, attacker);
     T_EQ(alert_ping_count, 0);
-    T_ASSERT(!victim->paused);
-    T_ASSERT(!victim->invulnerable);
-    victim->ignore_alarm = false;
+    T_ASSERT(!G_UnitHasFlag(victim, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(victim, UNIT_FLAG_INVULNERABLE));
+    G_SetUnitFlag(victim, UNIT_FLAG_IGNORE_ALARM, false);
     G_WC3_AttackAlert(victim, attacker);
     T_EQ(alert_ping_count, 1);
     gi.MinimapPing = saved_ping;
@@ -4239,7 +4239,7 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     indicator->owner = &g_edicts[0];
     game.clients[0].rally_indicator = indicator;
     first->harvested_gold = 37;
-    first->ignore_alarm = true;
+    G_SetUnitFlag(first, UNIT_FLAG_IGNORE_ALARM, true);
     first->shared_vision = (1u << 0) | (1u << 7);
     first->projectile_reflected = true;
     if (!first->sleep) first->sleep = G_AllocSleep();
@@ -4351,7 +4351,7 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     T_ASSERT(G_GetSaveMap(filename, saved_map, sizeof(saved_map)));
     T_ASSERT(!strcasecmp(saved_map, level.map_path));
     first->harvested_gold = 0;
-    first->ignore_alarm = false;
+    G_SetUnitFlag(first, UNIT_FLAG_IGNORE_ALARM, false);
     first->shared_vision = 0;
     first->projectile_reflected = false;
     first->sleep->can_sleep = false;
@@ -4398,7 +4398,7 @@ TEST(wc3_save, round_trip_edict_and_player_state) {
     T_EQ(g_edicts[first - g_edicts].harvested_gold, 37);
     T_EQ(g_edicts[first - g_edicts].shared_vision, (1u << 0) | (1u << 7));
     T_ASSERT(g_edicts[first - g_edicts].projectile_reflected);
-    T_ASSERT(g_edicts[first - g_edicts].ignore_alarm);
+    T_ASSERT(G_UnitHasFlag(&g_edicts[first - g_edicts], UNIT_FLAG_IGNORE_ALARM));
     T_ASSERT(g_edicts[first - g_edicts].sleep->can_sleep);
     T_ASSERT(g_edicts[first - g_edicts].sleep->sleeping);
     T_EQ(g_edicts[first - g_edicts].collision, 42.5f);
@@ -4646,6 +4646,8 @@ TEST(wc3_save, name) { \
     T_ASSERT(WriteGame(filename)); unit->field = 0; T_ASSERT(ReadGame(filename)); T_FEQ(unit->field, saved, 0.001f); \
     remove(filename); \
 }
+
+SAVE_INT_FIELD_TEST(field_unit_flags_round_trip, unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE | UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING | UNIT_FLAG_TIMED_LIFE_PAUSED)
 
 SAVE_INT_FIELD_TEST(field_class_id_round_trip, class_id, MAKEFOURCC('h', 'p', 'e', 'a'))
 SAVE_INT_FIELD_TEST(field_variation_round_trip, variation, 7)
@@ -5594,6 +5596,30 @@ SAVE_PTR_FIELD_TEST(field_build_preview_round_trip, "build_preview", build_previ
 
 #undef SAVE_PTR_FIELD_TEST
 #undef SAVE_INT_FIELD_TEST
+
+/* Stun remains a live-status query across load, independent of explicit pause. */
+TEST(wc3_save, unit_flags_and_overlapping_stuns_restore_without_a_cache) {
+    cstring_t path = Test_TempPath("wc3-unit-flags-status.bin");
+    reset_entities(); setup_test_world(); level.time = 1000;
+    edict_t *unit = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
+    int index = unit - g_edicts;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
+    G_SetUnitFlag(unit, UNIT_FLAG_NO_PATHING, true);
+    unit_addtimedstatus(unit, "Bstu", 1, 0.1f);
+    unit_applystatus(unit, &(status_application_t){ .buff = "Bq01", .level = 1,
+        .duration = 0.2f, .state_mask = WC3_STATUS_STATE_STUNNED });
+    T_ASSERT(WriteGame(path));
+    unit->unit_flags = 0; memset(unit->abilstatus, 0, sizeof(unit->abilstatus));
+    T_ASSERT(ReadGame(path)); unit = g_edicts + index;
+    T_EQ(unit->unit_flags, UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING);
+    T_ASSERT(unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
+    level.time = 1100;
+    T_ASSERT(unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
+    level.time = 1200;
+    T_ASSERT(!unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED));
+    T_EQ(unit->unit_flags, UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING);
+    remove(path);
+}
 
 TEST(wc3_save, soul_trap_links_and_world_state_survive_round_trip) {
     cstring_t filename = Test_TempPath("wc3-save-soul-trap.bin");

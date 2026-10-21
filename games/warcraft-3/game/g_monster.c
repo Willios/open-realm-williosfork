@@ -166,8 +166,8 @@ void monster_think(edict_t *self) {
     G_CreepGuardTick(self);
     if (!self->currentmove)
         return;
-    if (self->paused || self->stunned) {
-        if (self->paused && self->animation_override) M_MoveFrame(self);
+    if (G_UnitHasFlag(self, UNIT_FLAG_PAUSED) || unit_hasstatusstate(self, WC3_STATUS_STATE_STUNNED)) {
+        if (G_UnitHasFlag(self, UNIT_FLAG_PAUSED) && self->animation_override) M_MoveFrame(self);
         return;
     }
     M_MoveFrame(self);
@@ -401,9 +401,9 @@ uint32_t unit_spawn_aiflags(uint32_t class_id) { return G_UnitIsBuilding(class_i
 void G_ApplyUnitAbilityTraits(edict_t *ent) {
     if (!G_ActorHasSkill(ent, "Aloc")) return;
     ent->s.flags |= EF_NOT_SELECTABLE;
-    ent->invulnerable = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_INVULNERABLE, true);
     ent->collision = 0.0f;
-    ent->no_pathing = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_NO_PATHING, true);
 }
 
 /* Initialize a unit entity from the unit data tables.
@@ -461,7 +461,7 @@ void SP_SpawnUnit(edict_t *self) {
     self->health.value = b->maxHealth;
     self->health.max_value = b->maxHealth;
     G_InitStockSlots(self);
-    self->invulnerable = G_ActorHasSkill(self, "Avul");
+    G_SetUnitFlag(self, UNIT_FLAG_INVULNERABLE, G_ActorHasSkill(self, "Avul"));
     G_ApplyUnitAbilityTraits(self);
     self->unitinfo.MoveSpeed = b->speed;
     self->unitinfo.PropWindow = DEG2RAD(d->propWin);

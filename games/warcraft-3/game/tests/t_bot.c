@@ -769,7 +769,7 @@ TEST(wc3_bot, stop_gathering_stops_only_owned_harvesters_and_releases_mines) {
     if (!gold->goldmine) gold->goldmine = G_AllocGoldMine();
     assert(gold->goldmine);
     gold->goldmine->mine = mine; gold->goldmine->mine_spawn_time = mine->spawn_time;
-    gold->invulnerable = true; gold->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
+    G_SetUnitFlag(gold, UNIT_FLAG_INVULNERABLE, true); gold->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
     lumber->harvested_lumber = 7; gold->harvested_gold = 5;
 
     T_ASSERT(G_BotStart(&game.clients[2].ps, "test_stop_gathering.ai", BOT_CAMPAIGN));
@@ -781,7 +781,7 @@ TEST(wc3_bot, stop_gathering_stops_only_owned_harvesters_and_releases_mines) {
     T_NULL(gold->goldmine->mine);
     T_EQ(mine->peonsinside, 0);
     T_ASSERT(!(gold->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!gold->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(gold, UNIT_FLAG_INVULNERABLE));
     T_EQ(other->currentmove->proc, CAbilityHarvest);
     T_EQ(fighter->currentmove->proc, CAbilityAttack);
 }

@@ -363,7 +363,7 @@ static int attack_damage_type(edict_t *attacker, edict_t *target, int base, uint
 void T_Damage(edict_t *target, edict_t *attacker, int damage) {
     bool instant_kill;
 
-    if (!target || target->invulnerable ||
+    if (!target || G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) ||
         unit_hasstatusstate(target, WC3_STATUS_STATE_INVULNERABLE) ||
         S_UnitIsCycloned(target) || M_IsDead(target)) {
         return;

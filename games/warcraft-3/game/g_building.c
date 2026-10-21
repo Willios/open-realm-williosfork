@@ -1211,7 +1211,7 @@ void G_RunBuildingUpgradeFrame(edict_t *building) {
         G_StopBuildingUpgrade(building, false);
         return;
     }
-    if (building->paused) return;
+    if (G_UnitHasFlag(building, UNIT_FLAG_PAUSED)) return;
     if (building->research->duration <= 0.0f || G_PlayerInstantBuild(building->s.player)) {
         G_CompleteBuildingUpgrade(building);
         return;
@@ -1665,16 +1665,16 @@ static void G_AssignConstructionWorker(edict_t *building, edict_t *worker, bool 
     building->construction->worker = worker;
     building->construction->worker_spawn_time = worker->spawn_time;
     building->construction->worker_inside = inside;
-    building->construction->restore_invulnerable = worker->invulnerable;
-    building->construction->restore_paused = worker->paused;
+    building->construction->restore_invulnerable = G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE);
+    building->construction->restore_paused = G_UnitHasFlag(worker, UNIT_FLAG_PAUSED);
     building->construction->restore_hidden = worker->s.renderfx & RF_HIDDEN;
     worker->build = building;
     worker->goalentity = building;
     if (!inside) return;
 
     worker->s.renderfx |= RF_HIDDEN;
-    worker->paused = true;
-    worker->invulnerable = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, true);
     G_InvalidateUnitShortcutsForUnit(worker);
 }
 
@@ -1768,8 +1768,8 @@ static void G_ReleaseConstructionWorker(edict_t *building, bool completed) {
         return;
     }
 
-    worker->paused = building->construction->restore_paused;
-    worker->invulnerable = building->construction->restore_invulnerable;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, building->construction->restore_paused);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, building->construction->restore_invulnerable);
     if (building->construction->restore_hidden) worker->s.renderfx |= RF_HIDDEN;
     else worker->s.renderfx &= ~RF_HIDDEN;
     G_InvalidateUnitShortcutsForUnit(worker);
@@ -1802,7 +1802,7 @@ static void G_UpdateHumanConstructionEmitterState(edict_t *building) {
 #endif
 
     if (building->construction->type != CONSTRUCTION_HUMAN) return;
-    if (!building->paused) {
+    if (!G_UnitHasFlag(building, UNIT_FLAG_PAUSED)) {
         FOR_LOOP(i, globals.num_edicts) {
             edict_t const *worker = &g_edicts[i];
             if (S_RepairWorkerAdvancingHumanConstruction(worker, building)) {
@@ -1855,7 +1855,7 @@ void G_RunConstructionFrame(edict_t *building) {
 
     if (!building || !building->construction) return;
     G_UpdateHumanConstructionEmitterState(building);
-    if (building->paused || !building->data.UnitBalance) return;
+    if (G_UnitHasFlag(building, UNIT_FLAG_PAUSED) || !building->data.UnitBalance) return;
 
     duration = MAX(1.0f, building->construction->duration_ms > 0 ?
                    building->construction->duration_ms : (float)building->data.UnitBalance->buildTime * 1000.0f);

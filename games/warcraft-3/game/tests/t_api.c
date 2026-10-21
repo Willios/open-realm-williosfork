@@ -5222,7 +5222,7 @@ TEST(wc3_api, customize_entity_publishes_gold_mine_hover_value) {
         .svflags = SVF_MONSTER,
         .s = { .player = 3, .flags = EF_RESOURCE_SOURCE },
         .resources = 12500,
-        .invulnerable = true,
+        .unit_flags = UNIT_FLAG_INVULNERABLE,
     };
     ent.health.value = 100.0f;
 
@@ -5257,7 +5257,7 @@ TEST(wc3_api, customize_entity_hides_invulnerable_health_but_keeps_mana) {
     edict_t ent = { .svflags = SVF_MONSTER, .s = { .player = 3 } };
     ent.health.value = 100.0f;
     ent.mana.max_value = 80.0f;
-    ent.invulnerable = true;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, true);
 
     globals.CustomizeEntity(3, &ent, &state);
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));
@@ -6359,39 +6359,84 @@ TEST(wc3_api, prop_window_runtime_native_and_authored_default) {
     T_FEQ(unit->unitinfo.PropWindow, DEG2RAD(20.0f), 0.001f);
 }
 
+/* Native mutations must preserve independent switches and timed-life bookkeeping. */
+TEST(wc3_api, unit_flags_native_updates_preserve_other_bits) {
+    setup_test_world();
+    currentplayer = test_player(0);
+    T_ASSERT(run_test_jass(
+        "type unit extends handle\n"
+        "globals\n  unit subject = null\nendglobals\n"
+        "function main takes nothing returns nothing\n"
+        "  set subject = CreateUnit(Player(0), 'hpea', 0.0, 0.0, 0.0)\n"
+        "  call SetUnitInvulnerable(subject, true)\n"
+        "  call PauseUnit(subject, true)\n"
+        "  call SetUnitPathing(subject, false)\n"
+        "  call UnitIgnoreAlarm(subject, true)\n"
+        "endfunction\n"
+        "function freeze takes nothing returns nothing\n"
+        "  call UnitPauseTimedLife(subject, true)\n"
+        "  call UnitPauseTimedLife(subject, true)\n"
+        "endfunction\n"
+        "function resume takes nothing returns nothing\n"
+        "  call PauseUnit(subject, false)\n"
+        "  call SetUnitPathing(subject, true)\n"
+        "endfunction\n"
+        "function unfreeze takes nothing returns nothing\n"
+        "  call UnitPauseTimedLife(subject, false)\n"
+        "endfunction\n"));
+    edict_t *unit = find_test_unit(MAKEFOURCC('h','p','e','a'));
+    T_NOT_NULL(unit); if (!unit) return;
+    T_ASSERT(unit_addtimedstatus(unit, "BTLF", 1, 10.0f));
+    jass_callbyname(level.vm, "freeze", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE |
+         UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING | UNIT_FLAG_TIMED_LIFE_PAUSED);
+    heroabilitystatus_t *life = unit_findstatus(unit, MAKEFOURCC('B','T','L','F'));
+    T_NOT_NULL(life); if (!life) return;
+    T_EQ(life->timestamp, 0); T_ASSERT(life->data > 0);
+    jass_callbyname(level.vm, "resume", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE | UNIT_FLAG_TIMED_LIFE_PAUSED);
+    T_EQ(life->timestamp, 0);
+    jass_callbyname(level.vm, "unfreeze", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE);
+    T_ASSERT(life->timestamp > G_Time()); T_EQ(life->data, 0);
+}
+
 TEST(wc3_api, unit_invulnerable_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE));
 }
 
 TEST(wc3_api, unit_invulnerable_set) {
     edict_t *ent = make_unit_hero();
-    ent->invulnerable = true;
-    T_ASSERT(ent->invulnerable);
+    G_SetUnitFlag(ent, UNIT_FLAG_INVULNERABLE, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE));
 }
 
 TEST(wc3_api, unit_paused_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->paused);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
 }
 
 TEST(wc3_api, unit_paused_set) {
     edict_t *ent = make_unit_hero();
-    ent->paused = true;
-    T_ASSERT(ent->paused);
-    ent->paused = false;
-    T_ASSERT(!ent->paused);
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, false);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
 }
 
 TEST(wc3_api, unit_no_pathing_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->no_pathing);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_api, unit_no_pathing_set) {
     edict_t *ent = make_unit_hero();
-    ent->no_pathing = true;
-    T_ASSERT(ent->no_pathing);
+    G_SetUnitFlag(ent, UNIT_FLAG_NO_PATHING, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_api, unit_color_default_zero) {
@@ -9445,14 +9490,14 @@ TEST(wc3_api, customize_entity_selectable_debris_publishes_hover_health) {
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));
 
     gi.CvarString = hover_test_roc;
-    ent.invulnerable = false;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, false);
     state = (entityState_t){ .number = 7, .model = 11 };
     globals.CustomizeEntity(0, &ent, &state);
     T_ASSERT(state.flags & EF_HOVER_HEALTH);
     gi.CvarString = old_cvar_string;
 
     row.selectable = true;
-    ent.invulnerable = true;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, true);
     state = (entityState_t){ .number = 7, .model = 11 };
     globals.CustomizeEntity(0, &ent, &state);
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));

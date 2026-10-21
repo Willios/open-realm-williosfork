@@ -246,15 +246,15 @@ TEST(wc3_unit, locust_ability_applies_untargetable_collisionless_traits) {
 
     G_ApplyUnitAbilityTraits(&unit);
     T_ASSERT(unit.s.flags & EF_NOT_SELECTABLE);
-    T_ASSERT(unit.invulnerable);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_INVULNERABLE));
     T_FEQ(unit.collision, 0.0f, 0.001f);
-    T_ASSERT(unit.no_pathing);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_NO_PATHING));
 
     G_ApplyUnitAbilityTraits(&control);
     T_ASSERT(!(control.s.flags & EF_NOT_SELECTABLE));
-    T_ASSERT(!control.invulnerable);
+    T_ASSERT(!G_UnitHasFlag(&control, UNIT_FLAG_INVULNERABLE));
     T_FEQ(control.collision, 16.0f, 0.001f);
-    T_ASSERT(!control.no_pathing);
+    T_ASSERT(!G_UnitHasFlag(&control, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_unit, selection_sound_registration_caches_all_responses) {
@@ -680,7 +680,7 @@ TEST(wc3_unit, paused_death_animation_advances_after_kill) {
     edict_t *ent = make_unit(0, 0);
     ent->animation = &death;
     ent->s.frame = 50;
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
 
     unit_die(ent, NULL);
     T_ASSERT(ent->animation_override);
@@ -2093,7 +2093,7 @@ TEST(wc3_unit, unravenform_snaps_new_animation_frame_while_unit_is_paused) {
     SP_SpawnUnit(ent);
     unit_stand(ent);
     T_NOT_NULL(ent->animation);
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     ent->s.frame = 0x7fffffffu;
 
     T_ASSERT(unit_issueimmediateorder(ent, "unravenform"));
@@ -2157,7 +2157,7 @@ TEST(wc3_unit, raven_morph_completion_and_takeoff_survive_move_order) {
     T_EQ(ent->raven->rise_state, RAVEN_RISE_ACTIVE);
     T_FEQ(ent->unitinfo.FlyHeight, 0, 0.001f);
     T_ASSERT(unit_issueorder(ent, "move", &point));
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     level.time = 2000;
     monster_think(ent);
     T_FEQ(ent->unitinfo.FlyHeight, 50, 0.001f);

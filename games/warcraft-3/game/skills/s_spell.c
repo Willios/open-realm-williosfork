@@ -688,7 +688,7 @@ void spell_run_frame(edict_t *ent) {
         return;
 
     /* Stun or death interrupts channel. */
-    if (ent->stunned || M_IsDead(ent)) {
+    if (unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED) || M_IsDead(ent)) {
         S_SpellCancelChannel(ent);
         return;
     }
@@ -706,7 +706,7 @@ void spell_run_frame(edict_t *ent) {
  * queries. Ignoring cooldown never bypasses mana or gameplay disable states. */
 static bool spell_activation_check(edict_t *clent, edict_t *caster, uint32_t code,
                                    uint32_t level, bool ignore_cooldown) {
-    if (!S_SpellIsAliveTarget(caster) || caster->stunned || S_UnitPolymorphed(caster) ||
+    if (!S_SpellIsAliveTarget(caster) || unit_hasstatusstate(caster, WC3_STATUS_STATE_STUNNED) || S_UnitPolymorphed(caster) ||
         S_UnitIsCycloned(caster)) return false;
     if (S_UnitIsSilenced(caster)) {
         if (clent) G_ShowCommandErrorText(clent, "Silenced.");
@@ -1225,7 +1225,7 @@ bool S_CastNoTargetSpell(edict_t *caster, uint32_t code) {
         if (WC3_MISHA_DEBUG_ENABLED() && code == MAKEFOURCC('A','r','s','g'))
             fprintf(stderr, "WC3_MISHA cast-rejected ability=Arsg reason=spell_validate caster=%u alive=%u stunned=%u silenced=%u cooldown=%u mana_ok=%u mana=%.1f/%.1f cost=%.1f\n",
                     (unsigned)caster->s.number, (unsigned)S_SpellIsAliveTarget(caster),
-                    (unsigned)caster->stunned, (unsigned)S_UnitIsSilenced(caster),
+                    (unsigned)unit_hasstatusstate(caster, WC3_STATUS_STATE_STUNNED), (unsigned)S_UnitIsSilenced(caster),
                     (unsigned)S_SpellCooldownReady(caster, code),
                     (unsigned)S_SpellCanPay(caster, code, level), caster->mana.value,
                     caster->mana.max_value, S_SpellNumber(code, ABILITY_NUMBER_COST, level));

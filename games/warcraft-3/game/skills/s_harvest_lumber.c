@@ -637,7 +637,7 @@ static void ai_chop(edict_t *ent) {
     edict_t *tree = ent->orders->resource_goal;
     harvestLumberTuning_t const tuning = harvest_lumber_tuning(ent);
     bool const valid_hit = tree && G_IsDestructable(tree) && !M_IsDead(tree) &&
-                           !tree->invulnerable && tuning.tree_damage > 0.0f;
+                           !G_UnitHasFlag(tree, UNIT_FLAG_INVULNERABLE) && tuning.tree_damage > 0.0f;
     bool felled = false;
 
     G_PublishMessage(ent, GAME_MSG_HARVEST_CHOP, tree);

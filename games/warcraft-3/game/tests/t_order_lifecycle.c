@@ -80,12 +80,12 @@ TEST(wc3_order_lifecycle, optional_movement_stop_pause_arrival_and_reuse) {
     T_ASSERT(G_UnitIsMoving(unit));
     movement_t *first = unit->movement;
     vec2_t const origin = unit->s.origin2;
-    unit->paused = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
     level.time += FRAMETIME;
     G_RunEntities();
     T_ASSERT(unit->movement == first);
     T_FEQ(unit->s.origin2.x, origin.x, 0.001f);
-    unit->paused = false;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, false);
     T_ASSERT(unit_issueimmediateorder(unit, "stop"));
     T_NULL(unit->movement);
     T_EQ(unit->orders->guard_state, GUARD_IDLE);

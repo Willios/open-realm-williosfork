@@ -395,11 +395,11 @@ TEST(wc3_combat, automatic_acquisition_ignores_invulnerable_units) {
     target = make_combat_unit(MAKEFOURCC('u','a','c','o'), 420.0f, 0.0f, 0.0f);
     attacker = make_combat_unit(MAKEFOURCC('h','f','o','o'), 250.0f, 50.0f, 0.0f);
     target->s.player = 6; attacker->s.player = 1;
-    target->invulnerable = true;
+    G_SetUnitFlag(target, UNIT_FLAG_INVULNERABLE, true);
     gi.LinkEntity(target); gi.LinkEntity(attacker);
 
     T_NULL(G_FindNearestEnemy(attacker, 128.0f));
-    target->invulnerable = false;
+    G_SetUnitFlag(target, UNIT_FLAG_INVULNERABLE, false);
     T_ASSERT(G_FindNearestEnemy(attacker, 128.0f) == target);
 }
 
@@ -707,7 +707,7 @@ TEST(wc3_combat, instant_kill_cheat_does_not_affect_other_players) {
 TEST(wc3_combat, tdamage_invulnerable_ignores_damage) {
     edict_t *target   = make_combat_unit(MAKEFOURCC('h','f','o','o'), 420.0f, 0.0f, 0.0f);
     edict_t *attacker = make_combat_unit(MAKEFOURCC('h','p','e','a'), 250.0f, 50.0f, 0.0f);
-    target->invulnerable = true;
+    G_SetUnitFlag(target, UNIT_FLAG_INVULNERABLE, true);
     _die_call_count = 0;
 
     T_Damage(target, attacker, 9999);
@@ -1075,7 +1075,7 @@ TEST(wc3_combat, paused_unit_advances_scripted_animation_only) {
     edict_t *ent = make_combat_unit(MAKEFOURCC('h','p','e','a'), 250.0f, 0.0f, 0.0f);
     attach_stub_anim(ent);
     ent->currentmove = &_stub_move;
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     ent->s.frame = 50;
 
     monster_think(ent);
@@ -3560,17 +3560,17 @@ TEST(wc3_combat, spell_cooldowns_do_not_consume_buff_slots_and_share_base_code) 
 
 TEST(wc3_combat, timed_stun_status_expires_without_touching_pause) {
     edict_t *ent = make_combat_unit(MAKEFOURCC('h','f','o','o'), 420.0f, 0.0f, 0.0f);
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     level.time = 100;
 
     unit_addtimedstatus(ent, "Bstu", 1, 0.05f);
 
-    T_ASSERT(ent->stunned);
-    T_ASSERT(ent->paused);
+    T_ASSERT(unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED));
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
     level.time = 151;
     unit_updatestatuses(ent);
-    T_ASSERT(!ent->stunned);
-    T_ASSERT(ent->paused);
+    T_ASSERT(!unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED));
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
 }
 
 TEST(wc3_combat, status_replace_reinitializes_existing_slot) {
@@ -3589,7 +3589,7 @@ TEST(wc3_combat, status_replace_reinitializes_existing_slot) {
     T_EQ(slot->data, 0);
     T_EQ(slot->rank, 0);
     T_EQ(slot->next_tick, 0);
-    T_ASSERT(ent->stunned);
+    T_ASSERT(unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED));
 }
 
 TEST(wc3_combat, scripted_status_removal_preserves_independent_stun) {
@@ -3602,7 +3602,7 @@ TEST(wc3_combat, scripted_status_removal_preserves_independent_stun) {
     T_NOT_NULL(slot);
     unit_removestatus(ent, slot, STATUS_REMOVE_SCRIPT);
     unit_refreshstatusflags(ent);
-    T_ASSERT(ent->stunned);
+    T_ASSERT(unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED));
     T_NOT_NULL(unit_findstatus(ent, MAKEFOURCC('B','s','t','u')));
     T_ASSERT(!unit_findstatus(ent, MAKEFOURCC('B','e','n','g')));
 }
@@ -4232,7 +4232,7 @@ TEST(wc3_combat, status_invulnerability_blocks_damage_without_mutating_base_flag
     status_application_t app = { .buff = "BHds", .level = 1, .duration = 5.0f,
                                  .state_mask = WC3_STATUS_STATE_INVULNERABLE };
     T_NOT_NULL(unit_applystatus(target, &app));
-    T_ASSERT(!target->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE));
     T_Damage(target, source, 10);
     T_FEQ(target->health.value, before, 0.001f);
 }

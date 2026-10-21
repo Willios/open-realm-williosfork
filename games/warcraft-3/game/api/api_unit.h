@@ -362,12 +362,12 @@ uint32_t GetUnitUserData(jass_t *j) {
 uint32_t UnitIgnoreAlarm(jass_t *j) {
     edict_t *unit = jass_checkhandle(j, 1, "unit");
     bool ignore = jass_checkboolean(j, 2);
-    if (unit && unit->inuse) unit->ignore_alarm = ignore;
+    if (unit && unit->inuse) G_SetUnitFlag(unit, UNIT_FLAG_IGNORE_ALARM, ignore);
     return jass_pushboolean(j, unit && unit->inuse);
 }
 uint32_t UnitIgnoreAlarmToggled(jass_t *j) {
     edict_t *unit = jass_checkhandle(j, 1, "unit");
-    return jass_pushboolean(j, unit && unit->inuse && unit->ignore_alarm);
+    return jass_pushboolean(j, unit && unit->inuse && G_UnitHasFlag(unit, UNIT_FLAG_IGNORE_ALARM));
 }
 uint32_t UnitSetUsesAltIcon(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
@@ -646,7 +646,7 @@ uint32_t UnitDamageTarget(jass_t *j) {
     (void)jass_checkhandle(j, 7, "damagetype");
     (void)jass_checkhandle(j, 8, "weapontype");
     if (!whichUnit || !target || amount <= 0.0f) return jass_pushboolean(j, 0);
-    if (target->invulnerable || M_IsDead(target)) return jass_pushboolean(j, 0);
+    if (G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) || M_IsDead(target)) return jass_pushboolean(j, 0);
     T_Damage(target, whichUnit, (int)amount);
     return jass_pushboolean(j, 1);
 }
@@ -686,7 +686,7 @@ uint32_t UnitPauseTimedLife(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
     uint32_t now;
-    if (!whichUnit || whichUnit->timed_life_paused == flag) return 0;
+    if (!whichUnit || G_UnitHasFlag(whichUnit, UNIT_FLAG_TIMED_LIFE_PAUSED) == flag) return 0;
     now = G_Time();
     FOR_LOOP(i, MAX_UNIT_STATUSES) {
         heroabilitystatus_t *s = whichUnit->abilstatus + i;
@@ -699,7 +699,7 @@ uint32_t UnitPauseTimedLife(jass_t *j) {
             s->data = 0;
         }
     }
-    whichUnit->timed_life_paused = flag;
+    G_SetUnitFlag(whichUnit, UNIT_FLAG_TIMED_LIFE_PAUSED, flag);
     return 0;
 }
 uint32_t UnitResetCooldown(jass_t *j) {
@@ -755,23 +755,23 @@ uint32_t SetUnitExploded(jass_t *j) {
 uint32_t SetUnitInvulnerable(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->invulnerable = flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_INVULNERABLE, flag);
     return 0;
 }
 uint32_t PauseUnit(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->paused = flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_PAUSED, flag);
     return 0;
 }
 uint32_t IsUnitPaused(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
-    return jass_pushboolean(j, whichUnit && whichUnit->paused);
+    return jass_pushboolean(j, whichUnit && G_UnitHasFlag(whichUnit, UNIT_FLAG_PAUSED));
 }
 uint32_t SetUnitPathing(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->no_pathing = !flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_NO_PATHING, !flag);
     return 0;
 }
 uint32_t GetUnitPointValue(jass_t *j) {
@@ -1052,7 +1052,7 @@ uint32_t IsUnitType(jass_t *j) {
     if (*whichUnitType == 23) /* UNIT_TYPE_SLEEPING */
         return jass_pushboolean(j, G_UnitIsSleeping(whichUnit));
     if (*whichUnitType == 11) /* UNIT_TYPE_STUNNED */
-        return jass_pushboolean(j, whichUnit->stunned);
+        return jass_pushboolean(j, unit_hasstatusstate(whichUnit, WC3_STATUS_STATE_STUNNED));
     if (*whichUnitType == 3) /* UNIT_TYPE_FLYING */
         return jass_pushboolean(j, whichUnit->aiflags & AI_FLYING);
     if (*whichUnitType == 10) /* UNIT_TYPE_SUMMONED */

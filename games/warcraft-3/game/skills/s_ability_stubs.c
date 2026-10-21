@@ -112,7 +112,7 @@ void divine_shield_think(edict_t *ent) {
     if (G_Time() < ent->spawn_time) return;
     /* Preserve innate/scripted invulnerability; independent status contributors
      * remain authoritative through unit_hasstatusstate after this thinker ends. */
-    caster->invulnerable = ent->resources;
+    G_SetUnitFlag(caster, UNIT_FLAG_INVULNERABLE, ent->resources);
     G_FreeEdict(ent);
 }
 
@@ -126,9 +126,9 @@ BZ_SIMPLE_SPELL_PROC(AbilityDivineShield) {
     edict_t *thinker = S_SpellIdentityThinker(caster, 0, NULL);
 
     if (!thinker) return;
-    thinker->resources = caster->invulnerable;
+    thinker->resources = G_UnitHasFlag(caster, UNIT_FLAG_INVULNERABLE);
     thinker->spawn_time = G_Time() + (uint32_t)(duration * 1000.0f);
-    caster->invulnerable = true;
+    G_SetUnitFlag(caster, UNIT_FLAG_INVULNERABLE, true);
     thinker->think = divine_shield_think;
     if (buff && strlen(buff) >= 4) S_SpellApplyTimedStatus(caster, buff, level, duration);
     G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, caster, NULL, true);

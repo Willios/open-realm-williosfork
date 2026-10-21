@@ -1477,8 +1477,8 @@ CLIENTCOMMAND(God) {
     }
     if (!unit) { G_CheatPrintf(clent, "WC3: god requires a selected controllable unit"); return; }
     /* The former controller flag could never protect the selected actor in T_Damage. */
-    unit->invulnerable = !unit->invulnerable;
-    G_CheatPrintf(clent, "WC3: god %s", unit->invulnerable ? "on" : "off");
+    G_SetUnitFlag(unit, UNIT_FLAG_INVULNERABLE, !G_UnitHasFlag(unit, UNIT_FLAG_INVULNERABLE));
+    G_CheatPrintf(clent, "WC3: god %s", G_UnitHasFlag(unit, UNIT_FLAG_INVULNERABLE) ? "on" : "off");
 }
 
 /* Suicide must execute the same death callback as combat, including food, selection and trigger cleanup. */
@@ -1491,7 +1491,7 @@ CLIENTCOMMAND(Kill) {
     if (!unit) { G_CheatPrintf(clent, "WC3: kill requires a selected controllable unit"); return; }
     if (!unit->die) { G_CheatPrintf(clent, "WC3: selected unit %u has no death callback", unit->s.number); return; }
     /* Q2 clears godmode before suicide; setting controller health alone skipped every actor death effect. */
-    unit->invulnerable = false;
+    G_SetUnitFlag(unit, UNIT_FLAG_INVULNERABLE, false);
     G_SetHealth(unit, 0);
     unit->die(unit, unit);
     G_CheatPrintf(clent, "WC3: selected unit killed");
@@ -1534,7 +1534,7 @@ CLIENTCOMMAND(Unit) {
             edict_t *unit = selected[i];
             selected_count++;
             if (!unit->die) continue;
-            unit->invulnerable = false;
+            G_SetUnitFlag(unit, UNIT_FLAG_INVULNERABLE, false);
             G_SetHealth(unit, 0);
             unit->die(unit, unit);
             killed++;

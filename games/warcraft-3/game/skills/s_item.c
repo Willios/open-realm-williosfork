@@ -777,7 +777,7 @@ BZ_ABILITY_PROC(CAbilityItemResurrection) {
             break;
         }
         G_ReviveCorpse(selected, 1.0f);
-        if (raised_invulnerable) selected->invulnerable = true;
+        if (raised_invulnerable) G_SetUnitFlag(selected, UNIT_FLAG_INVULNERABLE, true);
         G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, selected, NULL, true);
         count++;
     }

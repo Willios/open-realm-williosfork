@@ -652,9 +652,22 @@ TEST(wc3_spell, channel_cancel_stun) {
 	assert(caster->channel);
 	caster->channel->code = MAKEFOURCC('A','H','b','z');
 	caster->channel->origin = caster->s.origin2;
-	caster->stunned = true;
+	unit_addtimedstatus(caster, "Bstu", 1, 10.0f);
 	spell_run_frame(caster);
 	T_EQ((int)caster->channel->code, 0);
+}
+
+/* Expired status slots must stop contributing before the status cleanup tick. */
+TEST(wc3_spell, expired_stun_does_not_cancel_channel_before_cleanup) {
+    edict_t *caster = make_hero(MAKEFOURCC('h','p','e','a'), 250, 0, 0, 0);
+    level.time = 1000;
+    unit_addtimedstatus(caster, "Bstu", 1, 0.1f);
+    if (!caster->channel) caster->channel = G_AllocChannel();
+    caster->channel->code = MAKEFOURCC('A','H','b','z');
+    caster->channel->origin = caster->s.origin2;
+    level.time = 1100;
+    spell_run_frame(caster);
+    T_EQ(caster->channel->code, MAKEFOURCC('A','H','b','z'));
 }
 
 TEST(wc3_spell, channel_cancel_death) {
@@ -714,7 +727,7 @@ TEST(wc3_spell, channel_run_frame_noop_when_idle) {
 	if (!caster->channel) caster->channel = G_AllocChannel();
 	assert(caster->channel);
 	caster->channel->code = 0;
-	caster->stunned = true;
+	unit_addtimedstatus(caster, "Bstu", 1, 10.0f);
 	spell_run_frame(caster);
 	T_EQ((int)caster->channel->code, 0);
 }
@@ -3763,7 +3776,7 @@ TEST(wc3_spell, divine_shield_applies_authored_buff_for_its_duration) {
 
     old = G_SetSLKRows("AbilityData", rows); caster->data.UnitAbilities = &abilities;
     T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AHds")));
-    T_ASSERT(caster->invulnerable); T_EQ(G_UnitStatusLevel(caster, FS_SLKKey("BHds")), 1);
+    T_ASSERT(G_UnitHasFlag(caster, UNIT_FLAG_INVULNERABLE)); T_EQ(G_UnitStatusLevel(caster, FS_SLKKey("BHds")), 1);
     FILTER_EDICTS(ent, ent->owner == caster && ent->think) { thinker = ent; break; }
     T_NOT_NULL(thinker);
     T_ASSERT(WriteGame(Test_TempPath("divine-shield-save.bin")));
@@ -3775,7 +3788,7 @@ TEST(wc3_spell, divine_shield_applies_authored_buff_for_its_duration) {
     T_NOT_NULL(thinker);
     if (thinker) { level.time = thinker->spawn_time; G_RunEntity(thinker); }
     unit_updatestatuses(caster);
-    T_ASSERT(!caster->invulnerable); T_EQ(G_UnitStatusLevel(caster, FS_SLKKey("BHds")), 0);
+    T_ASSERT(!G_UnitHasFlag(caster, UNIT_FLAG_INVULNERABLE)); T_EQ(G_UnitStatusLevel(caster, FS_SLKKey("BHds")), 0);
     remove(Test_TempPath("divine-shield-save.bin"));
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -3798,9 +3811,9 @@ TEST(wc3_spell, divine_shield_expiry_rejects_recycled_caster_slot) {
     T_NOT_NULL(thinker);
     T_NOT_NULL(thinker ? thinker->channel : NULL);
     caster->spawn_time++;
-    caster->invulnerable = true;
+    G_SetUnitFlag(caster, UNIT_FLAG_INVULNERABLE, true);
     if (thinker) { level.time = thinker->spawn_time; divine_shield_think(thinker); }
-    T_ASSERT(caster->invulnerable);
+    T_ASSERT(G_UnitHasFlag(caster, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(!thinker || !thinker->inuse);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -3838,7 +3851,7 @@ TEST(wc3_spell, animate_dead_prefers_higher_level_corpse_and_restores_temporary_
     T_ASSERT(M_IsDead(low)); T_ASSERT(!M_IsDead(high)); T_EQ(high->s.player, 0); T_ASSERT(high->owner == caster);
     T_ASSERT(!(high->aiflags & AI_HOLD_FRAME)); T_EQ(G_UnitStatusLevel(high, FS_SLKKey("BTLF")), 1);
     T_ASSERT(!high->food || high->food->used == 0); T_EQ(high->summon_ability, FS_SLKKey("AUan"));
-    T_ASSERT(high->aiflags & AI_CORPSE_UNRAISABLE); T_ASSERT(high->aiflags & AI_CORPSE_NO_DECAY); T_ASSERT(high->invulnerable);
+    T_ASSERT(high->aiflags & AI_CORPSE_UNRAISABLE); T_ASSERT(high->aiflags & AI_CORPSE_NO_DECAY); T_ASSERT(G_UnitHasFlag(high, UNIT_FLAG_INVULNERABLE));
     T_EQ(ARRAY_COUNT(high->abilities.added), 1); T_EQ(high->abilities.added[0], MAKEFOURCC('A','I','n','v'));
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -3875,7 +3888,7 @@ TEST(wc3_spell, resurrection_prefers_higher_level_friendly_corpse) {
     T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AHre")));
     T_ASSERT(M_IsDead(low)); T_ASSERT(M_IsDead(high_far)); T_ASSERT(!M_IsDead(high_near));
     T_EQ(high_near->s.player, 0); T_ASSERT(high_near->owner != caster);
-    T_ASSERT(!(high_near->aiflags & AI_CORPSE_UNRAISABLE)); T_ASSERT(!(high_near->aiflags & AI_CORPSE_NO_DECAY)); T_ASSERT(high_near->invulnerable);
+    T_ASSERT(!(high_near->aiflags & AI_CORPSE_UNRAISABLE)); T_ASSERT(!(high_near->aiflags & AI_CORPSE_NO_DECAY)); T_ASSERT(G_UnitHasFlag(high_near, UNIT_FLAG_INVULNERABLE));
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
@@ -3912,7 +3925,7 @@ TEST(wc3_spell, death_pact_validates_undead_nonhero_and_full_resources) {
     T_ASSERT(!S_CastUnitTargetSpell(caster, FS_SLKKey("AUdp"), victim));
     caster->health.value = 100;
     T_ASSERT(!S_CastUnitTargetSpell(caster, FS_SLKKey("AUdp"), living));
-    victim->invulnerable = true;
+    G_SetUnitFlag(victim, UNIT_FLAG_INVULNERABLE, true);
     T_ASSERT(S_CastUnitTargetSpell(caster, FS_SLKKey("AUdp"), victim));
     T_FEQ(caster->health.value, 300, 0.001f);
     T_ASSERT(M_IsDead(victim)); T_ASSERT(victim->aiflags & AI_CORPSE_UNRAISABLE); T_ASSERT(victim->aiflags & AI_CORPSE_NO_DECAY);

@@ -459,7 +459,7 @@ bool G_SetDestructableLife(edict_t *ent, float life) {
 }
 
 bool G_DestructableApplyDamage(edict_t *ent, edict_t *attacker, float damage) {
-    if (!G_IsDestructable(ent) || ent->destructable->dead || ent->invulnerable || damage <= 0.0f) return false;
+    if (!G_IsDestructable(ent) || ent->destructable->dead || G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE) || damage <= 0.0f) return false;
 
     if (damage >= ent->health.value) {
         return G_KillDestructable(ent, attacker);

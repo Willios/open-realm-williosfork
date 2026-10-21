@@ -619,18 +619,6 @@ static void possession_clear_status(edict_t *ent, uint32_t code) {
             unit_removestatus(ent, ent->abilstatus + i, STATUS_REMOVE_TRANSFORM);
 }
 
-/* Keep stunned in sync after stripping Bpos without waiting for a later status tick. */
-static void possession_refresh_stun(edict_t *ent) {
-    if (!ent) return;
-    ent->stunned = false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        uint32_t c = ent->abilstatus[i].code;
-        if (!ent->abilstatus[i].level) continue;
-        if (c == MAKEFOURCC('B', 's', 't', 'u') || c == MAKEFOURCC('B', 'U', 's', 'l') || c == BZ_BPOS)
-            ent->stunned = true;
-    }
-}
-
 static void possession_takeover(edict_t *caster, edict_t *target) {
     G_SetUnitPlayer(target, caster->s.player);
     target->owner = NULL;
@@ -651,8 +639,7 @@ static void possession_strip_channel(edict_t *thinker) {
     edict_t *caster = S_SpellChannelOwner(thinker), *target = S_SpellChannelTarget(thinker);
     if (target) {
         possession_clear_status(target, BZ_BPOS);
-        possession_refresh_stun(target);
-        if (thinker->damage) target->invulnerable = thinker->invulnerable;
+        if (thinker->damage) G_SetUnitFlag(target, UNIT_FLAG_INVULNERABLE, G_UnitHasFlag(thinker, UNIT_FLAG_INVULNERABLE));
     }
     if (caster) possession_clear_status(caster, BZ_BPOC);
 }
@@ -722,9 +709,9 @@ static void possession_two_execute(edict_t *caster, spellTarget_t st, abilityite
     thinker = S_SpellChannelTargetThinker(caster, spell->code, st.entity);
     thinker->spawn_time = G_Time() + (uint32_t)(duration * 1000.0f);
     thinker->damage = invuln > 0.0f ? 1 : 0;
-    thinker->invulnerable = st.entity->invulnerable;
+    G_SetUnitFlag(thinker, UNIT_FLAG_INVULNERABLE, G_UnitHasFlag(st.entity, UNIT_FLAG_INVULNERABLE));
     thinker->think = possession_two_think;
-    if (invuln > 0.0f) st.entity->invulnerable = true;
+    if (invuln > 0.0f) G_SetUnitFlag(st.entity, UNIT_FLAG_INVULNERABLE, true);
 }
 
 bool S_PossessionSpellImmune(edict_t const *unit) {

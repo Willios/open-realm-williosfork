@@ -237,7 +237,7 @@ static void WriteLegacyUnitStats(edict_t *ent, UnitWeapons_t const *weapons,
     UI_SetHidden(hud.unit.AttackLabel2, !has_attack2);
     UI_SetHidden(hud.unit.AttackValue2, !has_attack2);
     UI_SetText(hud.unit.DefenseLabel, "Armor:");
-    if (ent->invulnerable) UI_SetText(hud.unit.DefenseValue, "%s", "|cffff0000Invulnerable|r");
+    if (G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE)) UI_SetText(hud.unit.DefenseValue, "%s", "|cffff0000Invulnerable|r");
     else {
         snprintf(buffer, sizeof(buffer), "%d", (int)(G_UnitArmorValue(ent) + 0.5f));
         UI_SetText(hud.unit.DefenseValue, "%s", buffer);
@@ -614,7 +614,7 @@ static void WriteSelectedUnitStatusFrames(edict_t *ent, UnitWeapons_t const *wea
 
     SetTypedInfoPanelIcon(hud.simple.InfoPanelIconBackdrop_2, "Armor", ent->data.UnitBalance->defenseType,
                           armor_upgrade != 0);
-    if (ent->invulnerable) UI_SetText(hud.simple.InfoPanelIconValue_2, "%s", "|cffff0000Invulnerable|r");
+    if (G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE)) UI_SetText(hud.simple.InfoPanelIconValue_2, "%s", "|cffff0000Invulnerable|r");
     else {
         snprintf(value, sizeof(value), "%d", (int)(G_UnitArmorValue(ent) + 0.5f));
         UI_SetText(hud.simple.InfoPanelIconValue_2, "%s", value);
@@ -1186,7 +1186,7 @@ static void WritePortraitStats(edict_t *ent) {
      * OpenRealm keeps the portrait runtime-authored because SmashUI is not a
      * retail MPQ FDF, but uses the same final WC3-space geometry. */
     /* Move both baselines up by roughly two pixels while preserving their gap. */
-    if (!ent->invulnerable)
+    if (!G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE))
         WritePortraitText(health, PortraitHealthColor(ent), 0.584f, UI_STAT_SELECTION_HEALTH_TEXT);
     WritePortraitText(mana, COLOR32_WHITE, 0.5985f, UI_STAT_SELECTION_MANA_TEXT);
 }

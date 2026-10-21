@@ -38,7 +38,7 @@ The audit also covered fields outside the old embedded movement struct:
   and configuration even while standing. `velocity` is used by missiles and spell
   thinkers, not as the unit travel-state flag.
 
-On the local arm64 build, the combined refactor reduces `sizeof(edict_t)` from 5,800 to 4,232 bytes (1,568 bytes smaller), including 64 bytes removed by the Soul Trap extraction.
+On the local arm64 build, the combined refactor reduces `sizeof(edict_t)` from 5,800 to 4,224 bytes (1,576 bytes smaller), including 64 bytes removed by the Soul Trap extraction and 8 bytes by the unit-switch conversion.
 This is an edict-layout measurement, not a claim about total resident RAM: the
 existing typed-pool implementation also reserves backing storage for optional roles.
 
@@ -60,8 +60,7 @@ The remaining inline fields that movement also touches are general entity contra
 not hidden travel scratch: the fixed server prefix (`s`, collision, bounds, area
 links) describes every entity; `movetype`/`unitinfo` retain physics and configuration;
 `goalentity`, `combatentity`, `currentmove`, callbacks and `wait` dispatch attacks,
-spells, work and missiles as well as travel. `paused`, `stunned`, `no_pathing` and
-`aiflags` are persistent simulation rules. `velocity` belongs to missiles/thinkers;
+spells, work and missiles as well as travel. `unit_flags` and `aiflags` are persistent simulation rules; stun is queried from live status records. `velocity` belongs to missiles/thinkers;
 `old_origin` samples region/proximity events even for stationary teleports. None
 should be used instead of `G_UnitIsMoving()` to infer active unit travel.
 
@@ -130,9 +129,31 @@ subscriptions. `G_ExecuteEvent` explicitly retains empty cases such as
 implement those events. Struct/enum declarations now document purpose and consumers,
 and `AGENTS.md` requires those comments for future declarations.
 
+## Unit switches and derived stun
+
+`edict_t.unit_flags` stores five independent `UNIT_FLAG_*` bits: IGNORE_ALARM,
+INVULNERABLE, PAUSED, NO_PATHING and TIMED_LIFE_PAUSED. `G_UnitHasFlag` returns a
+normalized boolean (important for numeric snapshots and native equality checks);
+`G_SetUnitFlag` changes only the named bit. These are game-owned flags, separate
+from server visibility and AI policy. Item/destructable invulnerability uses the
+same entity switch. Construction, timer, bot and music pause fields retain their
+own types and lifecycles.
+
+`stunned` was a redundant cache written by status refresh and Possession cleanup.
+All consumers now call `unit_hasstatusstate(unit, WC3_STATUS_STATE_STUNNED)`, which
+combines legacy Bstu/Bsta/Bpos/BUsl identities with explicit state masks and ignores
+expired slots before cleanup. There is no serialized stun bit or refresh-order
+dependency. Status refresh still notifies owners to reconcile flight/height;
+it no longer maintains the removed cache. Explicit Pause remains independent.
+
+Regressions exercise native bit isolation and timed-life pause/resume, all-bit
+save/load, overlapping built-in/custom stuns after load, and an expired stun that
+previously cancelled a channel before the cleanup tick. Test fixtures now apply
+real stun statuses rather than writing the removed mirror. The native flag test seeds BTLF through the status helper because `UnitApplyTimedLife` is an existing stub; it exercises the real `UnitPauseTimedLife` native for pause/resume.
+
 ## Save and network contracts
 
-Save version 103 rejects prior layouts. Movement, orders, route and wander records
+Save version 104 rejects prior layouts. Movement, orders, route and wander records
 use the existing entity-owned typed-pool serialization. Entity references have
 explicit fixups; route jobs, resumable steering and destination flow generations
 are process-local caches cleared on load. Guard intent and waypoint incarnations

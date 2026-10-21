@@ -194,13 +194,13 @@ TEST(wc3_save, hero_audit_waits_while_paused_then_walks) {
     reset_entities();
     setup_test_world();
     hero = make_walk_hero(0.0f, 0.0f);
-    hero->paused = true;
+    G_SetUnitFlag(hero, UNIT_FLAG_PAUSED, true);
     start_x = hero->s.origin.x;
     arm_hero_audit("Maps\\Campaign\\HeroAuditPaused.w3m");
     gi.CvarString = hero_audit_cvar;
     step_hero_audit(5);
     T_FEQ(hero->s.origin.x, start_x, 0.01f);
-    hero->paused = false;
+    G_SetUnitFlag(hero, UNIT_FLAG_PAUSED, false);
     step_hero_audit(12);
     gi.CvarString = old_cvar;
     T_ASSERT(hero->s.origin.x > start_x + 1.0f);

@@ -3706,7 +3706,7 @@ TEST(wc3_items, soul_gem_targets_grom_after_death_trigger_revives_him) {
     T_ASSERT(!(grom->svflags & SVF_DEADMONSTER));
     T_FEQ(grom->s.origin2.x, 96.0f, 0.001f);
     T_FEQ(grom->s.origin2.y, 64.0f, 0.001f);
-    T_ASSERT(grom->paused);
+    T_ASSERT(G_UnitHasFlag(grom, UNIT_FLAG_PAUSED));
     T_ASSERT(G_UnitIsWorldActive(grom));
     T_ASSERT(grom->svflags & SVF_MONSTER);
     T_EQ(grom->targtype, TARG_GROUND);
@@ -3832,7 +3832,7 @@ TEST(wc3_items, soul_gem_approach_is_cancelled_if_grom_dies_before_revival_dispa
     jass_runevents(level.vm);
     T_ASSERT(!jass_rterror_pending(level.vm));
     T_ASSERT(!M_IsDead(grom));
-    T_ASSERT(grom->paused);
+    T_ASSERT(G_UnitHasFlag(grom, UNIT_FLAG_PAUSED));
     T_ASSERT(G_UnitIsWorldActive(grom));
     T_ASSERT(!(grom->aiflags & AI_SOUL_TRAPPED));
     T_ASSERT(S_SpellAllowsTarget(MAKEFOURCC('A','I','s','o'), carrier, grom));

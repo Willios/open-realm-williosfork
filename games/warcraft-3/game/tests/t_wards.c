@@ -185,7 +185,7 @@ TEST(wc3_spell, stasis_trap_arms_then_stuns_land_enemies_in_datac) {
 	T_EQ(stasis_stun_ms(fix.enemy), (uint32_t)(BZ_STA_STUN * 1000.0f));
 	T_EQ(stasis_stun_ms(fix.hero), (uint32_t)(BZ_STA_HERO * 1000.0f));
 	T_EQ(stasis_stun_ms(fix.far), 0);
-	T_ASSERT(fix.enemy->stunned);
+	T_ASSERT(unit_hasstatusstate(fix.enemy, WC3_STATUS_STATE_STUNNED));
 	T_ASSERT(!ward->inuse);
 	ward_done(&fix);
 }
