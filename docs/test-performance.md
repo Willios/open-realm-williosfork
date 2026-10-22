@@ -88,6 +88,29 @@ step. Shrinking it would cut both disk traffic and `wc3_save` time.
 
 ## Diagnostic Workflow
 
+### SDL2-compat text-event injection
+
+On macOS with SDL2-compat backed by SDL3, the menu-input regression crashed inside
+`SDL3_PushEvent` while pushing its synthetic `SDL_TEXTINPUT`. A debugger backtrace
+and the loop index identified the text event before any client dispatch ran.
+In SDL2-compat's [`Event2to3`](https://github.com/libsdl-org/sdl2-compat/blob/main/src/sdl2_compat.c),
+text input conversion returns `NULL`; the affected `SDL_PushEvent` implementation
+passes that result to SDL3. This is a test injection failure, not a menu-routing failure.
+
+The regression queues a tagged `SDL_USEREVENT` marker and translates it into text
+after `SDL_PollEvent`, through `CL_TestPollMenuEvent`. `CL_InputEvents` runs the same
+production input pump with that polling adapter; normal `CL_Input` supplies
+`SDL_PollEvent` directly. Mouse and keyboard events still use the SDL queue, and
+the test still checks text contents and menu exclusion during active/loading
+world presentation, then delivery in the disconnected menu.
+
+Reproduce or verify the focused path after building `make openwarcraft3-tests test-assets`:
+
+```sh
+build/bin/openwarcraft3-tests -data build/tests +dedicated 1 \
+  +test client_input.menu_sdl_input_is_exclusive_with_world_presentation
+```
+
 ### GitHub Actions jobs that never start
 
 A failed workflow can contain only cancelled jobs and no executed steps. Inspect check-run annotations before treating it as

@@ -851,7 +851,7 @@ bool CL_GameplayInputReady(void) {
     return true;
 }
 
-void CL_Input(void) {
+static void CL_InputEvents(int (*poll_event)(SDL_Event *)) {
     SDL_Event event;
     /* Hover is presentation-only; ray-pick the last eligible motion after draining SDL input. */
     SDL_MouseMotionEvent hover_motion = { 0 };
@@ -861,7 +861,7 @@ void CL_Input(void) {
 
     mouse.event = UI_EVENT_NONE;
     mouse.wheel = 0;
-    while(SDL_PollEvent(&event)) {
+    while(poll_event(&event)) {
         if (loading_input) {
             if (event.type == SDL_FINGERDOWN || event.type == SDL_MOUSEBUTTONDOWN ||
                 (event.type == SDL_KEYDOWN && !event.key.repeat))
@@ -1097,6 +1097,10 @@ void CL_Input(void) {
     CL_FlushPinch();
     if (hover_update_pending) CL_UpdateHover((float)hover_motion.x, (float)hover_motion.y);
     CL_InputFrame();
+}
+
+void CL_Input(void) {
+    CL_InputEvents(SDL_PollEvent);
 }
 
 static void CL_SetSDLTextInput(bool enabled) {
@@ -2019,8 +2023,17 @@ static uint32_t test_menu_mouse, test_menu_text, test_menu_keys;
 static bool CL_TestMenuMouse(menuMouseEvent_t event, int x, int y, int32_t param, uint32_t mods) {
     (void)event; (void)x; (void)y; (void)param; (void)mods; test_menu_mouse++; return false;
 }
-static void CL_TestMenuText(cstring_t text) { (void)text; test_menu_text++; }
+static void CL_TestMenuText(cstring_t text) { T_STREQ(text, "test"); test_menu_text++; }
 static void CL_TestMenuKey(int key, uint32_t mods, bool down, uint32_t time) { (void)key; (void)mods; (void)down; (void)time; test_menu_keys++; }
+static int CL_TestPollMenuEvent(SDL_Event *event) {
+    int result = SDL_PollEvent(event);
+    /* SDL2-compat cannot convert pushed SDL_TEXTINPUT to SDL3 and can crash.
+     * Queue a marker instead, then supply the text at the polling boundary so
+     * the real input pump still checks its ordering and menu/world routing. */
+    if (result && event->type == SDL_USEREVENT && event->user.data1 == &test_menu_text)
+        *event = (SDL_Event){ .text = { .type = SDL_TEXTINPUT, .text = "test" } };
+    return result;
+}
 TEST(client_input, menu_sdl_input_is_exclusive_with_world_presentation) {
     struct client_state *old = MemAlloc(sizeof(cl));
     struct client_static old_cls = cls;
@@ -2034,7 +2047,7 @@ TEST(client_input, menu_sdl_input_is_exclusive_with_world_presentation) {
         { .button = { .type = SDL_MOUSEBUTTONUP, .button = SDL_BUTTON_LEFT, .x = 10, .y = 20 } },
         { .motion = { .type = SDL_MOUSEMOTION, .x = 10, .y = 20 } },
         { .wheel = { .type = SDL_MOUSEWHEEL, .y = 1 } },
-        { .text = { .type = SDL_TEXTINPUT, .text = "test" } },
+        { .user = { .type = SDL_USEREVENT, .data1 = &test_menu_text } },
         { .key = { .type = SDL_KEYDOWN, .keysym.sym = SDLK_F12 } },
     };
     memcpy(old, &cl, sizeof(cl)); memset(&cl, 0, sizeof(cl));
@@ -2050,7 +2063,7 @@ TEST(client_input, menu_sdl_input_is_exclusive_with_world_presentation) {
         cls.state = mode == 0 ? ca_active : mode == 1 ? ca_connected : ca_disconnected;
         cl.playerstate.client_ui_state = mode == 1 ? CLIENT_UI_LOADING : CLIENT_UI_GAME;
         FOR_LOOP(i, sizeof(events) / sizeof(events[0])) T_EQ(SDL_PushEvent(&events[i]), 1);
-        CL_Input();
+        CL_InputEvents(CL_TestPollMenuEvent);
         if (mode < 2) {
             T_EQ(test_menu_mouse, 0); T_EQ(test_menu_text, 0); T_EQ(test_menu_keys, 0);
         } else {
