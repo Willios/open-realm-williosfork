@@ -291,7 +291,7 @@ uint32_t SetUnitOwner(jass_t *j) {
         if (G_UnitIsHero(whichUnit) && previous_player != PLAYER_NUM(whichPlayer))
             BZ_WC3_SCORE_LOG("score hero lifecycle event=owner_change rawcode=%08x entity=%u from=%u to=%u level=%u xp=%u",
                 whichUnit->class_id, whichUnit->s.number, previous_player,
-                PLAYER_NUM(whichPlayer), whichUnit->hero.level, whichUnit->hero.xp);
+                PLAYER_NUM(whichPlayer), whichUnit->unit_state->hero.level, whichUnit->unit_state->hero.xp);
         G_SetUnitPlayer(whichUnit, PLAYER_NUM(whichPlayer));
         if (change_color) {
             G_ClearUnitColorOverride(whichUnit);
@@ -342,8 +342,8 @@ uint32_t SetUnitVertexColor(jass_t *j) {
     if (whichUnit) {
         whichUnit->vertex_color = MAKE(color32_t,
             BZ_CLAMP_U8(red), BZ_CLAMP_U8(green), BZ_CLAMP_U8(blue), BZ_CLAMP_U8(alpha));
-        whichUnit->vertex_color_set = true;
-        whichUnit->vertex_color_override_set = true;
+        G_SetUnitFlag(whichUnit, UNIT_FLAG_VERTEX_COLOR_SET, true);
+        G_SetUnitFlag(whichUnit, UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET, true);
     }
     return 0;
 }
@@ -362,16 +362,16 @@ uint32_t GetUnitUserData(jass_t *j) {
 uint32_t UnitIgnoreAlarm(jass_t *j) {
     edict_t *unit = jass_checkhandle(j, 1, "unit");
     bool ignore = jass_checkboolean(j, 2);
-    if (unit && unit->inuse) unit->ignore_alarm = ignore;
+    if (unit && unit->inuse) G_SetUnitFlag(unit, UNIT_FLAG_IGNORE_ALARM, ignore);
     return jass_pushboolean(j, unit && unit->inuse);
 }
 uint32_t UnitIgnoreAlarmToggled(jass_t *j) {
     edict_t *unit = jass_checkhandle(j, 1, "unit");
-    return jass_pushboolean(j, unit && unit->inuse && unit->ignore_alarm);
+    return jass_pushboolean(j, unit && unit->inuse && G_UnitHasFlag(unit, UNIT_FLAG_IGNORE_ALARM));
 }
 uint32_t UnitSetUsesAltIcon(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
-    if (whichUnit) whichUnit->uses_alt_icon = jass_checkboolean(j, 2);
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_USES_ALT_ICON, jass_checkboolean(j, 2));
     return 0;
 }
 uint32_t QueueUnitAnimation(jass_t *j) {
@@ -402,7 +402,7 @@ uint32_t SetUnitAnimationWithRarity(jass_t *j) {
         if (animation) {
             whichUnit->animation = animation;
             whichUnit->s.frame = animation->interval[0];
-            whichUnit->animation_override = true;
+            G_SetUnitFlag(whichUnit, UNIT_FLAG_ANIMATION_OVERRIDE, true);
         }
     }
     return 0;
@@ -452,32 +452,32 @@ uint32_t SetHeroStr(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t newStr = jass_checkinteger(j, 2);
 //    bool permanent = jass_checkboolean(j, 3);
-    if (whichHero) { whichHero->hero.str = (uint32_t)MAX(0, newStr); G_RecomputeHeroStats(whichHero); }
+    if (whichHero) { G_InitUnitState(whichHero); whichHero->unit_state->hero.str = (uint32_t)MAX(0, newStr); G_RecomputeHeroStats(whichHero); }
     return 0;
 }
 uint32_t SetHeroAgi(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t newAgi = jass_checkinteger(j, 2);
 //    bool permanent = jass_checkboolean(j, 3);
-    if (whichHero) { whichHero->hero.agi = (uint32_t)MAX(0, newAgi); G_RecomputeHeroStats(whichHero); }
+    if (whichHero) { G_InitUnitState(whichHero); whichHero->unit_state->hero.agi = (uint32_t)MAX(0, newAgi); G_RecomputeHeroStats(whichHero); }
     return 0;
 }
 uint32_t SetHeroInt(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t newInt = jass_checkinteger(j, 2);
 //    bool permanent = jass_checkboolean(j, 3);
-    if (whichHero) { whichHero->hero.intel = (uint32_t)MAX(0, newInt); G_RecomputeHeroStats(whichHero); }
+    if (whichHero) { G_InitUnitState(whichHero); whichHero->unit_state->hero.intel = (uint32_t)MAX(0, newInt); G_RecomputeHeroStats(whichHero); }
     return 0;
 }
 uint32_t GetHeroXP(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
-    return jass_pushinteger(j, whichHero ? (int32_t)whichHero->hero.xp : 0);
+    return jass_pushinteger(j, whichHero && whichHero->unit_state ? (int32_t)whichHero->unit_state->hero.xp : 0);
 }
 uint32_t SetHeroXP(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t newXpVal = jass_checkinteger(j, 2);
 //    bool showEyeCandy = jass_checkboolean(j, 3);
-    if (whichHero && !whichHero->hero.suspend_xp) {
+    if (whichHero && !whichHero->unit_state->hero.suspend_xp) {
         G_HeroSetXP(whichHero, (uint32_t)MAX(0, newXpVal));
     }
     return 0;
@@ -485,7 +485,7 @@ uint32_t SetHeroXP(jass_t *j) {
 uint32_t GetHeroSkillPoints(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t const points = whichHero && whichHero->data.UnitBalance && G_UnitIsHero(whichHero)
-        ? (int32_t)whichHero->hero.skillpoints : 0;
+        ? (int32_t)whichHero->unit_state->hero.skillpoints : 0;
     return jass_pushinteger(j, points);
 }
 uint32_t UnitModifySkillPoints(jass_t *j) {
@@ -498,9 +498,9 @@ uint32_t AddHeroXP(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t xpToAdd = jass_checkinteger(j, 2);
 //    bool showEyeCandy = jass_checkboolean(j, 3);
-    if (whichHero && !whichHero->hero.suspend_xp && xpToAdd > 0) {
+    if (whichHero && !whichHero->unit_state->hero.suspend_xp && xpToAdd > 0) {
         uint32_t add = (uint32_t)xpToAdd;
-        uint32_t cur = whichHero->hero.xp;
+        uint32_t cur = whichHero->unit_state->hero.xp;
         /* Cap at INT32_MAX so GetHeroXP (signed return) never reads negative. */
         uint32_t sum = cur + add;
         G_HeroSetXP(whichHero, (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum);
@@ -519,12 +519,12 @@ uint32_t SetHeroLevelBJ(jass_t *j) {
      * native for reductions. The third showEyeCandy argument applies only
      * to the raise path and is currently a presentation TODO. */
     if (!whichHero || !G_UnitIsHero(whichHero)) return 0;
-    if (newLevel < (int32_t)whichHero->hero.level) {
-        int64_t const remove = (int64_t)whichHero->hero.level - newLevel;
+    if (newLevel < (int32_t)whichHero->unit_state->hero.level) {
+        int64_t const remove = (int64_t)whichHero->unit_state->hero.level - newLevel;
         G_HeroStripLevels(whichHero, (uint32_t)MIN(remove, (int64_t)UINT32_MAX));
-    } else if (newLevel > (int32_t)whichHero->hero.level) {
+    } else if (newLevel > (int32_t)whichHero->unit_state->hero.level) {
         uint32_t const target = MIN((uint32_t)newLevel, G_MaxHeroLevel());
-        G_HeroSetXPForLevel(whichHero, MAX(whichHero->hero.xp, G_HeroXPForLevel(target)));
+        G_HeroSetXPForLevel(whichHero, MAX(whichHero->unit_state->hero.xp, G_HeroXPForLevel(target)));
     }
     return 0;
 }
@@ -532,30 +532,30 @@ uint32_t SetHeroLevel(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     int32_t level = jass_checkinteger(j, 2);
 //    bool showEyeCandy = jass_checkboolean(j, 3);
-    if (whichHero && level > (int32_t)whichHero->hero.level) {
+    if (whichHero && level > (int32_t)whichHero->unit_state->hero.level) {
         /* WC3 SetHeroLevel raises the level by granting enough XP to reach it
          * (level only increases). Route through the XP transition so skill
          * points and both Hero-level event families per crossed level stay
          * identical to ordinary XP gains. */
         uint32_t const target = MIN((uint32_t)level, G_MaxHeroLevel());
         uint32_t const need = G_HeroXPForLevel(target);
-        G_HeroSetXPForLevel(whichHero, MAX(whichHero->hero.xp, need));
+        G_HeroSetXPForLevel(whichHero, MAX(whichHero->unit_state->hero.xp, need));
     }
     return 0;
 }
 uint32_t GetHeroLevel(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
-    return jass_pushinteger(j, whichHero ? whichHero->hero.level : 0);
+    return jass_pushinteger(j, whichHero ? whichHero->unit_state->hero.level : 0);
 }
 uint32_t SuspendHeroXP(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichHero) whichHero->hero.suspend_xp = flag;
+    if (whichHero) { G_InitUnitState(whichHero); whichHero->unit_state->hero.suspend_xp = flag; }
     return 0;
 }
 uint32_t IsSuspendedXP(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
-    return jass_pushboolean(j, whichHero && whichHero->hero.suspend_xp);
+    return jass_pushboolean(j, whichHero && whichHero->unit_state->hero.suspend_xp);
 }
 uint32_t SelectHeroSkill(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
@@ -589,24 +589,24 @@ uint32_t GetHeroStr(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     bool includeBonuses = jass_checkboolean(j, 2);
     (void)includeBonuses; /* TODO: attribute bonuses from items/auras are not tracked separately yet. */
-    return jass_pushinteger(j, whichHero ? (int32_t)whichHero->hero.str : 0);
+    return jass_pushinteger(j, whichHero && whichHero->unit_state ? (int32_t)whichHero->unit_state->hero.str : 0);
 }
 uint32_t GetHeroAgi(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     bool includeBonuses = jass_checkboolean(j, 2);
     (void)includeBonuses;
-    return jass_pushinteger(j, whichHero ? (int32_t)whichHero->hero.agi : 0);
+    return jass_pushinteger(j, whichHero && whichHero->unit_state ? (int32_t)whichHero->unit_state->hero.agi : 0);
 }
 uint32_t GetHeroInt(jass_t *j) {
     edict_t *whichHero = jass_checkhandle(j, 1, "unit");
     bool includeBonuses = jass_checkboolean(j, 2);
     (void)includeBonuses;
-    return jass_pushinteger(j, whichHero ? (int32_t)whichHero->hero.intel : 0);
+    return jass_pushinteger(j, whichHero && whichHero->unit_state ? (int32_t)whichHero->unit_state->hero.intel : 0);
 }
 uint32_t GetUnitLevel(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     if (!whichUnit) return jass_pushinteger(j, 0);
-    if (G_UnitIsHero(whichUnit)) return jass_pushinteger(j, (int32_t)whichUnit->hero.level);
+    if (G_UnitIsHero(whichUnit)) return jass_pushinteger(j, (int32_t)whichUnit->unit_state->hero.level);
     return jass_pushinteger(j, whichUnit->data.UnitBalance ? whichUnit->data.UnitBalance->level : 0);
 }
 uint32_t GetUnitCurrentOrder(jass_t *j) {
@@ -646,7 +646,7 @@ uint32_t UnitDamageTarget(jass_t *j) {
     (void)jass_checkhandle(j, 7, "damagetype");
     (void)jass_checkhandle(j, 8, "weapontype");
     if (!whichUnit || !target || amount <= 0.0f) return jass_pushboolean(j, 0);
-    if (target->invulnerable || M_IsDead(target)) return jass_pushboolean(j, 0);
+    if (G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) || M_IsDead(target)) return jass_pushboolean(j, 0);
     T_Damage(target, whichUnit, (int)amount);
     return jass_pushboolean(j, 1);
 }
@@ -674,8 +674,8 @@ uint32_t UnitCountBuffsEx(jass_t *j) {
     timedLife = jass_checkboolean(j, 6);
     (void)jass_checkboolean(j, 7); (void)jass_checkboolean(j, 8);
     if (!whichUnit) return jass_pushinteger(j, 0);
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *s = whichUnit->abilstatus + i;
+    FOR_LOOP(i, whichUnit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *s = whichUnit->unit_state->statuses + i;
         if (!s->level) continue;
         if (timedLife && s->code != MAKEFOURCC('B', 'T', 'L', 'F')) continue;
         count++;
@@ -686,10 +686,10 @@ uint32_t UnitPauseTimedLife(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
     uint32_t now;
-    if (!whichUnit || whichUnit->timed_life_paused == flag) return 0;
+    if (!whichUnit || G_UnitHasFlag(whichUnit, UNIT_FLAG_TIMED_LIFE_PAUSED) == flag) return 0;
     now = G_Time();
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *s = whichUnit->abilstatus + i;
+    FOR_LOOP(i, whichUnit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *s = whichUnit->unit_state->statuses + i;
         if (!s->level || s->code != MAKEFOURCC('B', 'T', 'L', 'F')) continue;
         if (flag) {
             s->data = s->timestamp > now ? s->timestamp - now : 0;
@@ -699,7 +699,7 @@ uint32_t UnitPauseTimedLife(jass_t *j) {
             s->data = 0;
         }
     }
-    whichUnit->timed_life_paused = flag;
+    G_SetUnitFlag(whichUnit, UNIT_FLAG_TIMED_LIFE_PAUSED, flag);
     return 0;
 }
 uint32_t UnitResetCooldown(jass_t *j) {
@@ -755,23 +755,23 @@ uint32_t SetUnitExploded(jass_t *j) {
 uint32_t SetUnitInvulnerable(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->invulnerable = flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_INVULNERABLE, flag);
     return 0;
 }
 uint32_t PauseUnit(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->paused = flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_PAUSED, flag);
     return 0;
 }
 uint32_t IsUnitPaused(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
-    return jass_pushboolean(j, whichUnit && whichUnit->paused);
+    return jass_pushboolean(j, whichUnit && G_UnitHasFlag(whichUnit, UNIT_FLAG_PAUSED));
 }
 uint32_t SetUnitPathing(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     bool flag = jass_checkboolean(j, 2);
-    if (whichUnit) whichUnit->no_pathing = !flag;
+    if (whichUnit) G_SetUnitFlag(whichUnit, UNIT_FLAG_NO_PATHING, !flag);
     return 0;
 }
 uint32_t GetUnitPointValue(jass_t *j) {
@@ -825,7 +825,7 @@ uint32_t UnitRemoveItem(jass_t *j) {
         return 0;
     }
     FOR_LOOP(i, MAX_INVENTORY) {
-        if (whichUnit->inventory[i] == whichItem) {
+        if (G_InventoryItem(whichUnit, i) == whichItem) {
             if (!G_ItemAbilityScriptedRemove(whichUnit, whichItem))
                 G_DropItemAtScripted(whichUnit, i, &whichUnit->s.origin2);
             break;
@@ -839,7 +839,7 @@ uint32_t UnitRemoveItemFromSlot(jass_t *j) {
     if (!whichUnit || itemSlot < 0 || (uint32_t)itemSlot >= G_InventoryCapacity(whichUnit)) {
         return jass_pushnullhandle(j, "item");
     }
-    edict_t *item = whichUnit->inventory[itemSlot];
+    edict_t *item = G_InventoryItem(whichUnit, itemSlot);
     if (!item) return jass_pushnullhandle(j, "item");
     if (!G_ItemAbilityScriptedRemove(whichUnit, item) &&
         !G_DropItemAtScripted(whichUnit, (uint32_t)itemSlot, &whichUnit->s.origin2)) {
@@ -852,7 +852,7 @@ uint32_t UnitHasItem(jass_t *j) {
     edict_t *whichItem = jass_checkhandle(j, 2, "item");
     if (!whichUnit || !whichItem) return jass_pushboolean(j, 0);
     FOR_LOOP(i, MAX_INVENTORY) {
-        if (whichUnit->inventory[i] == whichItem) return jass_pushboolean(j, 1);
+        if (G_InventoryItem(whichUnit, i) == whichItem) return jass_pushboolean(j, 1);
     }
     return jass_pushboolean(j, 0);
 }
@@ -862,7 +862,7 @@ uint32_t UnitItemInSlot(jass_t *j) {
     if (!whichUnit || itemSlot < 0 || (uint32_t)itemSlot >= G_InventoryCapacity(whichUnit)) {
         return jass_pushnullhandle(j, "item");
     }
-    edict_t *item = whichUnit->inventory[itemSlot];
+    edict_t *item = G_InventoryItem(whichUnit, itemSlot);
     if (!item) return jass_pushnullhandle(j, "item");
     return jass_pushlighthandle(j, item, "item");
 }
@@ -1052,7 +1052,7 @@ uint32_t IsUnitType(jass_t *j) {
     if (*whichUnitType == 23) /* UNIT_TYPE_SLEEPING */
         return jass_pushboolean(j, G_UnitIsSleeping(whichUnit));
     if (*whichUnitType == 11) /* UNIT_TYPE_STUNNED */
-        return jass_pushboolean(j, whichUnit->stunned);
+        return jass_pushboolean(j, unit_hasstatusstate(whichUnit, WC3_STATUS_STATE_STUNNED));
     if (*whichUnitType == 3) /* UNIT_TYPE_FLYING */
         return jass_pushboolean(j, whichUnit->aiflags & AI_FLYING);
     if (*whichUnitType == 10) /* UNIT_TYPE_SUMMONED */

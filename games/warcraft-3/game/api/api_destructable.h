@@ -55,19 +55,19 @@ uint32_t KillDestructable(jass_t *j) {
 }
 /* Ghidra: SetDestructableInvulnerable=FUN_003f83a0 sets an invuln flag bit on
  * the destructable (vtable+0xac); IsDestructableInvulnerable=FUN_003f83d0 reads
- * it (bit 3 of flags @+0x20).  Our edict already carries `invulnerable`, honored
+ * it (bit 3 of flags @+0x20).  Our edict uses `UNIT_FLAG_INVULNERABLE`, honored
  * by the damage path, so reuse it. */
 uint32_t SetDestructableInvulnerable(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
     bool flag = jass_checkboolean(j, 2);
     if (d) {
-        d->invulnerable = flag;
+        G_SetUnitFlag(d, UNIT_FLAG_INVULNERABLE, flag);
     }
     return 0;
 }
 uint32_t IsDestructableInvulnerable(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
-    return jass_pushboolean(j, d && d->invulnerable);
+    return jass_pushboolean(j, d && G_UnitHasFlag(d, UNIT_FLAG_INVULNERABLE));
 }
 uint32_t EnumDestructablesInRect(jass_t *j) {
     /* Visit every destructable inside the rect, exposing each as the enum
@@ -162,16 +162,16 @@ uint32_t QueueDestructableAnimation(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
     cstring_t const animation = jass_checkstring(j, 2);
     if (G_IsDestructable(d) && animation)
-        strlcpy(d->queued_animation, animation, sizeof(d->queued_animation));
+        d->queued_animation = G_InternAnimationName(animation);
     return 0;
 }
 uint32_t SetDestructableAnimation(jass_t *j) {
     edict_t *d = jass_checkhandle(j, 1, "destructable");
     cstring_t animation = jass_checkstring(j, 2);
     if (G_IsDestructable(d) && animation) {
-        d->queued_animation[0] = '\0';
+        d->queued_animation = "";
         G_SetUnitAnimation(d, animation);
-        d->animation_override = d->animation != NULL;
+        G_SetUnitFlag(d, UNIT_FLAG_ANIMATION_OVERRIDE, d->animation != NULL);
         if (d->animation) d->s.frame = d->animation->interval[0];
     }
     return 0;

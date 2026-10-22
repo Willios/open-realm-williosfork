@@ -93,7 +93,7 @@ BZ_ABILITY_PROC(CAbilityBloodlust) {
     switch (msg) {
     case A_VALIDATE: return bloodlust_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: melee_status_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, true, false, 900.0f);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -112,7 +112,7 @@ BZ_ABILITY_PROC(CAbilityFaerieFire) {
     switch (msg) {
     case A_VALIDATE: return faerie_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: melee_status_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, false, false, 900.0f);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -186,7 +186,7 @@ BZ_ABILITY_PROC(CAbilityFrenzy) {
     switch (msg) {
     case A_VALIDATE: return bloodlust_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: melee_status_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, true, false, 900.0f);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -244,7 +244,7 @@ BZ_ABILITY_PROC(CAbilityCurse) {
     switch (msg) {
     case A_VALIDATE: return faerie_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: melee_status_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, false, false, 900.0f);
     default: return CAbilitySimpleSpell(ent, msg, call);

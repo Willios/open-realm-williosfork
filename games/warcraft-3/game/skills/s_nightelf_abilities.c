@@ -29,7 +29,7 @@ void S_MoonGlaiveAttack(edict_t *attacker, edict_t *primary, int damage) {
     data_a = S_SpellData(ID_MOON_GLAIVE, level, 1);
     total = data_a > 0.0f ? (uint32_t)data_a : 2; /* stock 0 → primary + 1 bounce */
     range = S_SpellNumber(ID_MOON_GLAIVE, ABILITY_NUMBER_AREA, level);
-    if (range <= 0.0f) range = attacker->attack1.range;
+    if (range <= 0.0f) range = attacker->unit_state->attack1.range;
     if (nvisited < 8) visited[nvisited++] = primary;
     current = primary;
     for (uint32_t i = 1; i < total; i++) {

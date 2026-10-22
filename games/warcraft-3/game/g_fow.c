@@ -68,29 +68,32 @@ bool G_FowPlayersShareVision(uint32_t viewer, uint32_t owner) {
 }
 
 bool G_UnitSharesVisionWith(edict_t const *unit, uint32_t viewer) {
-    return unit && viewer < MAX_PLAYERS && (unit->shared_vision & (1u << viewer));
+    return unit && unit->vision && viewer < MAX_PLAYERS && (unit->vision->shared & (1u << viewer));
 }
 
 void G_SetUnitSharedVision(edict_t *unit, uint32_t viewer, bool share) {
     if (!unit || viewer >= MAX_PLAYERS) return;
-    if (share) unit->shared_vision |= 1u << viewer;
-    else unit->shared_vision &= ~(1u << viewer);
+    if (!share && !unit->vision) return;
+    G_InitVisibility(unit);
+    if (share) unit->vision->shared |= 1u << viewer;
+    else unit->vision->shared &= ~(1u << viewer);
 }
 
 void G_AddUnitForcedVisibility(edict_t *unit, uint32_t viewer) {
-    if (unit && viewer < MAX_PLAYERS && unit->forced_visibility_count[viewer] != 0xffffu)
-        unit->forced_visibility_count[viewer]++;
+    if (!unit || viewer >= MAX_PLAYERS) return;
+    G_InitVisibility(unit);
+    if (unit->vision->forced[viewer] != 0xffffu) unit->vision->forced[viewer]++;
 }
 
 void G_RemoveUnitForcedVisibility(edict_t *unit, uint32_t viewer) {
-    if (unit && viewer < MAX_PLAYERS && unit->forced_visibility_count[viewer])
-        unit->forced_visibility_count[viewer]--;
+    if (unit && unit->vision && viewer < MAX_PLAYERS && unit->vision->forced[viewer])
+        unit->vision->forced[viewer]--;
 }
 
 bool G_UnitIsForcedVisibleToPlayer(edict_t const *unit, uint32_t viewer) {
-    if (!unit || viewer >= MAX_PLAYERS) return false;
+    if (!unit || !unit->vision || viewer >= MAX_PLAYERS) return false;
     FOR_LOOP(owner, MAX_PLAYERS)
-        if (unit->forced_visibility_count[owner] && G_FowPlayersShareVision(viewer, owner)) return true;
+        if (unit->vision->forced[owner] && G_FowPlayersShareVision(viewer, owner)) return true;
     return false;
 }
 
@@ -1059,7 +1062,7 @@ void G_FowUpdate(void) {
         if (ent->s.player >= MAX_PLAYERS || !G_FowEntityIsRevealer(ent)) {
             continue;
         }
-        unit_viewers = owner_viewers[ent->s.player] | (ent->shared_vision & viewers);
+        unit_viewers = owner_viewers[ent->s.player] | (ent->vision ? ent->vision->shared & viewers : 0);
         if (!unit_viewers) continue;
         radius = G_FowEntitySightRadius(ent);
         G_FowRevealForViewers(ent, radius, unit_viewers);

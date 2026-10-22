@@ -507,6 +507,7 @@ TEST(wc3_api, movement_crossing_region_publishes_entering_unit) {
         }
     }
     T_NOT_NULL(mover);
+    G_InitUnitOrders(mover);
     mover->svflags |= SVF_MONSTER;
     mover->movetype = MOVETYPE_STEP;
     mover->stand = unit_stand;
@@ -576,6 +577,7 @@ TEST(wc3_api, nonunit_map_entity_placement_does_not_fire_region_enter) {
 
     /* The runtime unit classification admits the same entity and delivers
      * the crossing through the normal movement entry point. */
+    G_InitUnitOrders(map_entity);
     map_entity->svflags |= SVF_MONSTER;
     old_position = (vec2_t){ 0.0f, 0.0f };
     G_UnitPositionChanged(map_entity, &old_position);
@@ -1646,8 +1648,8 @@ TEST(wc3_api, escape_restores_game_camera_ui_and_control) {
     T_EQ(gc->ps.client_ui_state, CLIENT_UI_GAME);
     T_EQ(gc->ps.uiflags, 1u << LAYER_CINEMATIC);
     T_ASSERT(!gc->no_control);
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 128, 0.001f); T_FEQ(gc->camera.pan_destination.y, 256, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 128, 0.001f); T_FEQ(gc->camera.pan.destination.y, 256, 0.001f);
     T_FEQ(gc->ps.distance, WC3_CAMERA_DEFAULT_DISTANCE, 0.001f); T_FEQ(gc->ps.fov, WC3_CAMERA_DEFAULT_FOV, 0.001f);
     T_FEQ(gc->ps.znear, WC3_CAMERA_DEFAULT_NEAR_Z, 0.001f);
     T_FEQ(gc->ps.zfar, WC3_CAMERA_DEFAULT_FAR_Z, 0.001f);
@@ -1764,6 +1766,7 @@ TEST(wc3_api, leaving_region_event_is_registered_and_dispatched) {
         if (g_edicts[i].inuse && g_edicts[i].class_id == MAKEFOURCC('h','p','e','a') && g_edicts[i].s.player == 0)
             leaving = &g_edicts[i];
     T_NOT_NULL(leaving);
+    G_InitUnitOrders(leaving);
     leaving->svflags |= SVF_MONSTER;
     leaving->movetype = MOVETYPE_STEP;
     leaving->stand = unit_stand;
@@ -2175,9 +2178,9 @@ TEST(wc3_api, timed_camera_pan_with_z_interpolates_target_height) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraToTimedWithZ(200.0, 300.0, 400.0, 2.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 200.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 300.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 200.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 300.0f, 0.001f);
     T_FEQ(gc->camera.state.z_offset, 400.0f, 0.001f);
     T_EQ(gc->camera.start_time, 100);
     T_EQ(gc->camera.end_time, 2100);
@@ -2254,21 +2257,21 @@ TEST(wc3_api, untimed_camera_pan_uses_authored_forward_and_strafe_rates) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraTo(200.0, 400.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_rate.x, 100.0f, 0.001f);
-    T_FEQ(gc->camera.pan_rate.y, 200.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.rate.x, 100.0f, 0.001f);
+    T_FEQ(gc->camera.pan.rate.y, 200.0f, 0.001f);
 
     level.time = 1100;
     G_RunClients();
     T_FEQ(gc->ps.vieworigin.x, 100.0f, 0.001f);
     T_FEQ(gc->ps.vieworigin.y, 200.0f, 0.001f);
-    T_ASSERT(gc->camera.pan_active);
+    T_ASSERT(gc->camera.pan.active);
 
     level.time = 2100;
     G_RunClients();
     T_FEQ(gc->ps.vieworigin.x, 200.0f, 0.001f);
     T_FEQ(gc->ps.vieworigin.y, 400.0f, 0.001f);
-    T_ASSERT(!gc->camera.pan_active);
+    T_ASSERT(!gc->camera.pan.active);
     T_FEQ(gc->camera.state.position.x, 200.0f, 0.001f);
     T_FEQ(gc->camera.state.position.y, 400.0f, 0.001f);
     currentplayer = NULL;
@@ -2291,7 +2294,7 @@ TEST(wc3_api, invalid_camera_pan_rates_report_error_without_snapping) {
         "function main takes nothing returns nothing\n"
         "  call PanCameraTo(200.0, 400.0)\n"
         "endfunction\n"));
-    T_ASSERT(!gc->camera.pan_active);
+    T_ASSERT(!gc->camera.pan.active);
     T_FEQ(gc->camera.state.position.x, 10.0f, 0.001f);
     T_FEQ(gc->camera.state.position.y, 20.0f, 0.001f);
 
@@ -2317,9 +2320,9 @@ TEST(wc3_api, camera_setup_pantimed_uses_normal_pan_rates) {
         "  call CameraSetupSetDestPosition(c, 200.0, 400.0, 0.0)\n"
         "  call CameraSetupApply(c, true, true)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 200.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 400.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 200.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 400.0f, 0.001f);
 
     level.time = 1100;
     G_RunClients();
@@ -2399,9 +2402,9 @@ TEST(wc3_api, camera_setup_applies_clip_planes_z_and_dopan_contract) {
         "  call CameraSetupSetField(c, CAMERA_FIELD_FARZ, 7500.0, 0.0)\n"
         "  call CameraSetupApplyWithZ(c, 275.0)\n"
         "endfunction\n"));
-    T_ASSERT(gc->camera.pan_active);
-    T_FEQ(gc->camera.pan_destination.x, 700.0f, 0.001f);
-    T_FEQ(gc->camera.pan_destination.y, 800.0f, 0.001f);
+    T_ASSERT(gc->camera.pan.active);
+    T_FEQ(gc->camera.pan.destination.x, 700.0f, 0.001f);
+    T_FEQ(gc->camera.pan.destination.y, 800.0f, 0.001f);
     T_FEQ(gc->camera.state.near_z, 65.0f, 0.001f);
     T_FEQ(gc->camera.state.far_z, 7500.0f, 0.001f);
     T_FEQ(gc->camera.state.z_offset, 275.0f, 0.001f);
@@ -3416,10 +3419,10 @@ TEST(wc3_api, neutral_creep_createunit_anchor_uses_resolved_spawn) {
     creep = unit_create(PLAYER_NEUTRAL_AGGRESSIVE, BZ_WC3_UNIT_PEASANT, &requested, 0);
     T_NOT_NULL(creep);
     if (!creep) return;
-    T_ASSERT(creep->movement.creep_guard_enabled);
+    T_ASSERT(creep->orders->creep_guard_enabled);
     T_ASSERT(Vector2_distance(&creep->s.origin2, &requested) > 0.01f);
-    T_FEQ(creep->movement.creep_guard_origin.x, creep->s.origin2.x, 0.001f);
-    T_FEQ(creep->movement.creep_guard_origin.y, creep->s.origin2.y, 0.001f);
+    T_FEQ(creep->orders->creep_guard_origin.x, creep->s.origin2.x, 0.001f);
+    T_FEQ(creep->orders->creep_guard_origin.y, creep->s.origin2.y, 0.001f);
 }
 
 TEST(wc3_api, flyer_unstuck_search_uses_unflyable_instead_of_unwalkable) {
@@ -3586,8 +3589,8 @@ TEST(wc3_api, set_unit_vertex_color_publishes_clamped_rgba) {
 
     tinted = find_test_unit(MAKEFOURCC('h','p','e','a'));
     T_NOT_NULL(tinted);
-    T_ASSERT(tinted->vertex_color_set);
-    T_ASSERT(tinted->vertex_color_override_set);
+    T_ASSERT(G_UnitHasFlag(tinted, UNIT_FLAG_VERTEX_COLOR_SET));
+    T_ASSERT(G_UnitHasFlag(tinted, UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET));
     T_EQ(tinted->vertex_color.r, 255); T_EQ(tinted->vertex_color.g, 128);
     T_EQ(tinted->vertex_color.b, 0); T_EQ(tinted->vertex_color.a, 0);
 
@@ -3620,7 +3623,7 @@ TEST(wc3_api, authored_unit_ui_tint_initializes_vertex_color) {
     edict_t unit = { .data.UnitUI = &ui };
 
     G_InitializeUnitVertexColor(&unit);
-    T_ASSERT(unit.vertex_color_set);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(unit.vertex_color.r, 224); T_EQ(unit.vertex_color.g, 232);
     T_EQ(unit.vertex_color.b, 255); T_EQ(unit.vertex_color.a, 255);
 }
@@ -3630,11 +3633,11 @@ TEST(wc3_api, authored_white_unit_ui_tint_clears_previous_color) {
     edict_t unit = {
         .data.UnitUI = &ui,
         .vertex_color = MAKE(color32_t, 224, 232, 255, 255),
-        .vertex_color_set = true,
+        .unit_flags = UNIT_FLAG_VERTEX_COLOR_SET,
     };
 
     G_InitializeUnitVertexColor(&unit);
-    T_ASSERT(!unit.vertex_color_set);
+    T_ASSERT(!G_UnitHasFlag(&unit, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(unit.vertex_color.r, 255); T_EQ(unit.vertex_color.g, 255);
     T_EQ(unit.vertex_color.b, 255); T_EQ(unit.vertex_color.a, 255);
 }
@@ -3644,13 +3647,12 @@ TEST(wc3_api, explicit_vertex_color_override_survives_authored_rebind) {
     edict_t unit = {
         .data.UnitUI = &ui,
         .vertex_color = MAKE(color32_t, 17, 34, 51, 68),
-        .vertex_color_set = true,
-        .vertex_color_override_set = true,
+        .unit_flags = UNIT_FLAG_VERTEX_COLOR_SET | UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET,
     };
 
     G_InitializeUnitVertexColor(&unit);
-    T_ASSERT(unit.vertex_color_set);
-    T_ASSERT(unit.vertex_color_override_set);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_VERTEX_COLOR_SET));
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET));
     T_EQ(unit.vertex_color.r, 17); T_EQ(unit.vertex_color.g, 34);
     T_EQ(unit.vertex_color.b, 51); T_EQ(unit.vertex_color.a, 68);
 }
@@ -4532,7 +4534,7 @@ TEST(wc3_api, issue_build_order_by_id_uses_authoritative_build_path) {
     jass_callbyname(level.vm, "issueBuild", true);
     jass_runevents(level.vm);
     T_ASSERT(!jass_rterror_pending(level.vm));
-    T_EQ(builder->build_project, barracks);
+    T_EQ(builder->orders->build_project, barracks);
     T_NOT_NULL(builder->goalentity);
     T_FEQ(builder->goalentity->s.origin2.x, 64.0f, 0.001f);
     T_FEQ(builder->goalentity->s.origin2.y, 64.0f, 0.001f);
@@ -4541,7 +4543,7 @@ TEST(wc3_api, issue_build_order_by_id_uses_authoritative_build_path) {
     jass_callbyname(level.vm, "issuePointBuild", true);
     jass_runevents(level.vm);
     T_ASSERT(!jass_rterror_pending(level.vm));
-    T_EQ(builder->build_project, barracks);
+    T_EQ(builder->orders->build_project, barracks);
     T_NOT_NULL(builder->goalentity);
 }
 
@@ -5219,7 +5221,7 @@ TEST(wc3_api, customize_entity_publishes_gold_mine_hover_value) {
         .svflags = SVF_MONSTER,
         .s = { .player = 3, .flags = EF_RESOURCE_SOURCE },
         .resources = 12500,
-        .invulnerable = true,
+        .unit_flags = UNIT_FLAG_INVULNERABLE,
     };
     ent.health.value = 100.0f;
 
@@ -5254,7 +5256,7 @@ TEST(wc3_api, customize_entity_hides_invulnerable_health_but_keeps_mana) {
     edict_t ent = { .svflags = SVF_MONSTER, .s = { .player = 3 } };
     ent.health.value = 100.0f;
     ent.mana.max_value = 80.0f;
-    ent.invulnerable = true;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, true);
 
     globals.CustomizeEntity(3, &ent, &state);
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));
@@ -6167,20 +6169,20 @@ TEST(wc3_api, is_unit_ally_uses_querying_player_direction) {
 
 TEST(wc3_api, hero_str_set_get) {
     edict_t *ent = make_unit_hero();
-    ent->hero.str = 25;
-    T_EQ((int)ent->hero.str, 25);
+    ent->unit_state->hero.str = 25;
+    T_EQ((int)ent->unit_state->hero.str, 25);
 }
 
 TEST(wc3_api, hero_agi_set_get) {
     edict_t *ent = make_unit_hero();
-    ent->hero.agi = 18;
-    T_EQ((int)ent->hero.agi, 18);
+    ent->unit_state->hero.agi = 18;
+    T_EQ((int)ent->unit_state->hero.agi, 18);
 }
 
 TEST(wc3_api, hero_int_set_get) {
     edict_t *ent = make_unit_hero();
-    ent->hero.intel = 22;
-    T_EQ((int)ent->hero.intel, 22);
+    ent->unit_state->hero.intel = 22;
+    T_EQ((int)ent->unit_state->hero.intel, 22);
 }
 
 /* =========================================================================
@@ -6189,24 +6191,24 @@ TEST(wc3_api, hero_int_set_get) {
 
 TEST(wc3_api, hero_xp_default_zero) {
     edict_t *ent = make_unit_hero();
-    T_EQ((int)ent->hero.xp, 0);
+    T_EQ((int)ent->unit_state->hero.xp, 0);
 }
 
 TEST(wc3_api, hero_xp_set) {
     edict_t *ent = make_unit_hero();
-    ent->hero.xp = 500;
-    T_EQ((int)ent->hero.xp, 500);
+    ent->unit_state->hero.xp = 500;
+    T_EQ((int)ent->unit_state->hero.xp, 500);
 }
 
 TEST(wc3_api, hero_xp_add) {
     edict_t *ent = make_unit_hero();
-    ent->hero.xp = 100;
+    ent->unit_state->hero.xp = 100;
     uint32_t add = 50;
     /* Replicate AddHeroXP logic: cap at INT32_MAX */
-    uint32_t cur = ent->hero.xp;
+    uint32_t cur = ent->unit_state->hero.xp;
     uint32_t sum = cur + add;
-    ent->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
-    T_EQ((int)ent->hero.xp, 150);
+    ent->unit_state->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
+    T_EQ((int)ent->unit_state->hero.xp, 150);
 }
 
 TEST(wc3_api, hero_xp_map_main_uses_normal_progression) {
@@ -6280,14 +6282,14 @@ TEST(wc3_api, hero_skill_points_map_main_can_award_points) {
 
 TEST(wc3_api, hero_xp_overflow_clamps) {
     edict_t *ent = make_unit_hero();
-    ent->hero.xp = (uint32_t)INT32_MAX - 5;
+    ent->unit_state->hero.xp = (uint32_t)INT32_MAX - 5;
     uint32_t add = 100;
-    uint32_t cur = ent->hero.xp;
+    uint32_t cur = ent->unit_state->hero.xp;
     uint32_t sum = cur + add;
-    ent->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
+    ent->unit_state->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
     /* Overflow past INT32_MAX clamps to INT32_MAX, never goes negative */
-    T_EQ((long long)ent->hero.xp, (long long)INT32_MAX);
-    T_ASSERT((int32_t)ent->hero.xp >= 0);
+    T_EQ((long long)ent->unit_state->hero.xp, (long long)INT32_MAX);
+    T_ASSERT((int32_t)ent->unit_state->hero.xp >= 0);
 }
 
 /* =========================================================================
@@ -6296,28 +6298,28 @@ TEST(wc3_api, hero_xp_overflow_clamps) {
 
 TEST(wc3_api, hero_suspend_xp_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->hero.suspend_xp);
+    T_ASSERT(!ent->unit_state->hero.suspend_xp);
 }
 
 TEST(wc3_api, hero_suspend_xp_set_true) {
     edict_t *ent = make_unit_hero();
-    ent->hero.suspend_xp = true;
-    T_ASSERT(ent->hero.suspend_xp);
+    ent->unit_state->hero.suspend_xp = true;
+    T_ASSERT(ent->unit_state->hero.suspend_xp);
 }
 
 TEST(wc3_api, hero_xp_not_added_when_suspended) {
     edict_t *ent = make_unit_hero();
-    ent->hero.xp = 100;
-    ent->hero.suspend_xp = true;
+    ent->unit_state->hero.xp = 100;
+    ent->unit_state->hero.suspend_xp = true;
     /* Replicate AddHeroXP: skip when suspend_xp is set */
     int32_t xp_to_add = 50;
-    if (!ent->hero.suspend_xp && xp_to_add > 0) {
+    if (!ent->unit_state->hero.suspend_xp && xp_to_add > 0) {
         uint32_t add = (uint32_t)xp_to_add;
-        uint32_t cur = ent->hero.xp;
+        uint32_t cur = ent->unit_state->hero.xp;
         uint32_t sum = cur + add;
-        ent->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
+        ent->unit_state->hero.xp = (sum < cur || sum > (uint32_t)INT32_MAX) ? (uint32_t)INT32_MAX : sum;
     }
-    T_EQ((int)ent->hero.xp, 100);
+    T_EQ((int)ent->unit_state->hero.xp, 100);
 }
 
 /* =========================================================================
@@ -6356,39 +6358,84 @@ TEST(wc3_api, prop_window_runtime_native_and_authored_default) {
     T_FEQ(unit->unitinfo.PropWindow, DEG2RAD(20.0f), 0.001f);
 }
 
+/* Native mutations must preserve independent switches and timed-life bookkeeping. */
+TEST(wc3_api, unit_flags_native_updates_preserve_other_bits) {
+    setup_test_world();
+    currentplayer = test_player(0);
+    T_ASSERT(run_test_jass(
+        "type unit extends handle\n"
+        "globals\n  unit subject = null\nendglobals\n"
+        "function main takes nothing returns nothing\n"
+        "  set subject = CreateUnit(Player(0), 'hpea', 0.0, 0.0, 0.0)\n"
+        "  call SetUnitInvulnerable(subject, true)\n"
+        "  call PauseUnit(subject, true)\n"
+        "  call SetUnitPathing(subject, false)\n"
+        "  call UnitIgnoreAlarm(subject, true)\n"
+        "endfunction\n"
+        "function freeze takes nothing returns nothing\n"
+        "  call UnitPauseTimedLife(subject, true)\n"
+        "  call UnitPauseTimedLife(subject, true)\n"
+        "endfunction\n"
+        "function resume takes nothing returns nothing\n"
+        "  call PauseUnit(subject, false)\n"
+        "  call SetUnitPathing(subject, true)\n"
+        "endfunction\n"
+        "function unfreeze takes nothing returns nothing\n"
+        "  call UnitPauseTimedLife(subject, false)\n"
+        "endfunction\n"));
+    edict_t *unit = find_test_unit(MAKEFOURCC('h','p','e','a'));
+    T_NOT_NULL(unit); if (!unit) return;
+    T_ASSERT(unit_addtimedstatus(unit, "BTLF", 1, 10.0f));
+    jass_callbyname(level.vm, "freeze", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE |
+         UNIT_FLAG_PAUSED | UNIT_FLAG_NO_PATHING | UNIT_FLAG_TIMED_LIFE_PAUSED);
+    heroabilitystatus_t *life = unit_findstatus(unit, MAKEFOURCC('B','T','L','F'));
+    T_NOT_NULL(life); if (!life) return;
+    T_EQ(life->timestamp, 0); T_ASSERT(life->data > 0);
+    jass_callbyname(level.vm, "resume", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE | UNIT_FLAG_TIMED_LIFE_PAUSED);
+    T_EQ(life->timestamp, 0);
+    jass_callbyname(level.vm, "unfreeze", false);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+    T_EQ(unit->unit_flags, UNIT_FLAG_IGNORE_ALARM | UNIT_FLAG_INVULNERABLE);
+    T_ASSERT(life->timestamp > G_Time()); T_EQ(life->data, 0);
+}
+
 TEST(wc3_api, unit_invulnerable_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE));
 }
 
 TEST(wc3_api, unit_invulnerable_set) {
     edict_t *ent = make_unit_hero();
-    ent->invulnerable = true;
-    T_ASSERT(ent->invulnerable);
+    G_SetUnitFlag(ent, UNIT_FLAG_INVULNERABLE, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_INVULNERABLE));
 }
 
 TEST(wc3_api, unit_paused_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->paused);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
 }
 
 TEST(wc3_api, unit_paused_set) {
     edict_t *ent = make_unit_hero();
-    ent->paused = true;
-    T_ASSERT(ent->paused);
-    ent->paused = false;
-    T_ASSERT(!ent->paused);
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, false);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_PAUSED));
 }
 
 TEST(wc3_api, unit_no_pathing_default_false) {
     edict_t *ent = make_unit_hero();
-    T_ASSERT(!ent->no_pathing);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_api, unit_no_pathing_set) {
     edict_t *ent = make_unit_hero();
-    ent->no_pathing = true;
-    T_ASSERT(ent->no_pathing);
+    G_SetUnitFlag(ent, UNIT_FLAG_NO_PATHING, true);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_api, unit_color_default_zero) {
@@ -6831,17 +6878,17 @@ TEST(wc3_api, unit_ability_mutation_rejects_full_lists) {
     uint32_t invulnerable = MAKEFOURCC('A','I','n','v');
     reset_entities();
     edict_t *unit = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
-    FOR_LOOP(i, MAX_ABILITIES) unit->abilities.added[i] = i + 1;
-    ARRAY_COUNT(unit->abilities.added) = MAX_ABILITIES;
-    T_ASSERT(!G_ActorAddSkill(unit, invulnerable)); T_EQ(ARRAY_COUNT(unit->abilities.added), MAX_ABILITIES);
-    memset(&unit->abilities, 0, sizeof(unit->abilities)); unit->data.UnitAbilities = &abilities;
-    FOR_LOOP(i, MAX_ABILITIES) unit->abilities.removed[i] = i + 1;
-    ARRAY_COUNT(unit->abilities.removed) = MAX_ABILITIES;
+    FOR_LOOP(i, MAX_ABILITIES) unit->unit_state->overrides.added[i] = i + 1;
+    ARRAY_COUNT(unit->unit_state->overrides.added) = MAX_ABILITIES;
+    T_ASSERT(!G_ActorAddSkill(unit, invulnerable)); T_EQ(ARRAY_COUNT(unit->unit_state->overrides.added), MAX_ABILITIES);
+    memset(&unit->unit_state->overrides, 0, sizeof(unit->unit_state->overrides)); unit->data.UnitAbilities = &abilities;
+    FOR_LOOP(i, MAX_ABILITIES) unit->unit_state->overrides.removed[i] = i + 1;
+    ARRAY_COUNT(unit->unit_state->overrides.removed) = MAX_ABILITIES;
     T_ASSERT(!G_ActorRemoveSkill(unit, MAKEFOURCC('A','h','a','r'))); T_ASSERT(G_ActorHasSkill(unit, "Ahar"));
-    memset(&unit->abilities, 0, sizeof(unit->abilities));
-    unit->abilities.added[0] = invulnerable; ARRAY_COUNT(unit->abilities.added) = 1;
-    FOR_LOOP(i, MAX_ABILITIES) unit->abilities.permanent[i] = i + 1;
-    ARRAY_COUNT(unit->abilities.permanent) = MAX_ABILITIES;
+    memset(&unit->unit_state->overrides, 0, sizeof(unit->unit_state->overrides));
+    unit->unit_state->overrides.added[0] = invulnerable; ARRAY_COUNT(unit->unit_state->overrides.added) = 1;
+    FOR_LOOP(i, MAX_ABILITIES) unit->unit_state->overrides.permanent[i] = i + 1;
+    ARRAY_COUNT(unit->unit_state->overrides.permanent) = MAX_ABILITIES;
     T_ASSERT(!G_ActorSetSkillPermanent(unit, invulnerable, true));
     T_ASSERT(!G_ActorSkillPermanent(unit, invulnerable));
     G_FreeEdict(unit);
@@ -7025,7 +7072,7 @@ TEST(wc3_api, unit_has_item_true) {
     /* UnitHasItem checks pointer identity */
     bool found = false;
     FOR_LOOP(i, MAX_INVENTORY) {
-        if (unit->inventory[i] == item) { found = true; break; }
+        if (G_InventoryItem(unit, i) == item) { found = true; break; }
     }
     T_ASSERT(found);
 }
@@ -7041,7 +7088,7 @@ TEST(wc3_api, unit_has_item_false_different_instance) {
     /* item2 is NOT in inventory */
     bool found = false;
     FOR_LOOP(i, MAX_INVENTORY) {
-        if (unit->inventory[i] == item2) { found = true; break; }
+        if (G_InventoryItem(unit, i) == item2) { found = true; break; }
     }
     T_ASSERT(!found);
 }
@@ -7051,13 +7098,13 @@ TEST(wc3_api, unit_item_in_slot_returns_edict) {
     edict_t *unit = alloc_inventory_test_unit();
     edict_t *item = alloc_world_test_item(MAKEFOURCC('r','a','t','f'));
     unit_additemtoslot(unit, item, 2);
-    T_ASSERT(unit->inventory[2] == item);
+    T_ASSERT(G_InventoryItem(unit, 2) == item);
 }
 
 TEST(wc3_api, unit_item_in_slot_empty_is_null) {
     reset_entities();
     edict_t *unit = alloc_inventory_test_unit();
-    T_NULL(unit->inventory[0]);
+    T_NULL(G_InventoryItem(unit, 0));
 }
 
 /* =========================================================================
@@ -7962,11 +8009,11 @@ TEST(wc3_api, unit_drop_item_target_queues_a_targeted_give) {
         } else if (ent->class_id == MAKEFOURCC('r','a','t','f')) item = ent;
     }
     T_NOT_NULL(giver); T_NOT_NULL(receiver); T_NOT_NULL(item);
-    T_ASSERT(giver->inventory[0] == item);
+    T_ASSERT(G_InventoryItem(giver, 0) == item);
     T_ASSERT(giver->currentmove && giver->currentmove->think);
     giver->currentmove->think(giver);
-    T_NULL(giver->inventory[0]);
-    T_ASSERT(receiver->inventory[0] == item);
+    T_NULL(G_InventoryItem(giver, 0));
+    T_ASSERT(G_InventoryItem(receiver, 0) == item);
 }
 
 /* OrcX01 moves the stash's six items onto a hidden temporary hero, then
@@ -8033,7 +8080,7 @@ TEST(wc3_api, rexxar_stash_cache_survives_hidden_carrier_removal) {
         if (!ent->inuse || ent->class_id != MAKEFOURCC('H','p','a','l') ||
             fabsf(ent->s.origin2.x - 128.0f) >= 0.01f) continue;
         carrier = ent;
-        FOR_LOOP(slot, MAX_INVENTORY) held[slot] = ent->inventory[slot];
+        FOR_LOOP(slot, MAX_INVENTORY) held[slot] = G_InventoryItem(ent, slot);
         break;
     }
     T_NOT_NULL(carrier);
@@ -8158,10 +8205,10 @@ TEST(wc3_api, gamecache_restore_preserves_hero_progression) {
         }
     }
     T_NOT_NULL(restored);
-    T_EQ((int)restored->hero.level, 2);
-    T_EQ((int)restored->hero.skillpoints, 1);
-    T_EQ((int)restored->heroabilities[0].code, (int)MAKEFOURCC('A','H','h','b'));
-    T_EQ((int)restored->heroabilities[0].level, 1);
+    T_EQ((int)restored->unit_state->hero.level, 2);
+    T_EQ((int)restored->unit_state->hero.skillpoints, 1);
+    T_EQ((int)restored->unit_state->ranks[0].code, (int)MAKEFOURCC('A','H','h','b'));
+    T_EQ((int)restored->unit_state->ranks[0].level, 1);
 }
 
 TEST(wc3_api, gamecache_restore_dead_hero_at_quarter_health) {
@@ -8630,7 +8677,7 @@ TEST(wc3_api, unit_set_uses_alt_icon_persists) {
         }
     }
     T_NOT_NULL(unit);
-    T_ASSERT(unit->uses_alt_icon);
+    T_ASSERT(G_UnitHasFlag(unit, UNIT_FLAG_USES_ALT_ICON));
     T_ASSERT(run_test_jass(
         "function main takes nothing returns nothing\n"
         "  call UnitSetUsesAltIcon(null, true)\n"
@@ -9442,14 +9489,14 @@ TEST(wc3_api, customize_entity_selectable_debris_publishes_hover_health) {
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));
 
     gi.CvarString = hover_test_roc;
-    ent.invulnerable = false;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, false);
     state = (entityState_t){ .number = 7, .model = 11 };
     globals.CustomizeEntity(0, &ent, &state);
     T_ASSERT(state.flags & EF_HOVER_HEALTH);
     gi.CvarString = old_cvar_string;
 
     row.selectable = true;
-    ent.invulnerable = true;
+    G_SetUnitFlag(&ent, UNIT_FLAG_INVULNERABLE, true);
     state = (entityState_t){ .number = 7, .model = 11 };
     globals.CustomizeEntity(0, &ent, &state);
     T_ASSERT(!(state.flags & EF_HOVER_HEALTH));

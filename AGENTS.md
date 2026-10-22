@@ -70,6 +70,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 | WC3 Human09 cinematic lifecycle, selection/region diagnostics, and campaign failure evidence | [docs/games/warcraft-3/human09-cinematic-lifecycle.md](docs/games/warcraft-3/human09-cinematic-lifecycle.md) |
 | WC3 campaign unlocks, completed-difficulty tracking, ORCP migration, selector visibility | [docs/games/warcraft-3/campaign-progress.md](docs/games/warcraft-3/campaign-progress.md) |
 | WC3 difficulty preference, fresh-map initialization and JASS difficulty state | [docs/games/warcraft-3/game-difficulty.md](docs/games/warcraft-3/game-difficulty.md) |
+| WC3 optional travel/waypoints, retained orders, player records, interned animation strings and ability payload | [docs/games/warcraft-3/state-review.md](docs/games/warcraft-3/state-review.md) |
 | WC3 sparse edict state: direct pointer access, allocation, release and persistence | [docs/games/warcraft-3/pooled-entity-state.md](docs/games/warcraft-3/pooled-entity-state.md) |
 | WC3 game save/load format, Hero walk diagnostic, `F_CFUNCTION` C callbacks, and `field_t` synchronization | [docs/games/warcraft-3/save-load.md](docs/games/warcraft-3/save-load.md) |
 | WC3 HUD texture/font indices vs names across `SV_Map` / save-load | [docs/games/warcraft-3/hud-media.md](docs/games/warcraft-3/hud-media.md) |
@@ -251,6 +252,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 - Single-statement functions go on one line: `int f(void) { return 0; }`
 - Omit braces for single-statement `if`/`else`/`while` bodies.
 - Keep control-flow keywords at the start of their own line. Do not write chained forms like `...; if (...)` on the same physical line.
+- Document each enum and struct with its purpose, owning subsystem, and consumers; explain non-obvious member lifetimes or units.
 - Add a short comment before each non-trivial function describing why it exists — the constraint or contract that isn't obvious from the signature alone.
 - Add a trailing `//` comment to every numeric `#define`. State the units, the specific reason for the value, and what it controls. Format: `#define NAME VALUE // units; why this value; used as ...`. Bare names are never self-documenting for magic numbers — a reader should not have to grep callers to understand what `0.15f` or `24` means.
 - When changing a constant's value, update its trailing comment to explain why the value changed — what measurement, constraint, or incident forced the new value. The comment must reflect the current value, not the old one.

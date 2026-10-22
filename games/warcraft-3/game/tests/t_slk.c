@@ -497,7 +497,7 @@ TEST(wc3_slk, map_w3a_custom_rawcode_inherits_mechanics_and_authored_level) {
     caster->svflags |= SVF_MONSTER;
     target->svflags |= SVF_MONSTER; next->svflags |= SVF_MONSTER; last->svflags |= SVF_MONSTER;
     target->targtype = next->targtype = last->targtype = TARG_GROUND;
-    caster->heroabilities[0] = (heroability_t){ .code = id, .level = 5 };
+    caster->unit_state->ranks[0] = (heroability_t){ .code = id, .level = 5 };
     target->health.value = target->health.max_value = 1000.0f;
     next->health.value = next->health.max_value = 1000.0f;
     last->health.value = last->health.max_value = 1000.0f;

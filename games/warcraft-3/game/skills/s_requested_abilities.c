@@ -24,9 +24,9 @@ typedef struct {
 
 bool S_UnitHasStatus(edict_t const *unit, uint32_t code) {
     if (!unit) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == code &&
-            (!unit->abilstatus[i].timestamp || unit->abilstatus[i].timestamp > G_Time())) return true;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == code &&
+            (!unit->unit_state->statuses[i].timestamp || unit->unit_state->statuses[i].timestamp > G_Time())) return true;
     return false;
 }
 
@@ -471,7 +471,7 @@ static void mass_teleport_cleanup(edict_t *thinker) {
                 break;
             }
         }
-        if (!newer_pause_owner) target->paused = false;
+        if (!newer_pause_owner) G_SetUnitFlag(target, UNIT_FLAG_PAUSED, false);
     }
     /* Owned effects are keyed to the thinker and may be retired repeatedly. */
     G_DestroyOwnedEffects(thinker);
@@ -559,14 +559,14 @@ BZ_ABILITY_PROC(CAbilityMassTeleport) {
         delay = MAX(0.0f, S_SpellData(spell->code, level, 2));
         thinker = S_SpellChannelTargetThinker(ent, spell->code, target);
         thinker->variation = level;
-        thinker->wait = target->paused ? 1.0f : 0.0f;
+        thinker->wait = G_UnitHasFlag(target, UNIT_FLAG_PAUSED) ? 1.0f : 0.0f;
         thinker->freetime = G_Time() + (uint32_t)(delay * 1000.0f);
         thinker->think = mass_teleport_think;
 
         G_SpawnOwnedAbilityEffectAtPoint(thinker, spell->code, WC3_EFFECT_AREA_EFFECT, 0, &ent->s.origin2);
         G_SpawnOwnedAbilityEffectAtPoint(thinker, spell->code, WC3_EFFECT_AREA_EFFECT, 0, &target->s.origin2);
         G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, ent, NULL, true);
-        target->paused = true;
+        G_SetUnitFlag(target, UNIT_FLAG_PAUSED, true);
         mass_teleport_think(thinker);
         return true;
     }
@@ -713,7 +713,7 @@ static void animate_dead_execute(edict_t *caster, spellTarget_t st, abilityitem_
         /* Hre2 / ABILITY_BLF_RAISED_UNITS_ARE_INVULNERABLE is authored
          * per Resurrection-family ability. Grant it when requested without
          * forcibly clearing other invulnerability sources when it is false. */
-        if (raised_invulnerable) selected->invulnerable = true;
+        if (raised_invulnerable) G_SetUnitFlag(selected, UNIT_FLAG_INVULNERABLE, true);
         selected->s.player = caster->s.player; selected->owner = caster;
         selected->summon_ability = spell->code;
         S_SpellApplyTimedLife(selected, level, duration);
@@ -930,7 +930,7 @@ static void resurrection_execute(edict_t *caster, spellTarget_t st, abilityitem_
             if (corpse_preferred(target, selected, caster, true)) selected = target;
         if (!selected) break;
         G_ReviveCorpse(selected, 1.0f);
-        if (raised_invulnerable) selected->invulnerable = true;
+        if (raised_invulnerable) G_SetUnitFlag(selected, UNIT_FLAG_INVULNERABLE, true);
         G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, selected, NULL, true);
         count++;
     }

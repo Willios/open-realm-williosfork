@@ -33,9 +33,9 @@ static cstring_t human_buff(abilityitem_t const *spell, uint32_t level) {
 static bool human_has_status(edict_t const *ent, uint32_t code) { return G_UnitStatusLevel(ent, code) != 0; }
 
 static void human_remove_status(edict_t *ent, uint32_t code) {
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (ent->abilstatus[i].level && ent->abilstatus[i].code == code)
-            unit_removestatus(ent, ent->abilstatus + i, STATUS_REMOVE_SCRIPT);
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (ent->unit_state->statuses[i].level && ent->unit_state->statuses[i].code == code)
+            unit_removestatus(ent, ent->unit_state->statuses + i, STATUS_REMOVE_SCRIPT);
 }
 
 static bool defend_projectile_reaction(edict_t *projectile);
@@ -96,7 +96,7 @@ static void avatar_expire_internal(edict_t *unit, bool remove_buff) {
     if (!unit || !unit->avatar || !unit->avatar->level) return;
     G_ApplyTemporaryArmorBonus(unit, -unit->avatar->armor);
     G_ApplyTemporaryAttackDamageBonus(unit, -(float)unit->avatar->damage);
-    unit->temporary_health_bonus -= unit->avatar->health;
+    unit->unit_state->temporary_health_bonus -= unit->avatar->health;
     unit->health.max_value = MAX(1.0f, unit->health.max_value - unit->avatar->health);
     G_SetHealth(unit, MIN(unit->health.value, unit->health.max_value));
     G_FreeAvatar(unit);
@@ -133,7 +133,7 @@ static void avatar_execute(edict_t *caster, spellTarget_t target, abilityitem_t 
     caster->avatar->health = S_SpellData(spell->code, rank, 2); caster->avatar->damage = (int32_t)S_SpellData(spell->code, rank, 3);
     G_ApplyTemporaryArmorBonus(caster, caster->avatar->armor);
     G_ApplyTemporaryAttackDamageBonus(caster, (float)caster->avatar->damage);
-    caster->temporary_health_bonus += caster->avatar->health;
+    caster->unit_state->temporary_health_bonus += caster->avatar->health;
     caster->health.max_value = MAX(1.0f, caster->health.max_value + caster->avatar->health);
     G_SetHealth(caster, MIN(caster->health.max_value, caster->health.value + MAX(0.0f, caster->avatar->health)));
     G_AddUnitAnimationProperties(caster, "alternate", true); G_InvalidateUnitInfoPanel(caster);
@@ -150,8 +150,8 @@ static uint32_t shackles_buff(uint32_t code, uint32_t rank) {
 
 static heroabilitystatus_t *shackles_find_status_instance(edict_t *target, uint32_t code, uint32_t instance_id) {
     if (!target || !code || !instance_id) return NULL;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *slot = target->abilstatus + i;
+    FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *slot = target->unit_state->statuses + i;
         if (slot->level && slot->code == code && slot->instance_id == instance_id) return slot;
     }
     return NULL;
@@ -186,7 +186,7 @@ static void control_magic_execute(edict_t *caster, spellTarget_t st, abilityitem
 
 static bool cloud_validate(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
     (void)spell;
-    return st.entity && G_UnitIsStructure(st.entity) && st.entity->attack1.type != ATK_NONE &&
+    return st.entity && G_UnitIsStructure(st.entity) && st.entity->unit_state->attack1.type != ATK_NONE &&
            S_SpellIsEnemy(caster, st.entity);
 }
 
@@ -231,8 +231,8 @@ static bool invisibility_validate(edict_t *caster, spellTarget_t st, abilityitem
         S_SpellHeroDuration(spell->code, level, st.entity) <= 0.0f) return false;
     has_slot = unit_findstatus(st.entity, *((uint32_t const *)buff)) != NULL;
     if (has_slot) return true;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (!st.entity->abilstatus[i].level) return true;
+    FOR_LOOP(i, st.entity->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (!st.entity->unit_state->statuses[i].level) return true;
     return false;
 }
 
@@ -323,7 +323,7 @@ void S_PolymorphRemove(edict_t *unit) {
         G_ClearUnitOrderQueue(unit);
         unit_leavecombat(unit);
         unit->goalentity = NULL;
-        unit->secondarygoal = NULL;
+        unit->orders->resource_goal = NULL;
         unit_stand(unit);
     }
     client = G_GetPlayerClientByNumber(unit->s.player);
@@ -398,7 +398,7 @@ static void polymorph_execute(edict_t *caster, spellTarget_t st, abilityitem_t c
     S_SpellCancelChannel(st.entity);
     unit_leavecombat(st.entity);
     st.entity->goalentity = NULL;
-    st.entity->secondarygoal = NULL;
+    st.entity->orders->resource_goal = NULL;
     st.entity->animation = NULL;
     unit_stand(st.entity);
     {
@@ -496,8 +496,8 @@ static bool spell_steal_select(edict_t *caster, spellTarget_t st, abilityitem_t 
     if (!positive && !negative) return false;
     now = G_Time(); level = S_SpellLevel(caster, spell->code);
     area = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = st.entity->abilstatus + i;
+    FOR_LOOP(i, st.entity->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = st.entity->unit_state->statuses + i;
         char buff[5];
         edict_t *receiver = NULL;
         bool source_positive;
@@ -566,7 +566,7 @@ static void spell_steal_execute(edict_t *caster, spellTarget_t st, abilityitem_t
         switch (msg) { \
         case A_VALIDATE: return VALIDATE; \
         case A_EXECUTE: EXECUTE(ent, target, call ? call->item : NULL); return true; \
-        case A_AUTOCAST_ON: return ent && ent->autocast_code == code; \
+        case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code; \
         case A_AUTOCAST_SET: return true; \
         case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, FRIENDLY, WOUNDED, 900.0f); \
         default: return CAbilitySimpleSpell(ent, msg, call); \
@@ -598,7 +598,7 @@ BZ_ABILITY_PROC(CAbilityDefend) {
         if (!call || !call->item || !G_UnitAbilityResearchAvailable(ent, code)) return false;
         human_toggle_execute(ent, target, call->item);
         return true;
-    case A_PROJECTILE_HIT: return defend_projectile_reaction(call ? call->projectile : NULL);
+    case A_PROJECTILE_HIT: return defend_projectile_reaction(call ? call->entity : NULL);
     default: return CAbilitySimpleSpell(ent, msg, call);
     }
 }
@@ -638,10 +638,10 @@ void S_DispelMagicArea(edict_t *caster, uint32_t code, uint32_t level, vec2_t co
     FILTER_EDICTS(target, S_SpellIsAliveTarget(target) &&
                   Vector2_distance(&target->s.origin2, point) <= area) {
         uint32_t target_removed = 0;
-        FOR_LOOP(i, MAX_UNIT_STATUSES) {
-            if (target->abilstatus[i].level && target->abilstatus[i].timestamp) {
-                if (!unit_status_can_magic_dispel(&target->abilstatus[i])) continue;
-                unit_removestatus_deferred(target, target->abilstatus + i, STATUS_REMOVE_DISPEL);
+        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) {
+            if (target->unit_state->statuses[i].level && target->unit_state->statuses[i].timestamp) {
+                if (!unit_status_can_magic_dispel(&target->unit_state->statuses[i])) continue;
+                unit_removestatus_deferred(target, target->unit_state->statuses + i, STATUS_REMOVE_DISPEL);
                 removed++; target_removed++;
             }
         }
@@ -752,12 +752,12 @@ static bool defend_projectile_reaction(edict_t *projectile) {
      * to the shared basic-attack projectile contract. A returned missile may
      * hit its source, but cannot be reflected recursively. */
     if (!projectile || projectile->movetype != MOVETYPE_FLYMISSILE || projectile->currentmove ||
-        projectile->projectile_reflected || !(attacker = projectile->owner) || !attacker->inuse ||
+        !projectile->missile || projectile->missile->reflected || !(attacker = projectile->owner) || !attacker->inuse ||
         !(target = projectile->goalentity) || !target->inuse ||
         !(level = G_UnitStatusLevel(target, MAKEFOURCC('A','d','e','f')))) return false;
     if (game.constants.combatConstantsLoaded && !game.constants.defendDeflection) return false;
 
-    attack_type = projectile->projectile_attack_type;
+    attack_type = projectile->missile->attack_type;
     if (attack_type == ATK_PIERCE)
         deflect_factor = S_SpellData(MAKEFOURCC('A','d','e','f'), level, 7);
     else if (attack_type == ATK_MAGIC || attack_type == ATK_SPELLS)
@@ -783,7 +783,7 @@ static bool defend_projectile_reaction(edict_t *projectile) {
         if (damage > 0) T_Damage(target, attacker, damage);
     }
 
-    projectile->projectile_reflected = true;
+    projectile->missile->reflected = true;
     if (G_UnitIsStructure(attacker)) {
         /* Retail Defend may block a tower's shot but does not send the missile
          * back into the structure. The successful reaction consumes the shot. */
@@ -802,22 +802,22 @@ int S_HumanAttackDamage(edict_t *attacker, edict_t *target, int damage) {
     if ((level = G_UnitStatusLevel(attacker, MAKEFOURCC('B','i','n','f'))))
         damage = (int)(damage * (1.0f + S_SpellData(MAKEFOURCC('A','i','n','f'), level, 1)));
     damage = S_FeedbackDamage(attacker, target, damage);
-    if ((level = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','f','s','h'))) && target->defense_type <= 2)
-        damage += (int)S_SpellData(MAKEFOURCC('A','f','s','h'), level, 3 + target->defense_type);
+    if ((level = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','f','s','h'))) && target->unit_state->defense_type <= 2)
+        damage += (int)S_SpellData(MAKEFOURCC('A','f','s','h'), level, 3 + target->unit_state->defense_type);
     /* Defend Data B scales the defender's own attacks while the stance is
      * active. Data A reduces non-deflected Piercing hits; Data E does the same
      * for Magic/Spells. Projectile deflection itself happens in g_phys.c so a
      * successful shot can keep travelling back to its source. */
     if ((level = G_UnitStatusLevel(attacker, MAKEFOURCC('A','d','e','f'))))
         damage = (int)((float)damage * MAX(0.0f, S_SpellData(MAKEFOURCC('A','d','e','f'), level, 2)));
-    return defend_damage_taken(target, attacker->attack1.type, damage);
+    return defend_damage_taken(target, attacker->unit_state->attack1.type, damage);
 }
 
 void S_HumanAttackSplash(edict_t *attacker, edict_t *target, int damage) {
     uint32_t flak = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','f','l','k'));
     uint32_t barrage = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','r','o','c'));
     uint32_t storm = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','s','t','h'));
-    float radius = storm ? attacker->attack1.areaSmall : flak ? S_SpellData(MAKEFOURCC('A','f','l','k'), flak, 2) :
+    float radius = storm ? attacker->unit_state->attack1.areaSmall : flak ? S_SpellData(MAKEFOURCC('A','f','l','k'), flak, 2) :
                    barrage ? S_SpellNumber(MAKEFOURCC('A','r','o','c'), ABILITY_NUMBER_AREA, barrage) : 0.0f;
     uint32_t count = 0, limit = barrage ? (uint32_t)S_SpellData(MAKEFOURCC('A','r','o','c'), barrage, 3) : UINT_MAX;
     if (radius <= 0.0f) return;
@@ -828,16 +828,16 @@ void S_HumanAttackSplash(edict_t *attacker, edict_t *target, int damage) {
         if (flak) splash = distance <= S_SpellData(MAKEFOURCC('A','f','l','k'), flak, 1) ?
             S_SpellData(MAKEFOURCC('A','f','l','k'), flak, 3) : S_SpellData(MAKEFOURCC('A','f','l','k'), flak, 4);
         else if (barrage) splash = S_SpellData(MAKEFOURCC('A','r','o','c'), barrage, 1);
-        else if (distance > attacker->attack1.areaMedium) splash *= attacker->attack1.factorSmall;
-        else if (distance > attacker->attack1.areaFull) splash *= attacker->attack1.factorMedium;
+        else if (distance > attacker->unit_state->attack1.areaMedium) splash *= attacker->unit_state->attack1.factorSmall;
+        else if (distance > attacker->unit_state->attack1.areaFull) splash *= attacker->unit_state->attack1.factorMedium;
         T_Damage(other, attacker, (int)MAX(1.0f, splash)); count++;
     }
 }
 
 void S_HumanBreakInvisibility(edict_t *unit) {
     if (!unit) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = unit->unit_state->statuses + i;
         if (status->level && status->code != MAKEFOURCC('B','O','w','k') &&
             S_UnitStatusIsTemporaryInvisibility(status))
             unit_expirestatus(unit, status);

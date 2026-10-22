@@ -152,7 +152,7 @@ void G_UpdateRallyIndicator(gameClient_t *client) {
     indicator->s.renderfx = RF_NO_FOGOFWAR;
     indicator->s.flags = EF_NOT_SELECTABLE;
     indicator->svflags = SVF_OWNER_ONLY;
-    indicator->rally_indicator = true;
+    G_SetUnitFlag(indicator, UNIT_FLAG_RALLY_INDICATOR, true);
     indicator->owner = clent;
     indicator->goalentity = type == RALLY_TARGET_POINT ? NULL : target;
     indicator->movetype = indicator->goalentity ? MOVETYPE_LINK : MOVETYPE_NONE;

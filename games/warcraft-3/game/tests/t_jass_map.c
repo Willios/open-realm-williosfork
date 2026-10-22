@@ -733,7 +733,9 @@ TEST(wc3_jass_map, human07_normal_removal_is_absent_from_green_building_count) {
     T_ASSERT(G_UnitIsBuilding(town_hall->class_id));
     /* The fixture has simulation metadata for these structures but no model
      * rows, so provide the live-unit state that SP_SpawnUnit supplies. */
+    G_InitUnitOrders(crypt);
     crypt->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(town_hall);
     town_hall->svflags |= SVF_MONSTER;
     crypt->s.flags |= EF_BUILDING;
     town_hall->s.flags |= EF_BUILDING;
@@ -810,7 +812,9 @@ TEST(wc3_jass_map, human04_cancel_replaces_townhall_after_difficulty_removal) {
     }
     T_NOT_NULL(crypt); T_NOT_NULL(old_town_hall);
     if (!crypt || !old_town_hall) goto cleanup;
+    G_InitUnitOrders(crypt);
     crypt->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(old_town_hall);
     old_town_hall->svflags |= SVF_MONSTER;
     game.clients[0].ps.rdflags |= RDF_NOFOG;
     jass_callbyname(level.vm, "Human04DifficultyNormal", false);
@@ -830,6 +834,7 @@ TEST(wc3_jass_map, human04_cancel_replaces_townhall_after_difficulty_removal) {
     T_ASSERT(replacement && replacement->inuse);
     if (replacement) {
         replacement->s.player = 0;
+        G_InitUnitOrders(replacement);
         replacement->svflags |= SVF_MONSTER;
         replacement->health.value = replacement->health.max_value = 1000.0f;
         T_ASSERT(G_UnitCanBeSelected(&game.clients[0], replacement));

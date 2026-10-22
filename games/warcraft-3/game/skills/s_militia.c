@@ -14,8 +14,8 @@ static uint32_t militia_actor_ability_alias(edict_t *ent, uint32_t base_code) {
             if (G_AbilityCode(code) == base_code) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const code = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.added[i];
         if (!code) continue;
         memcpy(alias, &code, 4);
         if (G_ActorHasSkill(ent, alias) && G_AbilityCode(code) == base_code) return code;
@@ -25,8 +25,8 @@ static uint32_t militia_actor_ability_alias(edict_t *ent, uint32_t base_code) {
 
 static bool militia_actor_ability_removed(edict_t *ent, uint32_t base_code) {
     if (!ent) return false;
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.removed)) {
-        uint32_t const code = ent->abilities.removed[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.removed) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.removed[i];
         if (code && G_AbilityCode(code) == base_code) return true;
     }
     return false;
@@ -96,7 +96,7 @@ static void militia_sync_form(edict_t *unit, uint32_t ability) {
 
 static bool militia_partner_valid(edict_t *worker, edict_t *hall) {
     if (!worker || !hall || !hall->inuse || M_IsDead(worker) || M_IsDead(hall)) return false;
-    if (worker->s.player != hall->s.player || worker->paused || hall->paused) return false;
+    if (worker->s.player != hall->s.player || G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) return false;
     if (hall != worker->militia->partner || hall->spawn_time != worker->militia->partner_spawn_time) return false;
     if (!militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'))) return false;
     return militia_hall_ability_alias(hall, false) != 0;
@@ -135,9 +135,9 @@ static bool militia_prepare_approach(edict_t *worker, edict_t *hall) {
 
 static returnResource_t militia_previous_resource(edict_t *worker) {
     if (!worker) return 0;
-    if (worker->harvested_gold || (worker->currentmove && worker->currentmove->proc == CAbilityGoldMine))
+    if ((worker->harvest ? worker->harvest->gold : 0) || (worker->currentmove && worker->currentmove->proc == CAbilityGoldMine))
         return RETURN_RESOURCE_GOLD;
-    if (worker->harvested_lumber || (worker->currentmove && worker->currentmove->proc == CAbilityHarvest))
+    if ((worker->harvest ? worker->harvest->lumber : 0) || (worker->currentmove && worker->currentmove->proc == CAbilityHarvest))
         return RETURN_RESOURCE_LUMBER;
     return 0;
 }
@@ -146,23 +146,23 @@ static void militia_return_carried_resources(edict_t *worker) {
     player_t *player;
 
     if (!worker || !(player = G_GetPlayerByNumber(worker->s.player))) return;
-    if (worker->harvested_gold) {
+    if ((worker->harvest ? worker->harvest->gold : 0)) {
         G_CreditResourceIncome(player, worker, PLAYERSTATE_RESOURCE_GOLD,
-                               (int32_t)worker->harvested_gold);
+                               (int32_t)(worker->harvest ? worker->harvest->gold : 0));
         S_SetCarriedResource(worker, RETURN_RESOURCE_GOLD, 0);
     }
-    if (worker->harvested_lumber) {
+    if ((worker->harvest ? worker->harvest->lumber : 0)) {
         G_CreditResourceIncome(player, worker, PLAYERSTATE_RESOURCE_LUMBER,
-                               (int32_t)worker->harvested_lumber);
+                               (int32_t)(worker->harvest ? worker->harvest->lumber : 0));
         S_SetCarriedResource(worker, RETURN_RESOURCE_LUMBER, 0);
     }
 }
 
 static void militia_remove_buff(edict_t *unit) {
     uint32_t const code = MAKEFOURCC('B','m','i','l');
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == code)
-            unit_removestatus(unit, unit->abilstatus + i, STATUS_REMOVE_TRANSFORM);
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == code)
+            unit_removestatus(unit, unit->unit_state->statuses + i, STATUS_REMOVE_TRANSFORM);
     }
 }
 
@@ -250,7 +250,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
     }
     distance = M_DistanceToGoal(worker);
     step = unit_movedistance(worker);
-    if (move_is_blocked(worker, distance, step) || worker->movement.flow_unreachable) {
+    if (move_is_blocked(worker, distance, step) || worker->movement->flow_unreachable) {
         militia_clear_pairing(worker);
         worker->goalentity = NULL;
         move_reset_progress(worker);
@@ -258,7 +258,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
         return;
     }
     unit_changeangle_for_radius(worker, worker->collision);
-    if (worker->movement.flow_goal_reached && !militia_in_range(worker, hall)) {
+    if (worker->movement->flow_goal_reached && !militia_in_range(worker, hall)) {
         militia_clear_pairing(worker);
         worker->goalentity = NULL;
         move_reset_progress(worker);
@@ -268,7 +268,7 @@ static void ai_militia_pair_walk(edict_t *worker) {
     unit_moveindirection(worker);
 }
 
-static umove_t militia_move_walk = { "walk", ai_militia_pair_walk, NULL, CAbilityMilitia };
+static umove_t militia_move_walk = { "walk", ai_militia_pair_walk, NULL, CAbilityMilitia, .travel = true };
 
 bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     uint32_t worker_ability;
@@ -283,7 +283,7 @@ bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     if (worker->s.player != hall->s.player) {
         return false;
     }
-    if (worker->paused || hall->paused) {
+    if (G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) {
         return false;
     }
     if (!militia_hall_ability_alias(hall, true)) {
@@ -311,7 +311,7 @@ bool S_MilitiaTargetOrder(edict_t *worker, cstring_t order, edict_t *hall) {
     worker->militia->partner = hall;
     worker->militia->partner_spawn_time = hall->spawn_time;
     worker->militia->returning = returning;
-    worker->movement.holding_position = false;
+    worker->orders->holding_position = false;
     if (militia_in_range(worker, hall)) {
         bool const transformed = returning ? militia_transform_back(worker, true) : militia_transform_forward(worker);
         if (!transformed) S_CancelMilitiaPairing(worker);
@@ -348,7 +348,7 @@ static edict_t *militia_find_partner(edict_t *worker, uint32_t worker_ability) {
 
         if (hall->s.player != worker->s.player) continue;
         if (!G_UnitIsStructure(hall)) continue;
-        if (M_IsDead(hall) || hall->paused) continue;
+        if (M_IsDead(hall) || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) continue;
         hall_ability = militia_hall_ability_alias(hall, true);
         if (!hall_ability) continue;
         distance = Vector2_distance(&worker->s.origin2, &hall->s.origin2);
@@ -379,7 +379,7 @@ static void militia_cmd(edict_t *clent) {
         uint32_t const ability = militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'));
         edict_t *hall;
         cstring_t order;
-        if (!ability || worker->paused || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) {
+        if (!ability || G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) {
             continue;
         }
         militia_sync_form(worker, ability);
@@ -424,10 +424,10 @@ BZ_COMMAND_PROC(AbilityMilitiaConvert) {
     FOR_CONTROLLABLE_SELECTED_UNITS(client, hall) {
         uint32_t const hall_ability = militia_hall_ability_alias(hall, true);
         float radius;
-        if (!hall_ability || hall->paused) continue;
+        if (!hall_ability || G_UnitHasFlag(hall, UNIT_FLAG_PAUSED)) continue;
         radius = S_MilitiaPairSearchRadius(hall_ability);
         FILTER_EDICTS(worker, worker->inuse && (worker->svflags & SVF_MONSTER) && !M_IsDead(worker) &&
-                      !worker->paused && worker->s.player == hall->s.player) {
+                      !G_UnitHasFlag(worker, UNIT_FLAG_PAUSED) && worker->s.player == hall->s.player) {
             uint32_t const worker_ability = militia_actor_ability_alias(worker, MAKEFOURCC('A','m','i','l'));
             float const distance = Vector2_distance(&worker->s.origin2, &hall->s.origin2);
             if (!worker_ability || (worker->militia && worker->militia->partner) || S_GoldMineWorkerIsInside(worker)) continue;
@@ -448,7 +448,7 @@ BZ_COMMAND_PROC(AbilityMilitiaConvert) {
 
 BZ_ABILITY_PROC(CAbilityMilitia) {
     switch (msg) {
-    case A_COMMAND: militia_cmd(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: militia_cmd(call && call->entity ? call->entity : ent); return true;
     case A_TOGGLE_ON: return militia_toggle_on(ent);
     default: return false;
     }

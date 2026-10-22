@@ -28,9 +28,9 @@ static void apply_stat(edict_t *unit, uint32_t code, float sign) {
     if (!G_UnitIsHero(unit)) {
         return;
     }
-    unit->hero.str = (uint32_t)MAX(0, (int32_t)unit->hero.str + (int32_t)str);
-    unit->hero.agi = (uint32_t)MAX(0, (int32_t)unit->hero.agi + (int32_t)agi);
-    unit->hero.intel = (uint32_t)MAX(0, (int32_t)unit->hero.intel + (int32_t)intel);
+    unit->unit_state->hero.str = (uint32_t)MAX(0, (int32_t)unit->unit_state->hero.str + (int32_t)str);
+    unit->unit_state->hero.agi = (uint32_t)MAX(0, (int32_t)unit->unit_state->hero.agi + (int32_t)agi);
+    unit->unit_state->hero.intel = (uint32_t)MAX(0, (int32_t)unit->unit_state->hero.intel + (int32_t)intel);
     G_RecomputeHeroStats(unit);
 }
 
@@ -110,7 +110,7 @@ void S_OrbOnHit(edict_t *attacker, edict_t *target) {
         if (G_UnitAbilityLevel(attacker, orb_codes[o])) orb_apply(attacker, target, orb_codes[o], seen, &count);
     if (!G_InventoryCanUseItems(attacker)) return;
     FOR_LOOP(i, MAX_INVENTORY) {
-        edict_t *item = attacker->inventory[i];
+        edict_t *item = G_InventoryItem(attacker, i);
         cstring_t abilities;
         if (!item) continue;
         abilities = G_ItemAbilityList(item);

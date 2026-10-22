@@ -32,8 +32,8 @@ static uint32_t ancient_root_ability(edict_t const *unit) {
             if (root_code(code) && G_ActorHasSkill(unit, token)) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(unit->abilities.added)) {
-        uint32_t code = unit->abilities.added[i];
+    FOR_LOOP(i, (unit->unit_state ? ARRAY_COUNT(unit->unit_state->overrides.added) : 0)) {
+        uint32_t code = unit->unit_state->overrides.added[i];
         if (!root_code(code)) continue;
         memcpy(name, &code, 4);
         if (G_ActorHasSkill(unit, name)) return code;
@@ -166,8 +166,8 @@ static uint32_t moon_well_alias(edict_t const * ent) {
                 return alias;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = ent->unit_state->overrides.added[i];
         if (!alias) continue;
         memcpy(token_code, &alias, 4);
         token_code[4] = '\0';
@@ -355,7 +355,7 @@ BZ_ABILITY_PROC(CAbilityManaBattery) {
     switch (msg) {
     case A_VALIDATE: return moon_well_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: moon_well_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return code && moon_well_autocast_acquire(ent, code);
     case A_UPDATE: moon_well_update_effect(ent); return true;
@@ -435,7 +435,7 @@ static void ancient_root_commit(edict_t *unit, bool rooted) {
         unit->runtime.flags |= UNIT_BALANCE_BUILDING;
         unit->s.flags |= EF_BUILDING;
         unit->movetype = MOVETYPE_NONE;
-        unit->defense_type = unit->ancient_root->rooted_defense_type;
+        unit->unit_state->defense_type = unit->ancient_root->rooted_defense_type;
         unit->s.angle = game.constants.rootAngle * (float)M_PI / 180.0f;
         G_AddUnitAnimationProperties(unit, "alternate", true);
         unit->ancient_root->mode = ANCIENT_ROOTED;
@@ -446,7 +446,7 @@ static void ancient_root_commit(edict_t *unit, bool rooted) {
         unit->s.flags &= ~EF_BUILDING;
         unit->movetype = MOVETYPE_STEP;
         if (unit->ancient_root->has_mobile_collision) unit->collision = unit->ancient_root->mobile_collision;
-        if (level) unit->defense_type = (uint32_t)level->data[3].number;
+        if (level) unit->unit_state->defense_type = (uint32_t)level->data[3].number;
         G_AddUnitAnimationProperties(unit, "alternate", false);
         unit->ancient_root->mode = ANCIENT_UPROOTED;
     }
@@ -519,7 +519,7 @@ static void ancient_root_command(edict_t *clent) {
         unit->ancient_root->mode = G_UnitIsStructure(unit) ? ANCIENT_ROOTED : ANCIENT_UPROOTED;
     }
     if (unit->ancient_root->mode == ANCIENT_ROOTED) {
-        if (unit->training || unit->construction || unit->build || G_BuildingUpgradeActive(unit)) {
+        if (G_UnitHasFlag(unit, UNIT_FLAG_TRAINING) || unit->construction || unit->build || G_BuildingUpgradeActive(unit)) {
             G_ShowCommandErrorKey(clent, "Cantrootunit", "Unable to uproot while this Ancient is busy.");
             return;
         }
@@ -573,7 +573,7 @@ static void ancient_root_update(edict_t *unit) {
             unit->runtime.flags |= UNIT_BALANCE_BUILDING;
             unit->s.flags |= EF_BUILDING;
             unit->movetype = MOVETYPE_NONE;
-            unit->defense_type = unit->ancient_root->rooted_defense_type;
+            unit->unit_state->defense_type = unit->ancient_root->rooted_defense_type;
             if (unit->ancient_root->has_rooted_collision) unit->collision = unit->ancient_root->rooted_collision;
         } else {
             unit->aiflags &= ~AI_IMMOBILE;
@@ -581,7 +581,7 @@ static void ancient_root_update(edict_t *unit) {
             unit->s.flags &= ~EF_BUILDING;
             unit->movetype = MOVETYPE_STEP;
             if (unit->ancient_root->has_mobile_collision) unit->collision = unit->ancient_root->mobile_collision;
-            if (level) unit->defense_type = (uint32_t)level->data[3].number;
+            if (level) unit->unit_state->defense_type = (uint32_t)level->data[3].number;
         }
         unit->s.collision = unit->collision;
         if (pathing_changed) {
@@ -617,7 +617,7 @@ BZ_ABILITY_PROC(CAbilityRoot) {
         if (ent && (!ent->ancient_root || ent->ancient_root->mode == ANCIENT_ROOT_UNINITIALIZED))
             ancient_root_update(ent);
         if (!strcmp(call->order, "unroot") && ent && ent->ancient_root && ent->ancient_root->mode == ANCIENT_ROOTED &&
-            !ent->training && !ent->construction && !ent->build && !G_BuildingUpgradeActive(ent)) {
+            !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) && !ent->construction && !ent->build && !G_BuildingUpgradeActive(ent)) {
             ent->ancient_root->destination = ent->s.origin2;
             S_ReleaseEntangledMineForTree(ent);
             S_AncientBeginMorph(ent, false);
@@ -626,7 +626,7 @@ BZ_ABILITY_PROC(CAbilityRoot) {
         return false;
     }
     switch (msg) {
-    case A_COMMAND: ancient_root_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: ancient_root_command(call && call->entity ? call->entity : ent); return true;
     case A_UPDATE: ancient_root_update(ent); return true;
     case A_MOVE_LEAVE:
         if (ent && ent->ancient_root && !ent->ancient_root->approaching &&

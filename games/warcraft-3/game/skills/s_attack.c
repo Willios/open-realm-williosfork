@@ -30,7 +30,7 @@ static bool attack_target_out_of_range(edict_t *ent);
 static bool attack_target_out_of_base_range(edict_t *ent);
 static bool attack_target_too_close(edict_t *ent);
 static bool attack_is_cooling_down(edict_t const *ent);
-static bool attack_cooldown_elapsed(edict_t *ent, bool tick_recovery);
+static bool attack_cooldown_elapsed(edict_t *ent);
 static float attack_speed_divisor(edict_t *self);
 static void attack_set_backswing_deadline(edict_t *ent);
 static float attack_backswing_remaining(edict_t const *ent);
@@ -52,7 +52,7 @@ typedef struct {
 
 bool S_UnitAttackSlotEnabled(edict_t const *attacker, uint32_t slot) {
     uint32_t enabled;
-    if (!attacker || slot >= 2) return false;
+    if (!attacker || !attacker->unit_state || slot >= 2) return false;
     enabled = attacker->data.UnitWeapons ? attacker->data.UnitWeapons->attacksEnabled : 0;
     if (S_AncientHasRootAbility(attacker)) {
         /* Root/Unroot transitions must not retain an attack order from the
@@ -69,30 +69,30 @@ static unitAttack_t const *attack_profile(edict_t const *attacker, edict_t const
     uint32_t flag = target ? G_TargetFlagForType(G_UnitTargetType(target)) : 0;
     uint32_t retaliation = S_AncientIsRooted(attacker) ? S_AncientRetaliationAttackMask(attacker) : 0;
     if (attacker && target && target->destructable && target->targtype == TARG_TREE) {
-        if (attacker->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0)) return &attacker->attack1;
-        if (attacker->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1)) return &attacker->attack2;
+        if (attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0)) return &attacker->unit_state->attack1;
+        if (attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1)) return &attacker->unit_state->attack2;
     }
     /* Target eligibility and active weapon selection must agree for Ethereal
      * victims, including dual-weapon units and rooted Ancient retaliation. */
     if (attacker && target && flag && unit_hasstatusstate(target, WC3_STATUS_STATE_ETHEREAL)) {
-        if (attacker->attack1.type == ATK_MAGIC && (attacker->attack1.targetsAllowed & flag) &&
-            (S_UnitAttackSlotEnabled(attacker, 0) || (retaliation & 1u))) return &attacker->attack1;
-        if (attacker->attack2.type == ATK_MAGIC && (attacker->attack2.targetsAllowed & flag) &&
-            (S_UnitAttackSlotEnabled(attacker, 1) || (retaliation & 2u))) return &attacker->attack2;
-        return &attacker->attack1; /* Callers reject unqualified targets. */
+        if (attacker->unit_state->attack1.type == ATK_MAGIC && (attacker->unit_state->attack1.targetsAllowed & flag) &&
+            (S_UnitAttackSlotEnabled(attacker, 0) || (retaliation & 1u))) return &attacker->unit_state->attack1;
+        if (attacker->unit_state->attack2.type == ATK_MAGIC && (attacker->unit_state->attack2.targetsAllowed & flag) &&
+            (S_UnitAttackSlotEnabled(attacker, 1) || (retaliation & 2u))) return &attacker->unit_state->attack2;
+        return &attacker->unit_state->attack1; /* Callers reject unqualified targets. */
     }
-    if (attacker && flag && attacker->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) &&
-        (attacker->attack1.targetsAllowed & flag)) return &attacker->attack1;
-    if (attacker && flag && attacker->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) &&
-        (attacker->attack2.targetsAllowed & flag)) return &attacker->attack2;
+    if (attacker && flag && attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) &&
+        (attacker->unit_state->attack1.targetsAllowed & flag)) return &attacker->unit_state->attack1;
+    if (attacker && flag && attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) &&
+        (attacker->unit_state->attack2.targetsAllowed & flag)) return &attacker->unit_state->attack2;
     /* Rooted Ancients may retaliate with their weapon profile even when Root's
      * authored mask disables player-issued attacks; explicit orders are still
      * validated by S_AttackCanTarget before this profile is selected. */
-    if (attacker && flag && retaliation && attacker->attack1.type != ATK_NONE && (retaliation & 1u) &&
-        (attacker->attack1.targetsAllowed & flag)) return &attacker->attack1;
-    if (attacker && flag && retaliation && attacker->attack2.type != ATK_NONE && (retaliation & 2u) &&
-        (attacker->attack2.targetsAllowed & flag)) return &attacker->attack2;
-    return attacker ? &attacker->attack1 : NULL;
+    if (attacker && flag && retaliation && attacker->unit_state->attack1.type != ATK_NONE && (retaliation & 1u) &&
+        (attacker->unit_state->attack1.targetsAllowed & flag)) return &attacker->unit_state->attack1;
+    if (attacker && flag && retaliation && attacker->unit_state->attack2.type != ATK_NONE && (retaliation & 2u) &&
+        (attacker->unit_state->attack2.targetsAllowed & flag)) return &attacker->unit_state->attack2;
+    return attacker ? &attacker->unit_state->attack1 : NULL;
 }
 #define ACTIVE_ATTACK(ent) attack_profile((ent), (ent)->goalentity)
 
@@ -114,7 +114,8 @@ void fire_rocket(edict_t *ent, rocketDesc_t const *desc) {
     G_InheritUnitTeamColor(rocket, ent);
     rocket->velocity = desc->speed / 1000.f;
     rocket->damage = desc->damage;
-    rocket->projectile_attack_type = desc->attack_type;
+    G_InitMissile(rocket);
+    rocket->missile->attack_type = desc->attack_type;
     if (desc->fixed_target) {
         rocket->aiflags |= AI_PROJECTILE_FIXED_TARGET;
         if (!rocket->channel) rocket->channel = G_AllocChannel();
@@ -197,7 +198,7 @@ static uint32_t attack_retaliation_mask(edict_t const *ent) {
 }
 
 static bool attack_mask_has_weapon(edict_t const *ent, uint32_t mask) {
-    return ((mask & 1u) && ent->attack1.type != ATK_NONE) || ((mask & 2u) && ent->attack2.type != ATK_NONE);
+    return ((mask & 1u) && ent->unit_state->attack1.type != ATK_NONE) || ((mask & 2u) && ent->unit_state->attack2.type != ATK_NONE);
 }
 
 static bool can_attack(edict_t const *ent) {
@@ -217,16 +218,16 @@ static bool attack_can_target_mask(edict_t const *attacker, edict_t const *targe
         !attack_mask_has_weapon(attacker, mask) || S_UnitIsCycloned(target) ||
         unit_hasstatusstate(attacker, WC3_STATUS_STATE_ETHEREAL) ||
         (unit_hasstatusstate(target, WC3_STATUS_STATE_ETHEREAL) &&
-         !(((mask & 1u) && attacker->attack1.type == ATK_MAGIC &&
-             (attacker->attack1.targetsAllowed & G_TargetFlagForType(G_UnitTargetType(target)))) ||
-           ((mask & 2u) && attacker->attack2.type == ATK_MAGIC &&
-             (attacker->attack2.targetsAllowed & G_TargetFlagForType(G_UnitTargetType(target))))))) return false;
+         !(((mask & 1u) && attacker->unit_state->attack1.type == ATK_MAGIC &&
+             (attacker->unit_state->attack1.targetsAllowed & G_TargetFlagForType(G_UnitTargetType(target)))) ||
+           ((mask & 2u) && attacker->unit_state->attack2.type == ATK_MAGIC &&
+             (attacker->unit_state->attack2.targetsAllowed & G_TargetFlagForType(G_UnitTargetType(target))))))) return false;
     if (S_UnitIsHiddenFromPlayer(target, attacker->s.player)) return false;
     if (target->destructable) return G_DestructableCanBeAttackedBy(attacker, target);
     if (M_IsDead((edict_t *)target)) return false;
     flag = G_TargetFlagForType(G_UnitTargetType(target));
-    return flag && (((mask & 1u) && attacker->attack1.type != ATK_NONE && (attacker->attack1.targetsAllowed & flag)) ||
-                    ((mask & 2u) && attacker->attack2.type != ATK_NONE && (attacker->attack2.targetsAllowed & flag)));
+    return flag && (((mask & 1u) && attacker->unit_state->attack1.type != ATK_NONE && (attacker->unit_state->attack1.targetsAllowed & flag)) ||
+                    ((mask & 2u) && attacker->unit_state->attack2.type != ATK_NONE && (attacker->unit_state->attack2.targetsAllowed & flag)));
 }
 
 bool S_AttackCanTarget(edict_t const *attacker, edict_t const *target) {
@@ -252,25 +253,25 @@ static void attack_finish_after_combat(edict_t *attacker, edict_t const *target,
         target ? (char)((target->class_id >> 8) & 255) : '-',
         target ? (char)((target->class_id >> 16) & 255) : '-',
         target ? (char)((target->class_id >> 24) & 255) : '-',
-        target && attacker->attack_target_spawn_time == target->spawn_time,
+        target && attacker->unit_state->attack_target_spawn_time == target->spawn_time,
         target ? Vector2_distance(&attacker->s.origin2, &target->s.origin2) : 0.0f,
-        attacker->movement.attackmove_waypoint != NULL,
-        attacker->movement.patrol_a != NULL, attacker->movement.follow_target != NULL);
+        attacker->orders->attackmove_waypoint != NULL,
+        attacker->orders->patrol_a != NULL, attacker->orders->follow_target != NULL);
     unit_leavecombat(attacker);
     attacker->goalentity = NULL;
-    attacker->attack_target_spawn_time = 0;
-    attacker->movement.explicit_allied_attack = false;
+    attacker->unit_state->attack_target_spawn_time = 0;
+    attacker->orders->explicit_allied_attack = false;
     if (G_BuildingIsUnsummoning(attacker)) {
         attacker->currentmove = NULL;
         attacker->animation = NULL;
         attacker->wait = 0;
         return;
     }
-    if (attacker->movement.patrol_a) {
+    if (attacker->orders->patrol_a) {
         order_patrol_resume(attacker);
-    } else if (attacker->movement.attackmove_waypoint) {
-        order_attackmove(attacker, attacker->movement.attackmove_waypoint);
-    } else if (attacker->movement.follow_target) {
+    } else if (attacker->orders->attackmove_waypoint) {
+        order_attackmove(attacker, attacker->orders->attackmove_waypoint);
+    } else if (attacker->orders->follow_target) {
         order_follow_resume(attacker);
     } else if (G_CreepGuardCombatEnd(attacker)) {
         return;
@@ -286,12 +287,12 @@ static bool attack_stop_if_target_invalid(edict_t *attacker) {
     bool allied = attacker && target && attacker->s.player < MAX_PLAYERS &&
         target->s.player < MAX_PLAYERS && attacker->s.player != target->s.player &&
         G_PlayerTreatsPlayerAsAlly(attacker->s.player, target->s.player) &&
-        !attacker->movement.explicit_allied_attack;
+        !attacker->orders->explicit_allied_attack;
     /* Existing attack orders are combat orders, unlike the explicit Attack
      * command which may deliberately target an allied unit.  Alliance changes
      * must therefore end an automatic/cinematic attack before its next hit. */
     if ((S_AttackCanTarget(attacker, target) || attack_can_retaliate(attacker, target)) && !allied &&
-        attacker->attack_target_spawn_time == target->spawn_time) {
+        attacker->unit_state->attack_target_spawn_time == target->spawn_time) {
         return false;
     }
     if (attacker) attack_finish_after_combat(attacker, attacker->goalentity, "target_invalid");
@@ -321,7 +322,7 @@ static float const g_default_damage_table[8][8] = {
 static int attack_damage_type(edict_t *attacker, edict_t *target, int base, uint32_t atk);
 int G_AttackDamage(edict_t *attacker, edict_t *target, int base) {
     return attack_damage_type(attacker, target, base,
-                              attacker && target ? attack_profile(attacker, target)->type : 0);
+                              attacker && attacker->unit_state && target ? attack_profile(attacker, target)->type : 0);
 }
 
 int G_AttackDamageWithType(edict_t *attacker, edict_t *target, int base, uint32_t type) {
@@ -330,7 +331,7 @@ int G_AttackDamageWithType(edict_t *attacker, edict_t *target, int base, uint32_
 
 static int attack_damage_type(edict_t *attacker, edict_t *target, int base, uint32_t atk) {
     if (!attacker || !target || base <= 0) return base;
-    uint32_t def = target->defense_type;
+    uint32_t def = target->unit_state ? target->unit_state->defense_type : 0;
     if (atk >= 8) atk = 0;
     if (def >= 8) def = 7;
 
@@ -363,7 +364,7 @@ static int attack_damage_type(edict_t *attacker, edict_t *target, int base, uint
 void T_Damage(edict_t *target, edict_t *attacker, int damage) {
     bool instant_kill;
 
-    if (!target || target->invulnerable ||
+    if (!target || G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) ||
         unit_hasstatusstate(target, WC3_STATUS_STATE_INVULNERABLE) ||
         S_UnitIsCycloned(target) || M_IsDead(target)) {
         return;
@@ -390,9 +391,9 @@ void T_Damage(edict_t *target, edict_t *attacker, int damage) {
     G_PublishEventWithValue(target, EVENT_PLAYER_UNIT_DAMAGED, attacker, damage);
     /* Only real post-mitigation unit damage should refresh the owning Hero shortcut's transient attack warning. */
     G_AlertHeroShortcutDamage(target);
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (target->abilstatus[i].level && target->abilstatus[i].code == MAKEFOURCC('B','U','s','l'))
-            unit_removestatus(target, target->abilstatus + i, STATUS_REMOVE_SCRIPT);
+    FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (target->unit_state->statuses[i].level && target->unit_state->statuses[i].code == MAKEFOURCC('B','U','s','l'))
+            unit_removestatus(target, target->unit_state->statuses + i, STATUS_REMOVE_SCRIPT);
     unit_updatestatuses(target);
     unit_entercombat(attacker, target);
     unit_entercombat(target, attacker);
@@ -412,11 +413,11 @@ void T_Damage(edict_t *target, edict_t *attacker, int damage) {
     /* Only a survivor reacts to the hit. A killing blow goes straight to die();
      * dispatching first would let Awan start a flee Move that death tears down. */
     {
-        abilityCall_t call = MAKE(abilityCall_t, .attacker = attacker);
+        abilityCall_t call = MAKE(abilityCall_t, .entity = attacker);
         S_UnitAbilityEventWithCall(target, A_DAMAGED, &call);
     }
     if (can_attack(target) && !unit_is_walking(target) &&
-        target->movement.creep_guard_phase != CREEP_GUARD_RETURNING &&
+        target->orders->creep_guard_phase != CREEP_GUARD_RETURNING &&
         S_SpellIsEnemy(target, attacker)) {
         if (!S_UnitAbilityEvent(target, A_NO_RETALIATE)) {
             S_UnitAbilityEvent(target, A_AUTO_COMBAT_START);
@@ -546,7 +547,7 @@ void S_ResolveArtilleryHit(edict_t *attacker, edict_t *target, int raw_damage) {
     profile.area_full = atk->areaFull; profile.area_medium = atk->areaMedium; profile.area_small = atk->areaSmall;
     profile.factor_medium = atk->factorMedium; profile.factor_small = atk->factorSmall;
     if (attacker->data.UnitWeapons)
-        profile.area_targets = atk == &attacker->attack2 ? attacker->data.UnitWeapons->attack2.areaTargets
+        profile.area_targets = atk == &attacker->unit_state->attack2 ? attacker->data.UnitWeapons->attack2.areaTargets
                                                        : attacker->data.UnitWeapons->attack1.areaTargets;
     impact = target->s.origin2;
     S_ResolveArtilleryPointHit(attacker, target, &impact, raw_damage, &profile);
@@ -559,11 +560,11 @@ static bool attack_animation_can_finish(edict_t const *ent) {
 static void attack_set_backswing_deadline(edict_t *ent) {
     uint32_t duration = (uint32_t)ceilf(MAX(0.0f, ACTIVE_ATTACK(ent)->backswingPoint /
                                                       attack_speed_divisor(ent)) * 1000.0f);
-    ent->attack_backswing_end_time = G_Time() + duration;
+    ent->unit_state->attack_backswing_end_time = G_Time() + duration;
 }
 
 static float attack_backswing_remaining(edict_t const *ent) {
-    int32_t remaining = ent ? (int32_t)(ent->attack_backswing_end_time - G_Time()) : 0;
+    int32_t remaining = ent ? (int32_t)(ent->unit_state->attack_backswing_end_time - G_Time()) : 0;
     return remaining > 0 ? remaining / 1000.0f : 0.0f;
 }
 
@@ -611,7 +612,7 @@ static void throw_missile(edict_t *ent) {
         .damage = damage,
         .attack_type = atk->type,
         .attack = atk,
-        .area_targets = ent->data.UnitWeapons ? (atk == &ent->attack2 ? ent->data.UnitWeapons->attack2.areaTargets : ent->data.UnitWeapons->attack1.areaTargets) : 0,
+        .area_targets = ent->data.UnitWeapons ? (atk == &ent->unit_state->attack2 ? ent->data.UnitWeapons->attack2.areaTargets : ent->data.UnitWeapons->attack1.areaTargets) : 0,
     });
     /* See damage_target(): if the model has no finite attack sequence there
      * will be no animation-end callback to start recovery, so do it at the
@@ -621,16 +622,15 @@ static void throw_missile(edict_t *ent) {
 //    gi.WriteByte (svc_temp_entity);
 //    gi.WriteByte(TE_MISSILE);
 //    gi.WritePosition(&origin);
-//    gi.WriteShort(ent->attack1.projectile.model);
-//    gi.WriteShort(ent->attack1.projectile.speed);
-//    gi.WriteShort(Vector2_len(&dir) * 1000 / ent->attack1.projectile.speed);
+//    gi.WriteShort(ent->unit_state->attack1.projectile.model);
+//    gi.WriteShort(ent->unit_state->attack1.projectile.speed);
+//    gi.WriteShort(Vector2_len(&dir) * 1000 / ent->unit_state->attack1.projectile.speed);
 //    gi.WriteAngle(atan2(dir.y, dir.x));
 //    gi.multicast(&ent->s.origin, MULTICAST_PHS);
 }
 
 static void ai_melee(edict_t *ent) {
     if (S_UnitIsEntanglingRooted(ent)) return;
-    attack_cooldown_elapsed(ent, false);
     if (attack_stop_if_target_invalid(ent)) {
         return;
     }
@@ -642,13 +642,12 @@ static void ai_melee(edict_t *ent) {
         attack_walk(ent);
         return;
     }
-    unit_changeangle(ent);
+    unit_facegoal(ent);
     unit_runwait(ent, damage_target);
 }
 
 static void ai_ranged(edict_t *ent) {
     if (S_UnitIsEntanglingRooted(ent)) return;
-    attack_cooldown_elapsed(ent, false);
     if (attack_stop_if_target_invalid(ent)) {
         return;
     }
@@ -659,7 +658,7 @@ static void ai_ranged(edict_t *ent) {
         attack_walk(ent);
         return;
     }
-    unit_changeangle(ent);
+    unit_facegoal(ent);
     unit_runwait(ent, throw_missile);
 }
 
@@ -701,24 +700,28 @@ static void attack_retreat_from_target(edict_t *ent) {
     if (len <= 0.001f) dir = MAKE(vec2_t, cosf(ent->s.angle + (float)M_PI), sinf(ent->s.angle + (float)M_PI));
     else { dir.x /= len; dir.y /= len; }
     ent->s.angle = atan2f(dir.y, dir.x);
-    ent->movement.heading = ent->s.angle;
-    ent->movement.flow_direct = true;
-    ent->movement.flow_generation = 0;
+    G_BeginMovement(ent);
+    ent->movement->heading = ent->s.angle;
+    ent->movement->flow_direct = true;
+    ent->movement->flow_generation = 0;
     unit_moveindirection(ent);
 }
 
 /* RngBuff applies until the simulation-time deadline, even while another
  * ability owns the unit's think callback. */
 static bool attack_is_cooling_down(edict_t const *ent) {
-    return ent && ent->attack_cooldown_active &&
-        (int32_t)(ent->attack_cooldown_end_time - G_Time()) > 0;
+    return ent && ent->unit_state->attack_cooldown_end_time &&
+        (int32_t)(ent->unit_state->attack_cooldown_end_time - G_Time()) > 0;
+}
+
+/* Recovery animation waits use seconds; derive them only when needed from simulation milliseconds. */
+static float attack_cooldown_remaining(edict_t const *ent) {
+    return attack_is_cooling_down(ent) ? (ent->unit_state->attack_cooldown_end_time - G_Time()) / 1000.0f : 0.0f;
 }
 
 static void attack_set_cooldown(edict_t *ent, float seconds) {
     uint32_t duration = (uint32_t)ceilf(MAX(0.0f, seconds) * 1000.0f);
-    ent->attack_cooldown_end_time = G_Time() + duration;
-    ent->attack_cooldown_remaining = duration / 1000.0f;
-    ent->attack_cooldown_active = duration != 0;
+    ent->unit_state->attack_cooldown_end_time = G_Time() + duration;
 }
 
 /* Centralize attack-range geometry so buffered cooldown range and true firing
@@ -763,18 +766,11 @@ bool S_AttackCanAutoAcquire(edict_t const *attacker, edict_t const *target) {
     return true;
 }
 
-/* Refresh the compatibility remaining field from the authoritative deadline;
- * advancing simulation time does not depend on this ability's think callback. */
-static bool attack_cooldown_elapsed(edict_t *ent, bool tick_recovery) {
+/* Weapon cooldown advances independently of the owning think callback; recovery remains move-local. */
+static bool attack_cooldown_elapsed(edict_t *ent) {
     float const step = FRAMETIME / 1000.0f;
-    if (ent->attack_cooldown_active) {
-        int32_t remaining = (int32_t)(ent->attack_cooldown_end_time - G_Time());
-        ent->attack_cooldown_remaining = MAX(0.0f, remaining / 1000.0f);
-        if (remaining <= 0) ent->attack_cooldown_active = false;
-    }
-    if (tick_recovery)
-        ent->wait = MAX(0.0f, ent->wait - step);
-    return !ent->attack_cooldown_active && ent->wait <= 0.0f;
+    ent->wait = MAX(0.0f, ent->wait - step);
+    return !attack_is_cooling_down(ent) && ent->wait <= 0.0f;
 }
 
 static void ai_melee_cooldown(edict_t *ent) {
@@ -783,7 +779,7 @@ static void ai_melee_cooldown(edict_t *ent) {
     if (attack_stop_if_target_invalid(ent)) {
         return;
     }
-    ready = attack_cooldown_elapsed(ent, true);
+    ready = attack_cooldown_elapsed(ent);
     if (attack_target_out_of_range(ent) || attack_target_too_close(ent)) {
         attack_walk(ent);
     } else if (ready) {
@@ -803,7 +799,7 @@ static void ai_ranged_cooldown(edict_t *ent) {
     if (attack_stop_if_target_invalid(ent)) {
         return;
     }
-    ready = attack_cooldown_elapsed(ent, true);
+    ready = attack_cooldown_elapsed(ent);
     if (attack_target_out_of_range(ent) || attack_target_too_close(ent)) {
         attack_walk(ent);
     } else if (ready) {
@@ -820,12 +816,12 @@ static void ai_attack_walk(edict_t *ent) {
     if (attack_stop_if_target_invalid(ent)) {
         return;
     }
-    cooldown_ready = attack_cooldown_elapsed(ent, true);
+    cooldown_ready = attack_cooldown_elapsed(ent);
     if (attack_target_out_of_range(ent)) {
         /* Hold Position and movement-disabled structures cannot chase an
          * out-of-range target.  Finish the attack behavior instead of leaving
          * an immobile tower stuck forever in attack_walk. */
-        if (ent->movement.holding_position || (ent->aiflags & AI_IMMOBILE)) {
+        if (ent->orders->holding_position || (ent->aiflags & AI_IMMOBILE)) {
             attack_finish_after_combat(ent, ent->goalentity, "immobile_target_out_of_range");
             return;
         }
@@ -834,12 +830,12 @@ static void ai_attack_walk(edict_t *ent) {
             unit_changeangle(ent);
         else
             unit_changeangle_for_radius(ent, ent->collision);
-        if (ent->movement.flow_unreachable) return;
+        if (ent->movement->flow_unreachable) return;
         unit_moveindirection(ent);
     } else if (attack_target_too_close(ent)) {
         /* Artillery minimum range is a real dead zone. Mobile siege units back
          * away until they can fire; Hold Position/immobile attackers cannot. */
-        if (ent->movement.holding_position || (ent->aiflags & AI_IMMOBILE)) {
+        if (ent->orders->holding_position || (ent->aiflags & AI_IMMOBILE)) {
             attack_finish_after_combat(ent, ent->goalentity, "immobile_target_too_close");
             return;
         }
@@ -847,7 +843,7 @@ static void ai_attack_walk(edict_t *ent) {
         attack_retreat_from_target(ent);
     } else {
         if (!cooldown_ready) {
-            ent->wait = MAX(ent->wait, ent->attack_cooldown_remaining);
+            ent->wait = MAX(ent->wait, attack_cooldown_remaining(ent));
             if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY)
                 unit_setmove(ent, &attack_move_ranged_cooldown);
             else
@@ -861,7 +857,7 @@ static void ai_attack_walk(edict_t *ent) {
     }
 }
 
-static umove_t attack_move_walk = { "walk", ai_attack_walk, NULL, CAbilityAttack };
+static umove_t attack_move_walk = { "walk", ai_attack_walk, NULL, CAbilityAttack, .travel = true };
 static umove_t attack_move_melee_cooldown = { "stand ready", ai_melee_cooldown, NULL, CAbilityAttack };
 static umove_t attack_move_melee = { "attack", ai_melee, attack_melee_cooldown, CAbilityAttack };
 static umove_t attack_move_ranged_cooldown = { "stand ready", ai_ranged_cooldown, NULL, CAbilityAttack };
@@ -882,17 +878,13 @@ static void order_attack_internal(edict_t *self, edict_t *target, bool retaliati
      * issued by T_Damage(), so clear both invisibility and the explicit Hide
      * hold-fire state before installing the attack behavior. */
     S_ShadowMeldBreak(self);
-    self->movement.explicit_allied_attack = false;
+    self->orders->explicit_allied_attack = false;
     unit_entercombat(self, target);
     self->goalentity = target;
-    self->attack_target_spawn_time = target->spawn_time;
+    self->unit_state->attack_target_spawn_time = target->spawn_time;
     /* Birth and other non-attack moves can leave a long wait on the unit.
      * Preserve waits only while an authored weapon cooldown is still active. */
-    if (!attack_is_cooling_down(self)) {
-        self->attack_cooldown_active = false;
-        self->attack_cooldown_remaining = 0.0f;
-        self->wait = 0.0f;
-    }
+    if (!attack_is_cooling_down(self)) self->wait = 0.0f;
     attack_walk(self);
 }
 
@@ -905,12 +897,12 @@ bool S_OrderAttack(edict_t *self, edict_t *target) {
     if (!self || M_IsDead(self) || S_UnitIsCycloned(self) || S_GoldMineWorkerIsInside(self) ||
         !S_AttackCanTarget(self, target))
         return false;
-    self->movement.attackmove_waypoint = NULL;
-    self->movement.patrol_a = self->movement.patrol_b = self->movement.patrol_target = NULL;
-    self->movement.follow_target = NULL;
-    self->movement.holding_position = false;
+    self->orders->attackmove_waypoint = NULL;
+    self->orders->patrol_a = self->orders->patrol_b = self->orders->patrol_target = NULL;
+    self->orders->follow_target = NULL;
+    self->orders->holding_position = false;
     order_attack(self, target);
-    self->movement.explicit_allied_attack = G_PlayerTreatsPlayerAsAlly(self->s.player, target->s.player);
+    self->orders->explicit_allied_attack = G_PlayerTreatsPlayerAsAlly(self->s.player, target->s.player);
     return true;
 }
 
@@ -918,7 +910,7 @@ static float attack_speed_divisor(edict_t *self) {
     float const agi_bonus = game.constants.combatConstantsLoaded
                           ? game.constants.agiAttackSpeedBonus
                           : 0.02f;
-    float total_bonus = (float)self->hero.agi * agi_bonus +
+    float total_bonus = (float)self->unit_state->hero.agi * agi_bonus +
                       unit_status_modifier_total(self, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT)
                       - S_DefendAttackReduction(self) - S_CreepAttackSpeedReduction(self) - S_SlowAuraAttackReduction(self);
     total_bonus += S_EnduranceAttackBonus(self);
@@ -936,17 +928,14 @@ void attack_melee_cooldown(edict_t *self) {
      * deadline instead of restarting cooldown - damagePoint from here. The
      * fallback covers callers that enter recovery without an active swing
      * deadline (for example zero-length animation paths). */
-    if (self->currentmove == &attack_move_melee)
-        attack_cooldown_elapsed(self, false);
-    else {
+    if (self->currentmove != &attack_move_melee) {
         attack_set_cooldown(self, (ACTIVE_ATTACK(self)->cooldown - ACTIVE_ATTACK(self)->damagePoint) / divisor);
         /* Direct calls without a preceding swing model the damage point at
          * recovery entry; normal attack moves set this at the committed hit. */
         attack_set_backswing_deadline(self);
     }
     unit_setmove(self, &attack_move_melee_cooldown);
-    self->wait = MAX(self->attack_cooldown_remaining,
-                     attack_backswing_remaining(self));
+    self->wait = MAX(attack_cooldown_remaining(self), attack_backswing_remaining(self));
     /* The next swing must satisfy both authored gates: weapon cooldown from
      * swing start and backswing after damage point.  If both have already
      * elapsed, transition explicitly instead of parking on wait==0. */
@@ -963,15 +952,12 @@ void attack_melee(edict_t *self) {
 
 void attack_ranged_cooldown(edict_t *self) {
     float divisor = attack_speed_divisor(self);
-    if (self->currentmove == &attack_move_ranged)
-        attack_cooldown_elapsed(self, false);
-    else {
+    if (self->currentmove != &attack_move_ranged) {
         attack_set_cooldown(self, (ACTIVE_ATTACK(self)->cooldown - ACTIVE_ATTACK(self)->damagePoint) / divisor);
         attack_set_backswing_deadline(self);
     }
     unit_setmove(self, &attack_move_ranged_cooldown);
-    self->wait = MAX(self->attack_cooldown_remaining,
-                     attack_backswing_remaining(self));
+    self->wait = MAX(attack_cooldown_remaining(self), attack_backswing_remaining(self));
     if (self->wait <= 0.0f) attack_ranged(self);
 }
 
@@ -990,8 +976,8 @@ void attack_ranged(edict_t *self) {
  * the damage point. */
 static bool attack_ground_valid(edict_t const *ent) {
     return ent && ent->inuse && !M_IsDead((edict_t *)ent) &&
-           S_UnitAttackSlotEnabled(ent, 0) && ent->attack1.type != ATK_NONE &&
-           ent->attack1.weapon == WPN_ARTILLERY && !S_UnitIsCycloned(ent) &&
+           S_UnitAttackSlotEnabled(ent, 0) && ent->unit_state->attack1.type != ATK_NONE &&
+           ent->unit_state->attack1.weapon == WPN_ARTILLERY && !S_UnitIsCycloned(ent) &&
            S_HumanCanAttack(ent) && S_CargoAttacksEnabled(ent);
 }
 
@@ -1000,7 +986,7 @@ static float attack_ground_distance(edict_t const *ent) {
 }
 
 static bool attack_ground_out_of_range(edict_t const *ent) {
-    return !ent || attack_ground_distance(ent) > ent->attack1.range;
+    return !ent || attack_ground_distance(ent) > ent->unit_state->attack1.range;
 }
 
 static bool attack_ground_too_close(edict_t const *ent) {
@@ -1030,14 +1016,14 @@ static void throw_artillery_ground(edict_t *ent) {
     impact = ent->channel->origin;
     damage = (int)ai_rolldamage1(ent, 1);
     M_GetEntityMatrix(&ent->s, &matrix);
-    origin = Matrix4_multiply_vector3(&matrix, &ent->attack1.origin);
+    origin = Matrix4_multiply_vector3(&matrix, &ent->unit_state->attack1.origin);
     fire_rocket(ent, &(rocketDesc_t) {
         .start = origin,
         .fixed_target = &impact,
-        .speed = ent->attack1.projectile.speed,
-        .model = ent->attack1.projectile.model,
+        .speed = ent->unit_state->attack1.projectile.speed,
+        .model = ent->unit_state->attack1.projectile.model,
         .damage = damage,
-        .attack = &ent->attack1,
+        .attack = &ent->unit_state->attack1,
         .area_targets = ent->data.UnitWeapons ? ent->data.UnitWeapons->attack1.areaTargets : 0,
     });
     if (ent->currentmove && ent->currentmove->proc == CAbilityAttackGround &&
@@ -1048,7 +1034,7 @@ static void throw_artillery_ground(edict_t *ent) {
 static void ai_attack_ground_ranged(edict_t *ent) {
     if (S_UnitIsEntanglingRooted(ent)) return;
     if (!attack_ground_valid(ent)) { attack_ground_stop(ent); return; }
-    unit_changeangle(ent);
+    unit_facegoal(ent);
     unit_runwait(ent, throw_artillery_ground);
 }
 
@@ -1076,7 +1062,7 @@ static void ai_attack_ground_walk(edict_t *ent) {
     }
 }
 
-static umove_t attack_ground_move_walk = { "walk", ai_attack_ground_walk, NULL, CAbilityAttackGround };
+static umove_t attack_ground_move_walk = { "walk", ai_attack_ground_walk, NULL, CAbilityAttackGround, .travel = true };
 static umove_t attack_ground_move_cooldown = { "stand ready", ai_attack_ground_cooldown, NULL, CAbilityAttackGround };
 static umove_t attack_ground_move_ranged = { "attack range", ai_attack_ground_ranged, attack_ground_cooldown, CAbilityAttackGround };
 
@@ -1087,8 +1073,8 @@ static void attack_ground_walk(edict_t *ent) {
 static void attack_ground_cooldown(edict_t *ent) {
     float divisor = attack_speed_divisor(ent);
     unit_setmove(ent, &attack_ground_move_cooldown);
-    ent->wait = MAX(0.0f, MAX(ent->attack1.cooldown - ent->attack1.damagePoint,
-                               ent->attack1.backswingPoint) / divisor);
+    ent->wait = MAX(0.0f, MAX(ent->unit_state->attack1.cooldown - ent->unit_state->attack1.damagePoint,
+                               ent->unit_state->attack1.backswingPoint) / divisor);
     if (ent->wait <= 0.0f) attack_ground_ranged(ent);
 }
 
@@ -1096,8 +1082,7 @@ static void attack_ground_ranged(edict_t *ent) {
     float divisor = attack_speed_divisor(ent);
     S_PermanentInvisibilityReveal(ent);
     unit_setmove(ent, &attack_ground_move_ranged);
-    ent->wait = ent->attack1.damagePoint / divisor;
-    if (ent->sound.attack) G_PlaySound(NULL, ent, CHAN_WEAPON, ent->sound.attack, 1.0f, 1.0f, 0.0f);
+    ent->wait = ent->unit_state->attack1.damagePoint / divisor;
 }
 
 bool S_OrderAttackGround(edict_t *unit, vec2_t const *point) {
@@ -1107,14 +1092,14 @@ bool S_OrderAttackGround(edict_t *unit, vec2_t const *point) {
         S_UnitPolymorphed(unit)) return false;
     waypoint = Waypoint_add(point);
     if (!waypoint) return false;
-    unit->movement.attackmove_waypoint = NULL;
-    unit->movement.patrol_a = unit->movement.patrol_b = unit->movement.patrol_target = NULL;
-    unit->movement.follow_target = NULL;
-    unit->movement.holding_position = false;
-    unit->movement.group_speed = 0.0f;
+    unit->orders->attackmove_waypoint = NULL;
+    unit->orders->patrol_a = unit->orders->patrol_b = unit->orders->patrol_target = NULL;
+    unit->orders->follow_target = NULL;
+    unit->orders->holding_position = false;
+    if (unit->movement) unit->movement->group_speed = 0.0f;
     S_SpellCancelChannel(unit);
     unit->goalentity = waypoint;
-    unit->attack_target_spawn_time = 0;
+    unit->unit_state->attack_target_spawn_time = 0;
     attack_ground_walk(unit);
     if (!unit->channel) unit->channel = G_AllocChannel();
     assert(unit->channel);
@@ -1169,10 +1154,10 @@ static void ai_attackmove_walk(edict_t *ent) {
             ent->s.origin2 = ent->goalentity->s.origin2;
             gi.LinkEntity(ent);
         }
-        ent->movement.attackmove_waypoint = NULL;
+        ent->orders->attackmove_waypoint = NULL;
         ent->stand(ent);
     } else if (move_is_blocked(ent, distance, move_distance)) {
-        ent->movement.attackmove_waypoint = NULL;
+        ent->orders->attackmove_waypoint = NULL;
         ent->stand(ent);
     } else {
         unit_changeangle(ent);
@@ -1180,20 +1165,20 @@ static void ai_attackmove_walk(edict_t *ent) {
     }
 }
 
-static umove_t attackmove_move_walk = { "walk", ai_attackmove_walk, NULL, CAbilityAttack };
+static umove_t attackmove_move_walk = { "walk", ai_attackmove_walk, NULL, CAbilityAttack, .travel = true };
 
 /* Begin (or resume, after a kill) attack-moving toward a waypoint. */
 void order_attackmove(edict_t *self, edict_t *waypoint) {
     if (S_GoldMineWorkerIsInside(self))
         return;
-    self->movement.attackmove_waypoint = waypoint;
-    self->movement.patrol_a = NULL;
-    self->movement.patrol_b = NULL;
-    self->movement.patrol_target = NULL;
-    self->movement.follow_target = NULL;
-    self->movement.holding_position = false;
+    self->orders->attackmove_waypoint = waypoint;
+    self->orders->patrol_a = NULL;
+    self->orders->patrol_b = NULL;
+    self->orders->patrol_target = NULL;
+    self->orders->follow_target = NULL;
+    self->orders->holding_position = false;
     self->goalentity = waypoint;
-    self->attack_target_spawn_time = 0;
+    self->unit_state->attack_target_spawn_time = 0;
     move_reset_progress(self);
     unit_setmove(self, &attackmove_move_walk);
 }
@@ -1232,7 +1217,7 @@ static bool attack_ground_selectlocation(edict_t *clent, vec2_t const *location)
 
     if (!clent || !clent->client || !location) return false;
     FOR_CONTROLLABLE_SELECTED_UNITS(clent->client, ent) {
-        if (ent->attack1.weapon != WPN_ARTILLERY) continue;
+        if (ent->unit_state->attack1.weapon != WPN_ARTILLERY) continue;
         if (G_IssueUnitPointOrder(ent, "attackground", location,
                                   clent->client->menu.order_queued,
                                   clent->client->ps.number, 0.0f)) any = true;

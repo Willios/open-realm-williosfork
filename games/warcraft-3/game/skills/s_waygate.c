@@ -18,8 +18,8 @@ static uint32_t waygate_actor_ability_alias(edict_t const *gate) {
             if (G_AbilityCode(alias) == BZ_AWRP) return alias;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(gate->abilities.added)) {
-        uint32_t const alias = gate->abilities.added[i];
+    FOR_LOOP(i, (gate->unit_state ? ARRAY_COUNT(gate->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = gate->unit_state->overrides.added[i];
         if (!alias) continue;
         memcpy(alias_name, &alias, 4);
         if (G_ActorHasSkill(gate, alias_name) && G_AbilityCode(alias) == BZ_AWRP)
@@ -90,8 +90,8 @@ static bool waygate_target_valid(edict_t const *unit, edict_t const *gate, uint3
 }
 
 static bool waygate_behavior_active(edict_t const *unit) {
-    return unit && (unit->movement.waygate_target || unit->movement.waygate_goal ||
-                    unit->movement.waygate_target_spawn_time);
+    return unit && unit->orders && (unit->orders->waygate_target || unit->orders->waygate_goal ||
+                    unit->orders->waygate_target_spawn_time);
 }
 
 static void waygate_cancel(edict_t *unit);
@@ -100,11 +100,11 @@ static void waygate_cancel(edict_t *unit);
  * by unrelated movement behaviors and must never be cleared by Way Gate exit. */
 static void waygate_clear_order(edict_t *unit) {
     if (!unit) return;
-    if (unit->goalentity == unit->movement.waygate_goal)
+    if (unit->goalentity == unit->orders->waygate_goal)
         unit->goalentity = NULL;
-    unit->movement.waygate_target = NULL;
-    unit->movement.waygate_goal = NULL;
-    unit->movement.waygate_target_spawn_time = 0;
+    unit->orders->waygate_target = NULL;
+    unit->orders->waygate_goal = NULL;
+    unit->orders->waygate_target_spawn_time = 0;
     move_reset_progress(unit);
 }
 
@@ -151,8 +151,8 @@ static void waygate_cancel(edict_t *unit) {
 }
 
 static void ai_waygate_walk(edict_t *unit) {
-    edict_t *gate = unit ? unit->movement.waygate_target : NULL;
-    uint32_t const spawn_time = unit ? unit->movement.waygate_target_spawn_time : 0;
+    edict_t *gate = unit ? unit->orders->waygate_target : NULL;
+    uint32_t const spawn_time = unit ? unit->orders->waygate_target_spawn_time : 0;
     float distance, step;
 
     if (!waygate_target_valid(unit, gate, spawn_time)) {
@@ -163,30 +163,30 @@ static void ai_waygate_walk(edict_t *unit) {
         waygate_complete(unit, gate);
         return;
     }
-    if (!unit->movement.waygate_goal || !unit->movement.waygate_goal->inuse) {
+    if (!unit->orders->waygate_goal || !unit->orders->waygate_goal->inuse) {
         edict_t *goal = waygate_create_approach_goal(unit, gate);
         if (!goal) {
             waygate_cancel(unit);
             return;
         }
-        unit->movement.waygate_goal = goal;
+        unit->orders->waygate_goal = goal;
         unit->goalentity = goal;
     }
     distance = M_DistanceToGoal(unit);
     step = unit_movedistance(unit);
-    if (move_is_blocked(unit, distance, step) || unit->movement.flow_unreachable) {
+    if (move_is_blocked(unit, distance, step) || unit->movement->flow_unreachable) {
         waygate_cancel(unit);
         return;
     }
     unit_changeangle_for_radius(unit, unit->collision);
-    if (unit->movement.flow_goal_reached && !waygate_target_inside(gate, unit)) {
+    if (unit->movement->flow_goal_reached && !waygate_target_inside(gate, unit)) {
         waygate_cancel(unit);
         return;
     }
     unit_moveindirection(unit);
 }
 
-static umove_t waygate_move_walk = { "walk", ai_waygate_walk, NULL, CAbilityWarp };
+static umove_t waygate_move_walk = { "walk", ai_waygate_walk, NULL, CAbilityWarp, .travel = true };
 
 static bool waygate_order_use(edict_t *unit, edict_t *gate) {
     edict_t *goal = NULL;
@@ -198,18 +198,18 @@ static bool waygate_order_use(edict_t *unit, edict_t *gate) {
         if (!goal) return false; /* A rejected Smart order must not disturb the current behavior. */
     }
 
-    unit->movement.follow_target = NULL;
-    unit->movement.attackmove_waypoint = NULL;
-    unit->movement.patrol_a = NULL;
-    unit->movement.patrol_b = NULL;
-    unit->movement.patrol_target = NULL;
-    unit->movement.holding_position = false;
+    unit->orders->follow_target = NULL;
+    unit->orders->attackmove_waypoint = NULL;
+    unit->orders->patrol_a = NULL;
+    unit->orders->patrol_b = NULL;
+    unit->orders->patrol_target = NULL;
+    unit->orders->holding_position = false;
     waygate_clear_order(unit);
 
     if (!goal) {
         unit->goalentity = NULL;
-        unit->movement.waygate_target = gate;
-        unit->movement.waygate_target_spawn_time = spawn_time;
+        unit->orders->waygate_target = gate;
+        unit->orders->waygate_target_spawn_time = spawn_time;
         waygate_complete(unit, gate);
         return true;
     }
@@ -217,9 +217,9 @@ static bool waygate_order_use(edict_t *unit, edict_t *gate) {
     /* Install the movement first: unit_setmove publishes A_MOVE_LEAVE for the
      * old behavior, which must not be allowed to clear the new gate state. */
     unit_setmove(unit, &waygate_move_walk);
-    unit->movement.waygate_target = gate;
-    unit->movement.waygate_target_spawn_time = spawn_time;
-    unit->movement.waygate_goal = goal;
+    unit->orders->waygate_target = gate;
+    unit->orders->waygate_target_spawn_time = spawn_time;
+    unit->orders->waygate_goal = goal;
     unit->goalentity = goal;
     move_reset_progress(unit);
     return true;
@@ -228,9 +228,9 @@ static bool waygate_order_use(edict_t *unit, edict_t *gate) {
 BZ_ABILITY_PROC(CAbilityWarp) {
     switch (msg) {
         case A_TARGET_ORDER:
-            return call && call->target_order.issuer && call->target_order.order &&
-                   !strcmp(call->target_order.order, "smart") &&
-                   waygate_order_use(call->target_order.issuer, ent);
+            return call && call->entity && call->order &&
+                   !strcmp(call->order, "smart") &&
+                   waygate_order_use(call->entity, ent);
         case A_MOVE_LEAVE:
             if (!waygate_behavior_active(ent)) return false;
             waygate_clear_order(ent);

@@ -52,6 +52,57 @@ static int death_sound_index(cstring_t path) {
     return 77;
 }
 
+/* Script/stack animation names are copied once and shared independently of caller storage. */
+TEST(wc3_unit, animation_names_are_shared_owned_and_not_truncated) {
+    char name[160];
+    memset(name, 'a', sizeof(name) - 1);
+    name[sizeof(name) - 1] = 0;
+    cstring_t saved = G_InternAnimationName(name);
+    T_ASSERT(saved != name);
+    T_EQ(strlen(saved), sizeof(name) - 1);
+    T_ASSERT(G_InternAnimationName(name) == saved);
+    name[0] = 'b';
+    T_EQ(saved[0], 'a');
+    T_ASSERT(G_InternAnimationName(name) != saved);
+    T_STREQ(G_InternAnimationName(NULL), "");
+}
+
+/* Effects/waypoints must not acquire fixed unit ability buffers through queries. */
+TEST(wc3_unit, unrelated_entities_have_no_unit_state) {
+    reset_entities();
+    edict_t *effect = G_Spawn();
+    T_NULL(effect->unit_state);
+    T_ASSERT(!G_ActorHasSkill(effect, "Ahar"));
+    T_ASSERT(!unit_hasstatusstate(effect, WC3_STATUS_STATE_STUNNED));
+    T_ASSERT(S_SpellCooldownReady(effect, MAKEFOURCC('A','H','t','c')));
+    T_NULL(effect->unit_state);
+    T_EQ(G_AttackDamage(effect, effect, 10), G_AttackDamageWithType(effect, effect, 10, 0));
+    T_FEQ(G_UnitArmorValue(effect), 0.0f, 0.001f);
+    T_ASSERT(!S_AttackCanTarget(effect, effect));
+    T_ASSERT(!G_UnitSharesVisionWith(effect, 0));
+    T_ASSERT(!G_UnitIsForcedVisibleToPlayer(effect, 0));
+    T_ASSERT(!G_UnitAutocastIsOn(effect, MAKEFOURCC('A','h','a','r')));
+    T_NULL(effect->unit_state);
+    T_NULL(G_InventoryItem(effect, 0));
+    T_NULL(effect->inventory);
+    T_NULL(effect->harvest);
+    T_NULL(effect->vision);
+    T_NULL(effect->missile);
+    T_NULL(effect->sound);
+}
+
+TEST(wc3_unit, movement_storage_is_optional) {
+    T_EQ(sizeof(((edict_t *)0)->movement), sizeof(void *));
+    reset_entities();
+    edict_t *effect = G_Spawn();
+    T_NULL(effect->movement);
+    T_NULL(effect->orders);
+    T_EQ(G_UnitQueuedOrderCount(effect), 0);
+    G_ClearUnitOrderQueue(effect);
+    T_NULL(effect->orders); /* queries and cleanup do not create retained intent */
+    G_FreeEdict(effect);
+}
+
 TEST(wc3_unit, death_sound_uses_existing_numbered_asset) {
     struct game_import old = gi;
     UnitUI_t ui = { .soundLabel = "Test", .modelFile = "Units\\Human\\Test\\Test" };
@@ -65,7 +116,7 @@ TEST(wc3_unit, death_sound_uses_existing_numbered_asset) {
     gi.SoundIndex = death_sound_index;
     G_RegisterUnitSounds(&ent);
     T_STREQ(death_sound_path, "Units\\Human\\Test\\TestDeath1.wav");
-    T_EQ(ent.sound.death, 77);
+    T_EQ(ent.sound->death, 77);
     gi = old;
 }
 
@@ -82,7 +133,7 @@ TEST(wc3_unit, death_sound_uses_existing_unnumbered_asset) {
     gi.SoundIndex = death_sound_index;
     G_RegisterUnitSounds(&ent);
     T_STREQ(death_sound_path, death_sound_existing);
-    T_EQ(ent.sound.death, 77);
+    T_EQ(ent.sound->death, 77);
     gi = old;
 }
 
@@ -111,17 +162,18 @@ TEST(wc3_unit, smart_move_emits_selected_unit_response) {
     ent->movetype = MOVETYPE_STEP;
     ent->stand = unit_stand;
     ent->selected = 1;
-    ent->sound.yes[0] = 118; ent->sound.num_yes = 1;
+    G_InitSounds(ent);
+    ent->sound->yes[0] = 118; ent->sound->num_yes = 1;
     unit_stand(ent);
     gi.Write = order_sound_write; gi.unicast = order_sound_unicast; gi.Sound = order_sound_capture; gi.SoundPolicy = order_sound_policy_capture;
     order_sound_calls = order_sound_index = 0;
     G_ClientCommand(clent, 3, command);
     T_NOT_NULL(ent->goalentity);
-    T_EQ(ent->sound.pending, 118);
+    T_EQ(ent->sound->pending, 118);
     G_RunEntities();
     T_EQ(order_sound_calls, 1);
     T_EQ(order_sound_index, 118);
-    T_EQ(ent->sound.pending, 0);
+    T_EQ(ent->sound->pending, 0);
     gi = old;
 }
 
@@ -136,6 +188,7 @@ static void reset_test_entities(void) {
 static edict_t *make_unit(float x, float y) {
     static UnitWeapons_t const test_weapons = { .attacksEnabled = 3 };
     edict_t *ent = G_Spawn();
+    G_InitUnitState(ent);
     ent->class_id       = MAKEFOURCC('h','p','e','a');
     G_BindEntityData(ent);
     ent->data.UnitWeapons = &test_weapons;
@@ -152,8 +205,8 @@ static edict_t *make_unit(float x, float y) {
     ent->health.value   = G_UnitBalance(ent->class_id)->maxHealth;
     ent->health.max_value = G_UnitBalance(ent->class_id)->maxHealth;
     ent->unitinfo.MoveSpeed = G_UnitBalance(ent->class_id)->speed;
-    ent->attack1.type = ATK_NORMAL;
-    ent->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    ent->unit_state->attack1.type = ATK_NORMAL;
+    ent->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     ent->targtype = TARG_GROUND;
     unit_stand(ent);
     return ent;
@@ -218,15 +271,15 @@ TEST(wc3_unit, locust_ability_applies_untargetable_collisionless_traits) {
 
     G_ApplyUnitAbilityTraits(&unit);
     T_ASSERT(unit.s.flags & EF_NOT_SELECTABLE);
-    T_ASSERT(unit.invulnerable);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_INVULNERABLE));
     T_FEQ(unit.collision, 0.0f, 0.001f);
-    T_ASSERT(unit.no_pathing);
+    T_ASSERT(G_UnitHasFlag(&unit, UNIT_FLAG_NO_PATHING));
 
     G_ApplyUnitAbilityTraits(&control);
     T_ASSERT(!(control.s.flags & EF_NOT_SELECTABLE));
-    T_ASSERT(!control.invulnerable);
+    T_ASSERT(!G_UnitHasFlag(&control, UNIT_FLAG_INVULNERABLE));
     T_FEQ(control.collision, 16.0f, 0.001f);
-    T_ASSERT(!control.no_pathing);
+    T_ASSERT(!G_UnitHasFlag(&control, UNIT_FLAG_NO_PATHING));
 }
 
 TEST(wc3_unit, selection_sound_registration_caches_all_responses) {
@@ -250,11 +303,11 @@ TEST(wc3_unit, selection_sound_registration_caches_all_responses) {
     slkTestData_t *sounds = parse_slk_string(slk);
     slkTestData_t *old = G_SetSLKRows("UnitAckSounds", sounds);
     G_RegisterSelectSounds(ent, "Footman");
-    T_EQ(ent->sound.num_select, 4);
-    FOR_LOOP(i, ent->sound.num_select) T_ASSERT(ent->sound.select[i]);
-    FOR_LOOP(i, ent->sound.num_select)
-        T_EQ(G_SoundIndexPolicy(ent->sound.select[i])->priority, 1731);
-    soundPolicy_t const *policy = G_SoundIndexPolicy(ent->sound.select[0]);
+    T_EQ(ent->sound->num_select, 4);
+    FOR_LOOP(i, ent->sound->num_select) T_ASSERT(ent->sound->select[i]);
+    FOR_LOOP(i, ent->sound->num_select)
+        T_EQ(G_SoundIndexPolicy(ent->sound->select[i])->priority, 1731);
+    soundPolicy_t const *policy = G_SoundIndexPolicy(ent->sound->select[0]);
     T_NOT_NULL(policy);
     if (policy) {
         T_EQ(policy->priority, 1731); T_EQ(policy->group, 1);
@@ -262,7 +315,7 @@ TEST(wc3_unit, selection_sound_registration_caches_all_responses) {
         T_EQ(policy->flags, SOUND_NO_DUPLICATE_USERS | SOUND_CHANNEL_PREEMPT);
     }
     G_ResetSoundPresentationState();
-    T_NULL(G_SoundIndexPolicy(ent->sound.select[0]));
+    T_NULL(G_SoundIndexPolicy(ent->sound->select[0]));
     G_SetSLKRows("UnitAckSounds", old); free_slk_rows(sounds);
 }
 
@@ -285,18 +338,21 @@ TEST(wc3_unit, shared_sound_file_keeps_label_policy_and_volume_independent) {
 
 TEST(wc3_unit, selecting_owned_unit_queues_one_ack_sound) {
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    ent->sound.select[0] = 11;
-    ent->sound.select[1] = 12;
-    ent->sound.num_select = 2;
+    G_InitSounds(ent);
+    ent->sound->select[0] = 11;
+    G_InitSounds(ent);
+    ent->sound->select[1] = 12;
+    G_InitSounds(ent);
+    ent->sound->num_select = 2;
     G_QueueSelectionSound(ent, true);
-    T_ASSERT(ent->sound.pending == 11 || ent->sound.pending == 12);
-    T_EQ(ent->sound.pending != 0, 1);
+    T_ASSERT(ent->sound->pending == 11 || ent->sound->pending == 12);
+    T_EQ(ent->sound->pending != 0, 1);
 }
 
 TEST(wc3_unit, selection_without_responses_does_not_queue_ack) {
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     G_QueueSelectionSound(ent, true);
-    T_EQ(ent->sound.pending, 0);
+    T_NULL(ent->sound);
 }
 
 TEST(wc3_unit, queued_response_does_not_start_portrait_before_playback_feedback) {
@@ -310,14 +366,15 @@ TEST(wc3_unit, response_preserves_full_sound_configstring_index) {
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     G_ResetSelectionSoundState();
     T_ASSERT(G_QueueUnitResponseSound(ent, 731));
-    T_EQ(ent->sound.pending, 731);
+    T_EQ(ent->sound->pending, 731);
 }
 
 void test_sound_event(edict_t *ent, uint32_t request, uint32_t event);
 
 static void response_test_finish(edict_t *ent) {
-    uint32_t request = G_UnitResponseRequest(ent, ent->sound.pending);
-    ent->sound.pending = 0;
+    uint32_t request = G_UnitResponseRequest(ent, ent->sound->pending);
+    G_InitSounds(ent);
+    ent->sound->pending = 0;
     test_sound_event(ent, request, SOUND_ACCEPTED);
     test_sound_event(ent, request, SOUND_ACCEPTED); /* duplicate cannot advance twice */
     test_sound_event(ent, request, SOUND_STARTED);
@@ -329,7 +386,8 @@ TEST(wc3_unit, response_feedback_owns_portrait_lifetime_and_rejection) {
     G_ResetSelectionSoundState();
     T_ASSERT(G_QueueUnitResponseSound(ent, 11));
     uint32_t first = G_UnitResponseRequest(ent, 11);
-    ent->sound.pending = 0; /* packet sent */
+    G_InitSounds(ent);
+    ent->sound->pending = 0; /* packet sent */
     T_ASSERT(!G_UnitResponseTalking(ent));
     T_ASSERT(!G_QueueUnitResponseSound(ent, 12)); /* only one unanswered request */
     test_sound_event(ent, first, SOUND_REJECTED);
@@ -380,7 +438,8 @@ TEST(wc3_unit, overlapping_response_feedback_keeps_portrait_until_last_voice_end
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     G_ResetSelectionSoundState();
     T_ASSERT(G_QueueUnitResponseSound(ent, 11)); uint32_t a = G_UnitResponseRequest(ent, 11);
-    ent->sound.pending = 0;
+    G_InitSounds(ent);
+    ent->sound->pending = 0;
     test_sound_event(ent, a, SOUND_ACCEPTED); test_sound_event(ent, a, SOUND_STARTED);
     T_ASSERT(G_QueueUnitResponseSound(ent, 12)); uint32_t b = G_UnitResponseRequest(ent, 12);
     test_sound_event(ent, b, SOUND_ACCEPTED); test_sound_event(ent, b, SOUND_STARTED);
@@ -391,7 +450,7 @@ TEST(wc3_unit, overlapping_response_feedback_keeps_portrait_until_last_voice_end
     G_UpdateUnitResponsePresentation();
     test_sound_event(ent, c, SOUND_ACCEPTED); test_sound_event(ent, c, SOUND_STARTED);
     T_ASSERT(!G_UnitResponseTalking(ent));
-    G_ResetSelectionSoundState(); T_EQ(ent->sound.pending, 0);
+    G_ResetSelectionSoundState(); T_EQ(ent->sound->pending, 0);
 }
 
 TEST(wc3_unit, unused_client_slot_cannot_retire_another_clients_playback) {
@@ -407,9 +466,10 @@ TEST(wc3_unit, unused_client_slot_cannot_retire_another_clients_playback) {
 
 TEST(wc3_unit, selection_reset_ignores_late_response_admission) {
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    ent->sound.select[0] = 731; ent->sound.num_select = 1;
+    G_InitSounds(ent);
+    ent->sound->select[0] = 731; ent->sound->num_select = 1;
     G_ResetSelectionSoundState();
-    G_QueueSelectionSound(ent, true); T_EQ(ent->sound.pending, 731);
+    G_QueueSelectionSound(ent, true); T_EQ(ent->sound->pending, 731);
     uint32_t request = G_UnitResponseRequest(ent, 731);
     G_QueueSelectionSound(ent, true); /* same unit reselected before old admission */
     test_sound_event(ent, request, SOUND_ACCEPTED);
@@ -464,22 +524,25 @@ TEST(wc3_unit, repeated_selection_walks_pissed_responses_after_three_what_lines)
     __typeof__(gi.SoundIndexAlias) old_sound_alias = gi.SoundIndexAlias;
 
     ent->data.UnitUI = &ui;
-    ent->sound.select[0] = 11;
-    ent->sound.num_select = 1;
+    G_InitSounds(ent);
+    ent->sound->select[0] = 11;
+    G_InitSounds(ent);
+    ent->sound->num_select = 1;
     gi.SoundIndex = selection_sound_index_77; gi.SoundIndexAlias = selection_sound_index_77_alias;
     G_ResetSelectionSoundState();
 
-    G_QueueSelectionSound(ent, true); T_EQ(ent->sound.pending, 11);
+    G_QueueSelectionSound(ent, true); T_EQ(ent->sound->pending, 11);
     /* Rejected responses leave the three-What threshold untouched. */
     uint32_t rejected = G_UnitResponseRequest(ent, 11);
-    ent->sound.pending = 0; test_sound_event(ent, rejected, SOUND_REJECTED);
+    G_InitSounds(ent);
+    ent->sound->pending = 0; test_sound_event(ent, rejected, SOUND_REJECTED);
     FOR_LOOP(i, 3) {
-        G_QueueSelectionSound(ent, false); T_EQ(ent->sound.pending, 11);
+        G_QueueSelectionSound(ent, false); T_EQ(ent->sound->pending, 11);
         response_test_finish(ent);
     }
-    G_QueueSelectionSound(ent, false); T_EQ(ent->sound.pending, 77);
+    G_QueueSelectionSound(ent, false); T_EQ(ent->sound->pending, 77);
     response_test_finish(ent);
-    G_QueueSelectionSound(ent, false); T_EQ(ent->sound.pending, 77);
+    G_QueueSelectionSound(ent, false); T_EQ(ent->sound->pending, 77);
     response_test_finish(ent);
 
     gi.SoundIndex = old_sound_index; gi.SoundIndexAlias = old_sound_alias;
@@ -505,11 +568,10 @@ TEST(wc3_unit, attack_order_uses_yesattack_instead_of_weapon_swing_slot) {
     __typeof__(gi.SoundIndexAlias) old_sound_alias = gi.SoundIndexAlias;
 
     ent->data.UnitUI = &ui;
-    ent->sound.attack = 0;
+    G_InitSounds(ent);
     gi.SoundIndex = selection_sound_index_77; gi.SoundIndexAlias = selection_sound_index_77_alias;
     G_QueueAttackOrderSound(ent);
-    T_EQ(ent->sound.pending, 77);
-    T_EQ(ent->sound.attack, 0);
+    T_EQ(ent->sound->pending, 77);
 
     gi.SoundIndex = old_sound_index; gi.SoundIndexAlias = old_sound_alias;
     G_SetSLKRows("UnitAckSounds", old); free_slk_rows(sounds);
@@ -517,13 +579,16 @@ TEST(wc3_unit, attack_order_uses_yesattack_instead_of_weapon_swing_slot) {
 
 TEST(wc3_unit, ready_sound_queues_owner_only_sound) {
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
-    ent->sound.ready[0] = 21;
-    ent->sound.ready[1] = 22;
-    ent->sound.num_ready = 2;
+    G_InitSounds(ent);
+    ent->sound->ready[0] = 21;
+    G_InitSounds(ent);
+    ent->sound->ready[1] = 22;
+    G_InitSounds(ent);
+    ent->sound->num_ready = 2;
 
     G_QueueReadySound(ent);
-    T_ASSERT(ent->sound.owner_pending == 21 || ent->sound.owner_pending == 22);
-    T_EQ(ent->sound.owner_pending != 0, 1);
+    T_ASSERT(ent->sound->owner_pending == 21 || ent->sound->owner_pending == 22);
+    T_EQ(ent->sound->owner_pending != 0, 1);
 }
 
 /* -----------------------------------------------------------------------
@@ -652,10 +717,10 @@ TEST(wc3_unit, paused_death_animation_advances_after_kill) {
     edict_t *ent = make_unit(0, 0);
     ent->animation = &death;
     ent->s.frame = 50;
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
 
     unit_die(ent, NULL);
-    T_ASSERT(ent->animation_override);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_ANIMATION_OVERRIDE));
     T_ASSERT(ent->currentmove && !strcmp(ent->currentmove->animation, "death"));
     ent->animation = &death;
     ent->s.frame = 50;
@@ -668,15 +733,16 @@ TEST(wc3_unit, feral_spirit_death_uses_magic_burst_instead_of_blood) {
     edict_t *wolf = make_unit(64.0f, 96.0f);
     wolf->aiflags |= AI_SUMMON_EXPLODES_ON_DEATH;
     wolf->summon_ability = MAKEFOURCC('A','O','s','f');
-    wolf->sound.death = 23;
+    G_InitSounds(wolf);
+    wolf->sound->death = 23;
 
     unit_die(wolf, NULL);
     T_ASSERT(wolf->svflags & SVF_DEADMONSTER);
     T_ASSERT(wolf->s.renderfx & RF_HIDDEN);
     T_ASSERT(wolf->aiflags & AI_CORPSE_UNRAISABLE);
     T_ASSERT(wolf->aiflags & AI_CORPSE_NO_DECAY);
-    T_EQ(wolf->sound.world_pending, 0);
-    T_EQ(wolf->sound.world_pending_event, 0);
+    T_EQ(wolf->sound->world_pending, 0);
+    T_EQ(wolf->sound->world_pending_event, 0);
     T_FEQ(wolf->wait, FRAMETIME / 1000.0f, 0.0001f);
 }
 
@@ -706,43 +772,48 @@ TEST(wc3_unit, scripted_explosion_keeps_death_lifecycle_without_corpse) {
     reset_test_entities();
     edict_t *unit = make_unit(64.0f, 96.0f);
     unit->aiflags |= AI_SCRIPT_EXPLODED;
-    unit->sound.death = 23;
+    G_InitSounds(unit);
+    unit->sound->death = 23;
     unit_die(unit, NULL);
     T_ASSERT(unit->svflags & SVF_DEADMONSTER);
     T_ASSERT(unit->s.renderfx & RF_HIDDEN);
     T_ASSERT(unit->aiflags & AI_CORPSE_UNRAISABLE);
     T_ASSERT(unit->aiflags & AI_CORPSE_NO_DECAY);
-    T_EQ(unit->sound.world_pending, 0);
+    T_EQ(unit->sound->world_pending, 0);
     T_FEQ(unit->wait, FRAMETIME / 1000.0f, 0.0001f);
 }
 
 TEST(wc3_unit, die_emits_registered_death_sound) {
     reset_test_entities();
     edict_t *ent = make_unit(0, 0);
-    ent->sound.death = 23;
+    G_InitSounds(ent);
+    ent->sound->death = 23;
 
     unit_die(ent, NULL);
-    T_EQ(ent->sound.world_pending, 23);
-    T_EQ(ent->sound.world_pending_event, EV_DEATH);
-    T_EQ(ent->sound.world_pending, 23);
+    T_EQ(ent->sound->world_pending, 23);
+    T_EQ(ent->sound->world_pending_event, EV_DEATH);
+    T_EQ(ent->sound->world_pending, 23);
 }
 
 TEST(wc3_unit, die_is_one_shot_after_dead_monster_flag) {
     reset_test_entities();
     edict_t *ent = make_unit(0, 0);
-    ent->sound.death = 23;
+    G_InitSounds(ent);
+    ent->sound->death = 23;
 
     unit_die(ent, NULL);
     T_ASSERT(ent->svflags & SVF_DEADMONSTER);
 
     /* A second lethal resolution must not replay death-side effects such as
      * sounds/events/loot-trigger publication. */
-    ent->sound.world_pending = 0;
-    ent->sound.world_pending_event = 0;
+    G_InitSounds(ent);
+    ent->sound->world_pending = 0;
+    G_InitSounds(ent);
+    ent->sound->world_pending_event = 0;
     unit_die(ent, NULL);
 
-    T_EQ(ent->sound.world_pending, 0);
-    T_EQ(ent->sound.world_pending_event, 0);
+    T_EQ(ent->sound->world_pending, 0);
+    T_EQ(ent->sound->world_pending_event, 0);
 }
 
 TEST(wc3_unit, die_raises_dead_monster_flag) {
@@ -922,7 +993,9 @@ TEST(wc3_unit, smart_on_passive_ally_starts_persistent_follow) {
     reset_test_entities();
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = 0;
     leader->s.player = 1;
@@ -932,7 +1005,7 @@ TEST(wc3_unit, smart_on_passive_ally_starts_persistent_follow) {
     level.alliances[0][1] |= 1 << ALLIANCE_PASSIVE;
 
     T_ASSERT(unit_issuetargetorder(follower, "smart", leader));
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
     T_ASSERT(follower->currentmove && follower->currentmove->proc == CAbilityMove);
 }
@@ -941,12 +1014,14 @@ TEST(wc3_unit, target_move_on_unit_starts_persistent_follow) {
     reset_test_entities();
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = leader->s.player = 0;
 
     T_ASSERT(unit_issuetargetorder(follower, "move", leader));
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
     T_ASSERT(follower->currentmove && follower->currentmove->proc == CAbilityMove);
 }
@@ -993,7 +1068,9 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
     setup_test_world();
     follower = make_unit(200.0f, 0.0f);
     building = make_unit(0.0f, 0.0f);
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(building);
     building->svflags |= SVF_MONSTER;
     follower->s.player = building->s.player = 0;
     building->s.flags |= EF_BUILDING;
@@ -1014,7 +1091,7 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
      * footprint-aware follow is already within the intended structure range. */
     T_ASSERT(M_DistanceToGoal(follower) == 0.0f);
     T_ASSERT(unit_issuetargetorder(follower, "smart", building));
-    T_ASSERT(follower->movement.follow_target == building);
+    T_ASSERT(follower->orders->follow_target == building);
     T_ASSERT(follower->goalentity == building);
     T_ASSERT(M_DistanceToGoal(follower) > G_FollowStopRange(follower, building));
     T_FEQ(G_FollowStopRange(follower, building), 100.0f, 0.001f);
@@ -1024,7 +1101,7 @@ TEST(wc3_unit, smart_follow_building_stops_at_pathing_footprint_range) {
     follower->animation = &(animation_t){ .name = "stand", .interval = { 0, 300 } };
     follower->currentmove->think(follower);
 
-    T_ASSERT(follower->movement.follow_target == building);
+    T_ASSERT(follower->orders->follow_target == building);
     T_ASSERT(G_AnimationHasPrimary(follower->animation, "stand"));
 
     building->pathtex = NULL;
@@ -1038,7 +1115,9 @@ TEST(wc3_unit, queued_smart_on_passive_ally_revalidates_to_follow) {
     edict_t *follower = make_unit(0, 0);
     edict_t *leader = make_unit(256, 0);
     vec2_t first = { 96.0f, 0.0f };
+    G_InitUnitOrders(follower);
     follower->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(leader);
     leader->svflags |= SVF_MONSTER;
     follower->s.player = 0;
     leader->s.player = 1;
@@ -1054,7 +1133,7 @@ TEST(wc3_unit, queued_smart_on_passive_ally_revalidates_to_follow) {
     unit_stand(follower);
 
     T_EQ(G_UnitQueuedOrderCount(follower), 0);
-    T_ASSERT(follower->movement.follow_target == leader);
+    T_ASSERT(follower->orders->follow_target == leader);
     T_ASSERT(follower->goalentity == leader);
 }
 
@@ -1109,6 +1188,8 @@ TEST(wc3_unit, no_creep_sleep_player_state_blocks_new_natural_sleep) {
     edict_t *creep = make_unit(0, 0);
     uint16_t *no_creep_sleep = &game.clients[PLAYER_NEUTRAL_AGGRESSIVE].ps.stats[WC3_PLAYERSTATE_NO_CREEP_SLEEP];
 
+    G_InitUnitOrders(creep);
+
     creep->svflags |= SVF_MONSTER;
     creep->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     if (!creep->sleep) creep->sleep = G_AllocSleep();
@@ -1132,11 +1213,14 @@ TEST(wc3_unit, unit_add_sleep_policy_is_neutral_only_and_wakes_when_disabled) {
     edict_t *neutral = make_unit(0, 0);
     edict_t *player_unit = make_unit(64, 0);
 
+    G_InitUnitOrders(neutral);
+
     neutral->svflags |= SVF_MONSTER;
     neutral->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     if (!neutral->sleep) neutral->sleep = G_AllocSleep();
     assert(neutral->sleep);
     neutral->sleep->can_sleep = false;
+    G_InitUnitOrders(player_unit);
     player_unit->svflags |= SVF_MONSTER;
     player_unit->s.player = 0;
     if (!player_unit->sleep) player_unit->sleep = G_AllocSleep();
@@ -1166,7 +1250,9 @@ TEST(wc3_unit, smart_on_neutral_aggressive_attacks_not_follows) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
@@ -1174,7 +1260,7 @@ TEST(wc3_unit, smart_on_neutral_aggressive_attacks_not_follows) {
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
     T_ASSERT(unit->goalentity == target);
-    T_ASSERT(unit->movement.follow_target == NULL);
+    T_ASSERT(unit->orders->follow_target == NULL);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityAttack);
 }
 
@@ -1182,7 +1268,9 @@ TEST(wc3_unit, smart_on_neutral_aggressive_follows_after_passive_alliance) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
@@ -1192,7 +1280,7 @@ TEST(wc3_unit, smart_on_neutral_aggressive_follows_after_passive_alliance) {
                         ALLIANCE_PASSIVE, true);
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
-    T_ASSERT(unit->movement.follow_target == target);
+    T_ASSERT(unit->orders->follow_target == target);
     T_ASSERT(unit->goalentity == target);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
 }
@@ -1201,14 +1289,16 @@ TEST(wc3_unit, smart_on_neutral_passive_uses_persistent_follow) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = PLAYER_NEUTRAL_PASSIVE;
     G_InitPlayerAlliances(level.mapinfo);
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
-    T_ASSERT(unit->movement.follow_target == target);
+    T_ASSERT(unit->orders->follow_target == target);
     T_ASSERT(unit->goalentity == target);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityMove);
 }
@@ -1217,7 +1307,9 @@ TEST(wc3_unit, smart_on_shared_vision_enemy_still_attacks) {
     reset_test_entities();
     edict_t *unit = make_unit(0, 0);
     edict_t *target = make_unit(128, 0);
+    G_InitUnitOrders(unit);
     unit->svflags |= SVF_MONSTER;
+    G_InitUnitOrders(target);
     target->svflags |= SVF_MONSTER;
     unit->s.player = 0;
     target->s.player = 1;
@@ -1228,7 +1320,7 @@ TEST(wc3_unit, smart_on_shared_vision_enemy_still_attacks) {
 
     T_ASSERT(unit_issuetargetorder(unit, "smart", target));
     T_ASSERT(unit->goalentity == target);
-    T_ASSERT(unit->movement.follow_target == NULL);
+    T_ASSERT(unit->orders->follow_target == NULL);
     T_ASSERT(unit->currentmove && unit->currentmove->proc == CAbilityAttack);
 }
 
@@ -1293,7 +1385,7 @@ TEST(wc3_unit, hero_dissipate_alpha_tracks_timer_without_mutating_vertex_color) 
     hero->svflags |= SVF_MONSTER | SVF_DEADMONSTER;
     hero->think = monster_think;
     hero->vertex_color = MAKE(color32_t, 210, 180, 150, 200);
-    hero->vertex_color_set = true;
+    G_SetUnitFlag(hero, UNIT_FLAG_VERTEX_COLOR_SET, true);
     clent = &g_edicts[0];
     clent->client = &game.clients[0];
     clent->client->ps.number = 0;
@@ -1410,7 +1502,7 @@ TEST(wc3_unit, removing_producer_cancels_mixed_revival_and_training_queue) {
     hero->revival->player = client->ps.number;
     hero->revival->gold = 100;
     hero->revival->lumber = 50;
-    trainee->training = true;
+    G_SetUnitFlag(trainee, UNIT_FLAG_TRAINING, true);
     client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 0;
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 0;
 
@@ -1488,7 +1580,7 @@ TEST(wc3_unit, hero_revive_cleanup_stops_on_cyclic_production_queue) {
 
     altar->data.UnitProfile = &revive_profile;
     altar->build = first;
-    first->training = second->training = true;
+    G_SetUnitFlag(first, UNIT_FLAG_TRAINING, true); G_SetUnitFlag(second, UNIT_FLAG_TRAINING, true);
     first->build = second;
     second->build = first;
 
@@ -1627,8 +1719,8 @@ TEST(wc3_unit, point_attack_order_uses_attack_move_behavior) {
     vec2_t dest = { 128.0f, 0.0f };
 
     T_ASSERT(unit_issueorder(ent, "attack", &dest));
-    T_NOT_NULL(ent->movement.attackmove_waypoint);
-    T_ASSERT(ent->goalentity == ent->movement.attackmove_waypoint);
+    T_NOT_NULL(ent->orders->attackmove_waypoint);
+    T_ASSERT(ent->goalentity == ent->orders->attackmove_waypoint);
 }
 
 TEST(wc3_unit, issueorder_move_preserves_combat_state) {
@@ -1688,7 +1780,7 @@ TEST(wc3_unit, issueimmediateorder_holdposition_uses_hold_state) {
     unit_issueorder(ent, "move", &dest);
 
     T_ASSERT(unit_issueimmediateorder(ent, "holdposition"));
-    T_ASSERT(ent->movement.holding_position);
+    T_ASSERT(ent->orders->holding_position);
     T_STREQ(ent->currentmove->animation, "stand");
 }
 
@@ -1774,7 +1866,7 @@ TEST(wc3_unit, ravenform_immediate_orders_transform_between_ability_data_types) 
     install_raven_form_test_data(&ability_rows, &old_ability, &ui_rows, &old_ui, &profile_rows, &old_profile);
     ent = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 64.0f, 64.0f);
     G_InitializeUnitVertexColor(ent);
-    T_ASSERT(ent->vertex_color_set);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(ent->vertex_color.r, 224); T_EQ(ent->vertex_color.g, 232);
     T_EQ(ent->vertex_color.b, 255); T_EQ(ent->vertex_color.a, 255);
     T_ASSERT(G_ActorAddSkill(ent, MAKEFOURCC('A','m','r','f')));
@@ -1786,7 +1878,7 @@ TEST(wc3_unit, ravenform_immediate_orders_transform_between_ability_data_types) 
     T_FEQ(ent->health.max_value, ent->data.UnitBalance->maxHealth + 123.0f, 0.001f);
     T_FEQ(ent->mana.max_value, ent->data.UnitBalance->maxMana + 77.0f, 0.001f);
     T_STREQ(ent->animation_props, "alternateex");
-    T_ASSERT(!ent->vertex_color_set);
+    T_ASSERT(!G_UnitHasFlag(ent, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(ent->vertex_color.r, 255); T_EQ(ent->vertex_color.g, 255);
     T_EQ(ent->vertex_color.b, 255); T_EQ(ent->vertex_color.a, 255);
     T_ASSERT(unit_issueimmediateorder(ent, "unravenform"));
@@ -1794,7 +1886,7 @@ TEST(wc3_unit, ravenform_immediate_orders_transform_between_ability_data_types) 
     T_FEQ(ent->health.max_value, ent->data.UnitBalance->maxHealth + 123.0f, 0.001f);
     T_FEQ(ent->mana.max_value, ent->data.UnitBalance->maxMana + 77.0f, 0.001f);
     T_STREQ(ent->animation_props, "");
-    T_ASSERT(ent->vertex_color_set);
+    T_ASSERT(G_UnitHasFlag(ent, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(ent->vertex_color.r, 224); T_EQ(ent->vertex_color.g, 232);
     T_EQ(ent->vertex_color.b, 255); T_EQ(ent->vertex_color.a, 255);
 
@@ -1928,15 +2020,15 @@ TEST(wc3_unit, creep_transform_preserves_guard_anchor_and_active_phase) {
     creep->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     G_CreepGuardInit(creep);
     creep->s.origin2.x = 512.0f;
-    creep->movement.creep_guard_phase = CREEP_GUARD_COMBAT;
-    creep->movement.creep_guard_last_hit_ms = 1234;
-    creep->movement.creep_guard_outside_ms = 2345;
+    creep->orders->creep_guard_phase = CREEP_GUARD_COMBAT;
+    creep->orders->creep_guard_last_hit_ms = 1234;
+    creep->orders->creep_guard_outside_ms = 2345;
     T_ASSERT(G_TransformUnitType(creep, MAKEFOURCC('h','f','o','o')));
-    T_ASSERT(creep->movement.creep_guard_enabled);
-    T_EQ(creep->movement.creep_guard_phase, CREEP_GUARD_COMBAT);
-    T_FEQ(creep->movement.creep_guard_origin.x, 64.0f, 0.001f);
-    T_EQ(creep->movement.creep_guard_last_hit_ms, 1234u);
-    T_EQ(creep->movement.creep_guard_outside_ms, 2345u);
+    T_ASSERT(creep->orders->creep_guard_enabled);
+    T_EQ(creep->orders->creep_guard_phase, CREEP_GUARD_COMBAT);
+    T_FEQ(creep->orders->creep_guard_origin.x, 64.0f, 0.001f);
+    T_EQ(creep->orders->creep_guard_last_hit_ms, 1234u);
+    T_EQ(creep->orders->creep_guard_outside_ms, 2345u);
     restore_raven_form_test_data(ability_rows, old_ability, ui_rows, old_ui, profile_rows, old_profile);
 }
 
@@ -1950,9 +2042,9 @@ TEST(wc3_unit, creep_transform_does_not_reenable_disabled_guard) {
     G_CreepGuardSetEnabled(creep, false);
     creep->s.origin2.x = 512.0f;
     T_ASSERT(G_TransformUnitType(creep, MAKEFOURCC('h','f','o','o')));
-    T_ASSERT(!creep->movement.creep_guard_enabled);
-    T_EQ(creep->movement.creep_guard_phase, CREEP_GUARD_IDLE);
-    T_FEQ(creep->movement.creep_guard_origin.x, 64.0f, 0.001f);
+    T_ASSERT(!creep->orders->creep_guard_enabled);
+    T_EQ(creep->orders->creep_guard_phase, CREEP_GUARD_IDLE);
+    T_FEQ(creep->orders->creep_guard_origin.x, 64.0f, 0.001f);
     restore_raven_form_test_data(ability_rows, old_ability, ui_rows, old_ui, profile_rows, old_profile);
 }
 
@@ -1962,7 +2054,7 @@ TEST(wc3_unit, stoneform_uses_authored_transform_endpoints_in_both_directions) {
     install_raven_form_test_data(&ability_rows, &old_ability, &ui_rows, &old_ui, &profile_rows, &old_profile);
     edict_t *ent = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 64.0f, 64.0f);
     ent->svflags |= SVF_MONSTER;
-    ent->abilities.added[0] = MAKEFOURCC('A','s','t','n'); ent->abilities.added_count = 1;
+    ent->unit_state->overrides.added[0] = MAKEFOURCC('A','s','t','n'); ent->unit_state->overrides.added_count = 1;
     T_ASSERT(G_UnitAbilityLevel(ent, MAKEFOURCC('A','s','t','n')));
     T_NOT_NULL(S_SpellAbilityForCode(MAKEFOURCC('A','s','t','n')));
     T_EQ(G_AbilityData(MAKEFOURCC('A','s','t','n'))->level[0].data[0].id, MAKEFOURCC('h','p','e','a'));
@@ -1996,8 +2088,8 @@ TEST(wc3_unit, stoneform_command_applies_to_focused_unit_type_subgroup) {
         units[i]->s.player = 0;
         units[i]->svflags |= SVF_MONSTER;
         G_SelectEntity(game.clients, units[i]);
-        units[i]->abilities.added[0] = astn;
-        units[i]->abilities.added_count = 1;
+        units[i]->unit_state->overrides.added[0] = astn;
+        units[i]->unit_state->overrides.added_count = 1;
     }
     T_ASSERT(G_IsEntitySelected(game.clients, first));
     T_ASSERT(G_FocusSelectedUnit(game.clients, first));
@@ -2044,7 +2136,7 @@ TEST(wc3_unit, unravenform_snaps_new_animation_frame_while_unit_is_paused) {
     SP_SpawnUnit(ent);
     unit_stand(ent);
     T_NOT_NULL(ent->animation);
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     ent->s.frame = 0x7fffffffu;
 
     T_ASSERT(unit_issueimmediateorder(ent, "unravenform"));
@@ -2108,7 +2200,7 @@ TEST(wc3_unit, raven_morph_completion_and_takeoff_survive_move_order) {
     T_EQ(ent->raven->rise_state, RAVEN_RISE_ACTIVE);
     T_FEQ(ent->unitinfo.FlyHeight, 0, 0.001f);
     T_ASSERT(unit_issueorder(ent, "move", &point));
-    ent->paused = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_PAUSED, true);
     level.time = 2000;
     monster_think(ent);
     T_FEQ(ent->unitinfo.FlyHeight, 50, 0.001f);
@@ -2189,7 +2281,7 @@ TEST(wc3_unit, issueimmediateorder_autoharvestlumber_uses_nearest_live_tree) {
 
     T_ASSERT(unit_issueimmediateorder(worker, "autoharvestlumber"));
     T_ASSERT(worker->goalentity == near_tree);
-    T_ASSERT(worker->secondarygoal == near_tree);
+    T_ASSERT(worker->orders->resource_goal == near_tree);
     T_STREQ(worker->currentmove->animation, "walk");
 }
 
@@ -2204,7 +2296,7 @@ TEST(wc3_unit, issueimmediateorder_autoharvestgold_uses_nearest_live_mine) {
 
     T_ASSERT(unit_issueimmediateorder(worker, "autoharvestgold"));
     T_ASSERT(worker->goalentity == near_mine);
-    T_ASSERT(worker->secondarygoal == near_mine);
+    T_ASSERT(worker->orders->resource_goal == near_mine);
     T_STREQ(worker->currentmove->animation, "walk");
 }
 
@@ -2242,7 +2334,7 @@ TEST(wc3_unit, additemtoslot_fills_empty_slot) {
     edict_t *item = make_world_item(MAKEFOURCC('r','a','t','f'));
     bool ok = unit_additemtoslot(ent, item, 0);
     T_ASSERT(ok);
-    T_ASSERT(ent->inventory[0] == item);
+    T_ASSERT(G_InventoryItem(ent, 0) == item);
 }
 
 TEST(wc3_unit, additemtoslot_rejects_occupied_slot) {
@@ -2263,7 +2355,7 @@ TEST(wc3_unit, additem_fills_first_free_slot) {
     unit_additemtoslot(ent, item1, 0);
     bool ok = unit_additem(ent, item2);
     T_ASSERT(ok);
-    T_ASSERT(ent->inventory[1] == item2);
+    T_ASSERT(G_InventoryItem(ent, 1) == item2);
 }
 
 TEST(wc3_unit, additem_fails_when_inventory_full) {
@@ -2287,15 +2379,16 @@ TEST(wc3_unit, different_units_have_independent_response_gates) {
     T_ASSERT(G_QueueUnitResponseSound(a, 11));
     T_ASSERT(G_QueueUnitResponseSound(b, 12));
     T_ASSERT(!G_QueueUnitResponseSound(a, 13));
-    T_EQ(b->sound.pending, 12);
+    T_EQ(b->sound->pending, 12);
 }
 
 TEST(wc3_unit, status_modifiers_stack_by_family_and_retire_with_slot) {
-    edict_t unit = { 0 };
+    unitState_t state = {0};
+    edict_t unit = { .unit_state = &state };
     uint32_t old_time = level.time;
-    heroabilitystatus_t *a = &unit.abilstatus[0];
-    heroabilitystatus_t *b = &unit.abilstatus[1];
-    heroabilitystatus_t *c = &unit.abilstatus[2];
+    heroabilitystatus_t *a = &unit.unit_state->statuses[0];
+    heroabilitystatus_t *b = &unit.unit_state->statuses[1];
+    heroabilitystatus_t *c = &unit.unit_state->statuses[2];
     wc3_status_modifier_t weak = {
         .type = WC3_STATUS_MOD_MOVE_SPEED_PERCENT, .family = 1,
         .policy = WC3_STATUS_MOD_STRONGEST_NEGATIVE, .value = -0.2f
@@ -2324,7 +2417,8 @@ TEST(wc3_unit, status_modifiers_stack_by_family_and_retire_with_slot) {
 /* Fast-path coverage: a unit with no descriptors and an additive-only
  * unit both bypass the strongest-wins table without changing arithmetic. */
 TEST(wc3_unit, status_modifier_fast_path_preserves_additive_and_strongest_results) {
-    edict_t unit = { 0 };
+    unitState_t state = {0};
+    edict_t unit = { .unit_state = &state };
     wc3_status_modifier_t add = {
         .type = WC3_STATUS_MOD_MOVE_SPEED_PERCENT, .policy = WC3_STATUS_MOD_ADD,
         .value = 0.125f
@@ -2336,16 +2430,16 @@ TEST(wc3_unit, status_modifier_fast_path_preserves_additive_and_strongest_result
     wc3_status_modifier_t strong = weak;
     uint32_t old_time = level.time;
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), 0.0f, 0.001f);
-    unit.abilstatus[0].level = 1;
+    unit.unit_state->statuses[0].level = 1;
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), 0.0f, 0.001f);
-    T_ASSERT(unit_status_setmodifier(&unit.abilstatus[0], 0, &add));
+    T_ASSERT(unit_status_setmodifier(&unit.unit_state->statuses[0], 0, &add));
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), 0.125f, 0.001f);
-    unit.abilstatus[1].level = unit.abilstatus[2].level = 1;
+    unit.unit_state->statuses[1].level = unit.unit_state->statuses[2].level = 1;
     strong.value = -0.45f;
-    T_ASSERT(unit_status_setmodifier(&unit.abilstatus[1], 0, &weak));
-    T_ASSERT(unit_status_setmodifier(&unit.abilstatus[2], 0, &strong));
+    T_ASSERT(unit_status_setmodifier(&unit.unit_state->statuses[1], 0, &weak));
+    T_ASSERT(unit_status_setmodifier(&unit.unit_state->statuses[2], 0, &strong));
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), -0.325f, 0.001f);
-    unit.abilstatus[2].timestamp = 1;
+    unit.unit_state->statuses[2].timestamp = 1;
     level.time = 2;
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), -0.075f, 0.001f);
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_ARMOR_FLAT), 0.0f, 0.001f);
@@ -2353,16 +2447,17 @@ TEST(wc3_unit, status_modifier_fast_path_preserves_additive_and_strongest_result
 }
 
 TEST(wc3_unit, status_modifiers_ignore_other_types_and_support_positive_families) {
-    edict_t unit = { 0 };
+    unitState_t state = {0};
+    edict_t unit = { .unit_state = &state };
     wc3_status_modifier_t first = {
         .type = WC3_STATUS_MOD_ARMOR_FLAT, .family = 19,
         .policy = WC3_STATUS_MOD_STRONGEST_POSITIVE, .value = 2.0f
     };
     wc3_status_modifier_t second = first;
-    unit.abilstatus[0].level = unit.abilstatus[1].level = 1;
+    unit.unit_state->statuses[0].level = unit.unit_state->statuses[1].level = 1;
     second.value = 4.0f;
-    T_ASSERT(unit_status_setmodifier(&unit.abilstatus[0], 0, &first));
-    T_ASSERT(unit_status_setmodifier(&unit.abilstatus[1], 0, &second));
+    T_ASSERT(unit_status_setmodifier(&unit.unit_state->statuses[0], 0, &first));
+    T_ASSERT(unit_status_setmodifier(&unit.unit_state->statuses[1], 0, &second));
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_ARMOR_FLAT), 4.0f, 0.001f);
     T_FEQ(unit_status_modifier_total(&unit, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), 0.0f, 0.001f);
 }

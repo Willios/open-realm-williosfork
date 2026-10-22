@@ -30,6 +30,7 @@ edict_t *G_CreateBuildPreview(edict_t *builder, uint32_t building_id, vec2_t con
     preview->s.angle = -M_PI / 2;
     preview->s.player = builder->s.player;
     SP_CallSpawn(preview);
+    preview->owner = builder; /* lets direct indicator removal detach accepted build intent */
     /* Pending construction is private player feedback, unlike the real
      * building that replaces it when construction starts. Keep the normal
      * entity/model path, but never send this marker to allies or opponents. */
@@ -48,7 +49,7 @@ edict_t *G_CreateBuildPreview(edict_t *builder, uint32_t building_id, vec2_t con
     if (stand) preview->s.frame = stand->interval[0];
     preview->aiflags |= AI_HOLD_FRAME;
     preview->vertex_color = MAKE(color32_t, 255, 255, 255, WC3_BUILD_SITE_INDICATOR_ALPHA);
-    preview->vertex_color_set = true;
+    G_SetUnitFlag(preview, UNIT_FLAG_VERTEX_COLOR_SET, true);
     if (!G_DisplaceBuildOccupants(builder, preview)) {
 #ifdef WC3_DEBUG_BUILD
         fprintf(stderr, "WC3_BUILD preview-displace-incomplete worker=%ld preview=%ld id=%.4s\n",
@@ -66,12 +67,12 @@ edict_t *G_CreateBuildPreview(edict_t *builder, uint32_t building_id, vec2_t con
 void G_ClearBuildPreview(edict_t *builder) {
     edict_t *preview;
 
-    if (!builder || !(preview = builder->build_preview)) return;
+    if (!builder || !builder->orders || !(preview = builder->orders->build_preview)) return;
 #ifdef WC3_DEBUG_BUILD
     fprintf(stderr, "WC3_BUILD preview-clear worker=%ld preview=%ld id=%.4s\n",
             (long)(builder - g_edicts), (long)(preview - g_edicts), (cstring_t)&preview->class_id);
 #endif
-    builder->build_preview = NULL;
+    builder->orders->build_preview = NULL;
     G_FreeEdict(preview);
 }
 #define WC3_UNDEAD_BUILD_WORK_MS 2267 // milliseconds; Warsmash CBehaviorUndeadBuild summon-work window
@@ -390,7 +391,7 @@ static void G_ApplyUpgradeLevelDelta(edict_t *unit, UpgradeData_t const *upgrade
             int32_t const new_value = (int32_t)G_UpgradeEffectValue(upgrade, i, new_level);
             int32_t const delta = new_value - old_value;
 
-            if (delta && (unit->attack1.numberOfDice || unit->attack2.numberOfDice)) {
+            if (delta && (unit->unit_state->attack1.numberOfDice || unit->unit_state->attack2.numberOfDice)) {
                 G_ApplyPermanentAttackDamageBonus(unit, (float)delta);
                 changed = true;
             }
@@ -399,23 +400,23 @@ static void G_ApplyUpgradeLevelDelta(edict_t *unit, UpgradeData_t const *upgrade
             int32_t const new_value = (int32_t)G_UpgradeEffectValue(upgrade, i, new_level);
             int32_t const delta = new_value - old_value;
 
-            if (delta && unit->attack1.numberOfDice) {
-                unit->attack1.numberOfDice = MAX(0, (int32_t)unit->attack1.numberOfDice + delta);
+            if (delta && unit->unit_state->attack1.numberOfDice) {
+                unit->unit_state->attack1.numberOfDice = MAX(0, (int32_t)unit->unit_state->attack1.numberOfDice + delta);
                 changed = true;
             }
-            if (delta && unit->attack2.numberOfDice) {
-                unit->attack2.numberOfDice = MAX(0, (int32_t)unit->attack2.numberOfDice + delta);
+            if (delta && unit->unit_state->attack2.numberOfDice) {
+                unit->unit_state->attack2.numberOfDice = MAX(0, (int32_t)unit->unit_state->attack2.numberOfDice + delta);
                 changed = true;
             }
         } else if (effect == ID_UPGRADE_EFFECT_ATTACK_RANGE) {
             float const delta = G_UpgradeEffectValue(upgrade, i, new_level) -
                                 G_UpgradeEffectValue(upgrade, i, old_level);
-            if (delta != 0.0f && unit->attack1.numberOfDice) {
-                unit->attack1.range = MAX(0.0f, unit->attack1.range + delta);
+            if (delta != 0.0f && unit->unit_state->attack1.numberOfDice) {
+                unit->unit_state->attack1.range = MAX(0.0f, unit->unit_state->attack1.range + delta);
                 changed = true;
             }
-            if (delta != 0.0f && unit->attack2.numberOfDice) {
-                unit->attack2.range = MAX(0.0f, unit->attack2.range + delta);
+            if (delta != 0.0f && unit->unit_state->attack2.numberOfDice) {
+                unit->unit_state->attack2.range = MAX(0.0f, unit->unit_state->attack2.range + delta);
                 changed = true;
             }
         } else if (effect == ID_UPGRADE_EFFECT_ARMOR) {
@@ -452,7 +453,7 @@ static void G_ApplyUpgradeLevelDelta(edict_t *unit, UpgradeData_t const *upgrade
                 changed = true;
             }
         } else if (effect == ID_UPGRADE_EFFECT_MANA_REGEN) {
-            unit->mana_regen_bonus += G_UpgradeEffectValue(upgrade, i, new_level) -
+            unit->unit_state->mana_regen_bonus += G_UpgradeEffectValue(upgrade, i, new_level) -
                                       G_UpgradeEffectValue(upgrade, i, old_level);
             changed = true;
         }
@@ -653,7 +654,7 @@ bool G_ProducerCanUpgrade(edict_t *producer, uint32_t unit_id) {
 }
 
 bool G_BuildingUpgradeActive(edict_t const *building) {
-    return building && building->inuse && building->research && !building->training &&
+    return building && building->inuse && building->research && !G_UnitHasFlag(building, UNIT_FLAG_TRAINING) &&
         building->research->upgrade != 0 &&
         G_UnitIsStructure(building) &&
         G_UnitIsBuilding(building->research->upgrade);
@@ -710,7 +711,7 @@ static uint32_t G_PlayerHeroCount(gameClient_t *client) {
 
     if (!client) return 0;
     FILTER_EDICTS(ent, ent->inuse && ent->data.UnitBalance && ent->s.player == client->ps.number &&
-                         !ent->training && G_UnitIsHero(ent) && !(ent->aiflags & AI_ILLUSION)) count++;
+                         !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) && G_UnitIsHero(ent) && !(ent->aiflags & AI_ILLUSION)) count++;
     return count;
 }
 
@@ -762,7 +763,7 @@ int32_t G_PlayerRequirementCount(gameClient_t *client, uint32_t techid) {
     count = G_GetPlayerTechResearchedLevel(client, techid);
     player = client->ps.number;
     FILTER_EDICTS(ent, ent->inuse && ent->s.player == player &&
-                         !(ent->svflags & SVF_DEADMONSTER) && !ent->construction && !ent->training &&
+                         !(ent->svflags & SVF_DEADMONSTER) && !ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) &&
                          G_UnitTypeSatisfiesRequirement(ent->class_id, techid)) {
         count++;
     }
@@ -986,7 +987,7 @@ buildCommandState_t G_GetBuildingUpgradeCommandState(buildingUpgradeCommandParam
     target = G_UnitBalance(unit_id);
     if (!target || target->id != unit_id || !G_UnitUI(unit_id) || !G_UnitUI(unit_id)->modelFile)
         return BUILD_COMMAND_ABSENT;
-    if (G_BuildingUpgradeActive(producer) || producer->construction || producer->training || producer->build) {
+    if (G_BuildingUpgradeActive(producer) || producer->construction || G_UnitHasFlag(producer, UNIT_FLAG_TRAINING) || producer->build) {
         return BUILD_COMMAND_DISABLED;
     }
 
@@ -1211,7 +1212,7 @@ void G_RunBuildingUpgradeFrame(edict_t *building) {
         G_StopBuildingUpgrade(building, false);
         return;
     }
-    if (building->paused) return;
+    if (G_UnitHasFlag(building, UNIT_FLAG_PAUSED)) return;
     if (building->research->duration <= 0.0f || G_PlayerInstantBuild(building->s.player)) {
         G_CompleteBuildingUpgrade(building);
         return;
@@ -1350,7 +1351,7 @@ bool G_DisplaceBuildOccupants(edict_t *builder, edict_t *building) {
                 (long)(builder - g_edicts), (long)(building - g_edicts), (cstring_t)&building->class_id,
                 (long)(ent - g_edicts), (cstring_t)&ent->class_id, ent->s.origin2.x, ent->s.origin2.y,
                 ent->currentmove && ent->currentmove->animation ? ent->currentmove->animation : "<none>",
-                ent->build_project ? (cstring_t)&ent->build_project : "----",
+                ent->orders && ent->orders->build_project ? (cstring_t)&ent->orders->build_project : "----",
                 ent->build ? (long)(ent->build - g_edicts) : -1L,
                 ent->goalentity ? (long)(ent->goalentity - g_edicts) : -1L);
 #endif
@@ -1378,7 +1379,7 @@ bool G_DisplaceBuildOccupants(edict_t *builder, edict_t *building) {
                 (long)(building - g_edicts), (long)(units[i] - g_edicts),
                 units[i]->s.origin2.x, units[i]->s.origin2.y, positions[i].x, positions[i].y,
                 units[i]->currentmove && units[i]->currentmove->animation ? units[i]->currentmove->animation : "<none>",
-                units[i]->build_project ? (cstring_t)&units[i]->build_project : "----",
+                units[i]->orders && units[i]->orders->build_project ? (cstring_t)&units[i]->orders->build_project : "----",
                 units[i]->goalentity ? (long)(units[i]->goalentity - g_edicts) : -1L);
 #endif
         move_start_displacement(units[i], &positions[i]);
@@ -1665,16 +1666,16 @@ static void G_AssignConstructionWorker(edict_t *building, edict_t *worker, bool 
     building->construction->worker = worker;
     building->construction->worker_spawn_time = worker->spawn_time;
     building->construction->worker_inside = inside;
-    building->construction->restore_invulnerable = worker->invulnerable;
-    building->construction->restore_paused = worker->paused;
+    building->construction->restore_invulnerable = G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE);
+    building->construction->restore_paused = G_UnitHasFlag(worker, UNIT_FLAG_PAUSED);
     building->construction->restore_hidden = worker->s.renderfx & RF_HIDDEN;
     worker->build = building;
     worker->goalentity = building;
     if (!inside) return;
 
     worker->s.renderfx |= RF_HIDDEN;
-    worker->paused = true;
-    worker->invulnerable = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, true);
     G_InvalidateUnitShortcutsForUnit(worker);
 }
 
@@ -1768,8 +1769,8 @@ static void G_ReleaseConstructionWorker(edict_t *building, bool completed) {
         return;
     }
 
-    worker->paused = building->construction->restore_paused;
-    worker->invulnerable = building->construction->restore_invulnerable;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, building->construction->restore_paused);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, building->construction->restore_invulnerable);
     if (building->construction->restore_hidden) worker->s.renderfx |= RF_HIDDEN;
     else worker->s.renderfx &= ~RF_HIDDEN;
     G_InvalidateUnitShortcutsForUnit(worker);
@@ -1802,7 +1803,7 @@ static void G_UpdateHumanConstructionEmitterState(edict_t *building) {
 #endif
 
     if (building->construction->type != CONSTRUCTION_HUMAN) return;
-    if (!building->paused) {
+    if (!G_UnitHasFlag(building, UNIT_FLAG_PAUSED)) {
         FOR_LOOP(i, globals.num_edicts) {
             edict_t const *worker = &g_edicts[i];
             if (S_RepairWorkerAdvancingHumanConstruction(worker, building)) {
@@ -1855,7 +1856,7 @@ void G_RunConstructionFrame(edict_t *building) {
 
     if (!building || !building->construction) return;
     G_UpdateHumanConstructionEmitterState(building);
-    if (building->paused || !building->data.UnitBalance) return;
+    if (G_UnitHasFlag(building, UNIT_FLAG_PAUSED) || !building->data.UnitBalance) return;
 
     duration = MAX(1.0f, building->construction->duration_ms > 0 ?
                    building->construction->duration_ms : (float)building->data.UnitBalance->buildTime * 1000.0f);

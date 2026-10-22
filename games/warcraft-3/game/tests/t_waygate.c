@@ -62,9 +62,9 @@ static void waygate_done(wayFix_t fix) {
 }
 
 static void assert_no_waygate_order(edict_t const *unit) {
-    T_NULL(unit->movement.waygate_target);
-    T_NULL(unit->movement.waygate_goal);
-    T_EQ(unit->movement.waygate_target_spawn_time, 0);
+    T_NULL(unit->orders->waygate_target);
+    T_NULL(unit->orders->waygate_goal);
+    T_EQ(unit->orders->waygate_target_spawn_time, 0);
 }
 
 TEST(wc3_waygate, runtime_state_and_activation_animation) {
@@ -127,9 +127,9 @@ TEST(wc3_waygate, approach_revalidates_gate_generation_before_teleport) {
     wayFix_t fix = waygate_setup(300.0f, 0.0f);
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_NOT_NULL(fix.unit->movement.waygate_goal);
-    T_EQ(fix.unit->movement.waygate_target_spawn_time, fix.gate->spawn_time);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_NOT_NULL(fix.unit->orders->waygate_goal);
+    T_EQ(fix.unit->orders->waygate_target_spawn_time, fix.gate->spawn_time);
     fix.gate->spawn_time++;
     T_NOT_NULL(fix.unit->currentmove);
     G_RunEntities();
@@ -143,12 +143,12 @@ TEST(wc3_waygate, accepted_smart_order_preserves_its_new_approach) {
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
     T_ASSERT(fix.unit->currentmove && fix.unit->currentmove->proc == CAbilityWarp);
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_NOT_NULL(fix.unit->movement.waygate_goal);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_NOT_NULL(fix.unit->orders->waygate_goal);
     T_ASSERT(S_UnitAbilityOrderAccepted(fix.unit, "smart"));
     T_ASSERT(fix.unit->currentmove && fix.unit->currentmove->proc == CAbilityWarp);
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_NOT_NULL(fix.unit->movement.waygate_goal);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_NOT_NULL(fix.unit->orders->waygate_goal);
 
     T_ASSERT(S_UnitAbilityOrderAccepted(fix.unit, "move"));
     assert_no_waygate_order(fix.unit);
@@ -190,10 +190,10 @@ TEST(wc3_waygate, rejected_replacement_order_preserves_inflight_approach) {
     edict_t *goal;
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
-    goal = fix.unit->movement.waygate_goal;
+    goal = fix.unit->orders->waygate_goal;
     T_ASSERT(!G_IssueUnitTargetOrder(fix.unit, "attack", fix.unit, false, 0));
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_ASSERT(fix.unit->movement.waygate_goal == goal);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_ASSERT(fix.unit->orders->waygate_goal == goal);
     T_ASSERT(fix.unit->goalentity == goal);
     T_NOT_NULL(fix.unit->currentmove);
     T_EQ(fix.unit->currentmove->proc, CAbilityWarp);
@@ -219,7 +219,7 @@ TEST(wc3_waygate, accepted_target_order_replaces_inflight_approach) {
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "move", friend, false, 0));
     assert_no_waygate_order(fix.unit);
-    T_ASSERT(fix.unit->movement.follow_target == friend);
+    T_ASSERT(fix.unit->orders->follow_target == friend);
     waygate_done(fix);
 }
 
@@ -229,11 +229,11 @@ TEST(wc3_waygate, shift_queued_order_does_not_interrupt_inflight_approach) {
     edict_t *goal;
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
-    goal = fix.unit->movement.waygate_goal;
+    goal = fix.unit->orders->waygate_goal;
     T_ASSERT(G_IssueUnitPointOrder(fix.unit, "move", &destination, true, 0, 0.0f));
     T_EQ(G_UnitQueuedOrderCount(fix.unit), 1);
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_ASSERT(fix.unit->movement.waygate_goal == goal);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_ASSERT(fix.unit->orders->waygate_goal == goal);
     T_ASSERT(fix.unit->goalentity == goal);
     waygate_done(fix);
 }
@@ -249,7 +249,7 @@ TEST(wc3_waygate, stop_and_hold_replace_inflight_approach) {
     T_ASSERT(G_IssueUnitTargetOrder(hold.unit, "smart", hold.gate, false, 0));
     T_ASSERT(unit_issueimmediateorder(hold.unit, "holdposition"));
     assert_no_waygate_order(hold.unit);
-    T_ASSERT(hold.unit->movement.holding_position);
+    T_ASSERT(hold.unit->orders->holding_position);
     waygate_done(hold);
 }
 
@@ -294,16 +294,16 @@ TEST(wc3_save, waygate_state_and_inflight_approach_round_trip) {
     uint32_t goal_number;
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
-    T_NOT_NULL(fix.unit->movement.waygate_goal);
-    goal_number = fix.unit->movement.waygate_goal->s.number;
+    T_NOT_NULL(fix.unit->orders->waygate_goal);
+    goal_number = fix.unit->orders->waygate_goal->s.number;
     T_ASSERT(WriteGame(filename));
     assert(fix.gate->waygate);
     fix.gate->waygate->active = false;
     fix.gate->waygate->destination = (vec2_t){0};
     fix.gate->waygate->destination_set = false;
-    fix.unit->movement.waygate_target = NULL;
-    fix.unit->movement.waygate_goal = NULL;
-    fix.unit->movement.waygate_target_spawn_time = 0;
+    fix.unit->orders->waygate_target = NULL;
+    fix.unit->orders->waygate_goal = NULL;
+    fix.unit->orders->waygate_target_spawn_time = 0;
     T_ASSERT(ReadGame(filename));
     fix.gate = g_edicts + gate_number;
     fix.unit = g_edicts + unit_number;
@@ -311,10 +311,10 @@ TEST(wc3_save, waygate_state_and_inflight_approach_round_trip) {
     T_ASSERT(fix.gate->waygate->destination_set);
     T_FEQ(fix.gate->waygate->destination.x, 400.0f, 0.001f);
     T_FEQ(fix.gate->waygate->destination.y, 320.0f, 0.001f);
-    T_ASSERT(fix.unit->movement.waygate_target == fix.gate);
-    T_ASSERT(fix.unit->movement.waygate_goal == g_edicts + goal_number);
-    T_ASSERT(fix.unit->goalentity == fix.unit->movement.waygate_goal);
-    T_EQ(fix.unit->movement.waygate_target_spawn_time, fix.gate->spawn_time);
+    T_ASSERT(fix.unit->orders->waygate_target == fix.gate);
+    T_ASSERT(fix.unit->orders->waygate_goal == g_edicts + goal_number);
+    T_ASSERT(fix.unit->goalentity == fix.unit->orders->waygate_goal);
+    T_EQ(fix.unit->orders->waygate_target_spawn_time, fix.gate->spawn_time);
     T_NOT_NULL(fix.unit->currentmove);
     T_EQ(fix.unit->currentmove->proc, CAbilityWarp);
     remove(filename);
@@ -327,14 +327,14 @@ TEST(wc3_save, rejects_invalid_waygate_entity_references) {
     edict_t *target, *goal;
 
     T_ASSERT(G_IssueUnitTargetOrder(fix.unit, "smart", fix.gate, false, 0));
-    target = fix.unit->movement.waygate_target;
-    goal = fix.unit->movement.waygate_goal;
-    fix.unit->movement.waygate_target = (edict_t *)(uintptr_t)1;
+    target = fix.unit->orders->waygate_target;
+    goal = fix.unit->orders->waygate_goal;
+    fix.unit->orders->waygate_target = (edict_t *)(uintptr_t)1;
     T_ASSERT(!WriteGame(filename));
-    fix.unit->movement.waygate_target = target;
-    fix.unit->movement.waygate_goal = (edict_t *)(uintptr_t)1;
+    fix.unit->orders->waygate_target = target;
+    fix.unit->orders->waygate_goal = (edict_t *)(uintptr_t)1;
     T_ASSERT(!WriteGame(filename));
-    fix.unit->movement.waygate_goal = goal;
+    fix.unit->orders->waygate_goal = goal;
     waygate_done(fix);
 }
 

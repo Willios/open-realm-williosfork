@@ -55,10 +55,10 @@ BZ_VALIDATED_SPELL_PROC(AbilityAntiMagicShellInstant, anti_magic_shell_validate,
 int S_AntiMagicShellAbsorb(edict_t *target, int damage) {
     heroabilitystatus_t *slot = NULL;
     if (!target || damage <= 0) return damage;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (target->abilstatus[i].level && target->abilstatus[i].code == BZ_AMS_SHIELD &&
-            (!target->abilstatus[i].timestamp || target->abilstatus[i].timestamp > G_Time())) {
-            slot = target->abilstatus + i; break;
+    FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (target->unit_state->statuses[i].level && target->unit_state->statuses[i].code == BZ_AMS_SHIELD &&
+            (!target->unit_state->statuses[i].timestamp || target->unit_state->statuses[i].timestamp > G_Time())) {
+            slot = target->unit_state->statuses + i; break;
         }
     if (!slot) return damage;
     if (slot->data >= (uint32_t)damage) { slot->data -= (uint32_t)damage; return 0; }
@@ -112,7 +112,7 @@ BZ_ABILITY_PROC(CAbilityReplenish) {
     switch (msg) {
     case A_VALIDATE: return replenish_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: replenish_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return S_AutocastAcquireUnit(ent, code, true, true, UNDEAD_AUTOCAST_RADIUS);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -139,7 +139,7 @@ BZ_ABILITY_PROC(CAbilityReplenishLife) {
     uint32_t code = call && call->item ? call->item->code : 0;
     switch (msg) {
     case A_EXECUTE: replenish_life_execute(ent, MAKE(spellTarget_t, .type = SPELL_TARGET_NONE), call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return undead_area_autocast_acquire(ent, code, true, false);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -166,7 +166,7 @@ BZ_ABILITY_PROC(CAbilityReplenishMana) {
     uint32_t code = call && call->item ? call->item->code : 0;
     switch (msg) {
     case A_EXECUTE: replenish_mana_execute(ent, MAKE(spellTarget_t, .type = SPELL_TARGET_NONE), call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return undead_area_autocast_acquire(ent, code, false, true);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -313,7 +313,7 @@ static void cannibalize_approach_walk(edict_t *caster) {
     unit_moveindirection_ignore_units(caster);
 }
 
-static umove_t cannibalize_approach_move = { "walk", cannibalize_approach_walk, NULL, CAbilityMove };
+static umove_t cannibalize_approach_move = { "walk", cannibalize_approach_walk, NULL, CAbilityMove, .travel = true };
 
 static bool cannibalize_corpse_allowed(edict_t *caster, uint32_t code, edict_t *corpse) {
     return S_SpellCorpseTargetPosition(code, caster, corpse, NULL);
@@ -452,7 +452,7 @@ BZ_ABILITY_PROC(CAbilityCannibalize) {
     abilityitem_t const *spell = call ? call->item : NULL;
     switch (msg) {
     case A_COMMAND:
-        return cannibalize_command(ent, call ? call->client : NULL, spell);
+        return cannibalize_command(ent, call ? call->entity : NULL, spell);
     case A_VALIDATE:
         return spell && G_UnitAbilityResearchAvailable(ent, spell->code) && cannibalize_validate(ent, spell);
     case A_EXECUTE: {
@@ -581,7 +581,7 @@ BZ_ABILITY_PROC(CAbilityRaiseDead) {
     switch (msg) {
     case A_VALIDATE: return raise_dead_validate(ent, target, call ? call->item : NULL);
     case A_EXECUTE: raise_dead_execute(ent, target, call ? call->item : NULL); return true;
-    case A_AUTOCAST_ON: return ent && ent->autocast_code == code;
+    case A_AUTOCAST_ON: return ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET: return true;
     case A_AUTOCAST_ACQUIRE: return raise_dead_autocast_acquire(ent, code);
     default: return CAbilitySimpleSpell(ent, msg, call);
@@ -614,21 +614,9 @@ static bool possession_validate(edict_t *caster, spellTarget_t st, abilityitem_t
 
 static void possession_clear_status(edict_t *ent, uint32_t code) {
     if (!ent) return;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (ent->abilstatus[i].level && ent->abilstatus[i].code == code)
-            unit_removestatus(ent, ent->abilstatus + i, STATUS_REMOVE_TRANSFORM);
-}
-
-/* Keep stunned in sync after stripping Bpos without waiting for a later status tick. */
-static void possession_refresh_stun(edict_t *ent) {
-    if (!ent) return;
-    ent->stunned = false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        uint32_t c = ent->abilstatus[i].code;
-        if (!ent->abilstatus[i].level) continue;
-        if (c == MAKEFOURCC('B', 's', 't', 'u') || c == MAKEFOURCC('B', 'U', 's', 'l') || c == BZ_BPOS)
-            ent->stunned = true;
-    }
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (ent->unit_state->statuses[i].level && ent->unit_state->statuses[i].code == code)
+            unit_removestatus(ent, ent->unit_state->statuses + i, STATUS_REMOVE_TRANSFORM);
 }
 
 static void possession_takeover(edict_t *caster, edict_t *target) {
@@ -651,8 +639,7 @@ static void possession_strip_channel(edict_t *thinker) {
     edict_t *caster = S_SpellChannelOwner(thinker), *target = S_SpellChannelTarget(thinker);
     if (target) {
         possession_clear_status(target, BZ_BPOS);
-        possession_refresh_stun(target);
-        if (thinker->damage) target->invulnerable = thinker->invulnerable;
+        if (thinker->damage) G_SetUnitFlag(target, UNIT_FLAG_INVULNERABLE, G_UnitHasFlag(thinker, UNIT_FLAG_INVULNERABLE));
     }
     if (caster) possession_clear_status(caster, BZ_BPOC);
 }
@@ -722,17 +709,17 @@ static void possession_two_execute(edict_t *caster, spellTarget_t st, abilityite
     thinker = S_SpellChannelTargetThinker(caster, spell->code, st.entity);
     thinker->spawn_time = G_Time() + (uint32_t)(duration * 1000.0f);
     thinker->damage = invuln > 0.0f ? 1 : 0;
-    thinker->invulnerable = st.entity->invulnerable;
+    G_SetUnitFlag(thinker, UNIT_FLAG_INVULNERABLE, G_UnitHasFlag(st.entity, UNIT_FLAG_INVULNERABLE));
     thinker->think = possession_two_think;
-    if (invuln > 0.0f) st.entity->invulnerable = true;
+    if (invuln > 0.0f) G_SetUnitFlag(st.entity, UNIT_FLAG_INVULNERABLE, true);
 }
 
 bool S_PossessionSpellImmune(edict_t const *unit) {
     if (!unit) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == BZ_BPOS &&
-            (unit->abilstatus[i].data & BZ_POS_MAGIC_IMMUNE) &&
-            (!unit->abilstatus[i].timestamp || unit->abilstatus[i].timestamp > G_Time()))
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == BZ_BPOS &&
+            (unit->unit_state->statuses[i].data & BZ_POS_MAGIC_IMMUNE) &&
+            (!unit->unit_state->statuses[i].timestamp || unit->unit_state->statuses[i].timestamp > G_Time()))
             return true;
     return false;
 }
@@ -741,10 +728,10 @@ bool S_PossessionSpellImmune(edict_t const *unit) {
 int S_PossessionDamageTaken(edict_t *target, int damage) {
     uint32_t milli = 0;
     if (!target || damage <= 0) return damage;
-    FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (target->abilstatus[i].level && target->abilstatus[i].code == BZ_BPOC &&
-            (!target->abilstatus[i].timestamp || target->abilstatus[i].timestamp > G_Time())) {
-            milli = target->abilstatus[i].data; break;
+    FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (target->unit_state->statuses[i].level && target->unit_state->statuses[i].code == BZ_BPOC &&
+            (!target->unit_state->statuses[i].timestamp || target->unit_state->statuses[i].timestamp > G_Time())) {
+            milli = target->unit_state->statuses[i].data; break;
         }
     if (!milli) return damage;
     return (int)((float)damage * (float)milli / 1000.0f);

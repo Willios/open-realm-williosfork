@@ -63,7 +63,66 @@ DEFINE_POOL(waygate, Waygate, waygate_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(artillery, Artillery, artillery_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(avatar, Avatar, avatar_t, LIFECYCLE_POOL_CAP)
 DEFINE_POOL(sleep, Sleep, sleep_t, LIFECYCLE_POOL_CAP)
+DEFINE_POOL(soultrap, SoulTrap, soulTrap_t, LIFECYCLE_POOL_CAP)
+DEFINE_POOL(unit_state, UnitState, unitState_t, MAX_ENTITIES)
+DEFINE_POOL(sound, Sounds, unitSounds_t, MAX_ENTITIES)
+DEFINE_POOL(missile, Missile, attackMissile_t, MAX_ENTITIES)
+DEFINE_POOL(inventory, Inventory, inventory_t, MAX_ENTITIES)
+DEFINE_POOL(harvest, Harvest, harvest_t, MAX_ENTITIES)
+DEFINE_POOL(vision, Visibility, visibility_t, MAX_ENTITIES)
+DEFINE_POOL(orders, Orders, unitOrders_t, MAX_ENTITIES)
+DEFINE_POOL(movement, Movement, movement_t, MAX_ENTITIES)
+DEFINE_POOL(route, Route, routeCache_t, MAX_ENTITIES)
+DEFINE_POOL(wander, Wander, wander_t, MAX_ENTITIES)
 DEFINE_POOL(channel, Channel, channel_t, LIFECYCLE_POOL_CAP)
+
+/* Unit spawn and explicit ability/status mutations establish ownership; reads never allocate. */
+void G_InitUnitState(edict_t *ent) {
+    assert(ent);
+    if (!ent->unit_state) ent->unit_state = G_AllocUnitState();
+}
+
+/* Explicit vision ownership entry; observation does not allocate. */
+void G_InitVisibility(edict_t *ent) {
+    assert(ent);
+    if (!ent->vision) ent->vision = G_AllocVisibility();
+}
+
+/* Explicit harvest ownership entry; observation does not allocate. */
+void G_InitHarvest(edict_t *ent) {
+    assert(ent);
+    if (!ent->harvest) ent->harvest = G_AllocHarvest();
+}
+
+/* The mine attaches admission state on first worker entry; worker membership uses the same role. */
+void G_InitGoldMine(edict_t *ent) {
+    assert(ent);
+    if (!ent->goldmine) ent->goldmine = G_AllocGoldMine();
+}
+
+/* Explicit inventory ownership entry; observation does not allocate. */
+void G_InitInventory(edict_t *ent) {
+    assert(ent);
+    if (!ent->inventory) ent->inventory = G_AllocInventory();
+}
+
+/* Explicit missile ownership entry; observation does not allocate. */
+void G_InitMissile(edict_t *ent) {
+    assert(ent);
+    if (!ent->missile) ent->missile = G_AllocMissile();
+}
+
+/* Explicit sound ownership entry; observation does not allocate. */
+void G_InitSounds(edict_t *ent) {
+    assert(ent);
+    if (!ent->sound) ent->sound = G_AllocSounds();
+}
+
+/* Live units retain order/guard identity between trips; effects and projectiles do not own it. */
+void G_InitUnitOrders(edict_t *ent) {
+    assert(ent);
+    if (!ent->orders) ent->orders = G_AllocOrders();
+}
 
 void G_PoolsReportPeaks(void) {
 #define REPORT_POOL(member) if (member##_peak) fprintf(stderr, "WC3 pool peak %s=%u/%d\n", #member, member##_peak, (int)(sizeof(member##_slots) / sizeof(member##_slots[0])) - 1)
@@ -93,6 +152,17 @@ void G_PoolsReportPeaks(void) {
     REPORT_POOL(artillery);
     REPORT_POOL(avatar);
     REPORT_POOL(sleep);
+    REPORT_POOL(soultrap);
+    REPORT_POOL(unit_state);
+    REPORT_POOL(sound);
+    REPORT_POOL(missile);
+    REPORT_POOL(inventory);
+    REPORT_POOL(harvest);
+    REPORT_POOL(vision);
+    REPORT_POOL(orders);
+    REPORT_POOL(movement);
+    REPORT_POOL(route);
+    REPORT_POOL(wander);
     REPORT_POOL(channel);
 #undef REPORT_POOL
 }
@@ -126,6 +196,17 @@ void G_PoolsReset(void) {
             g_edicts[i].artillery = NULL;
             g_edicts[i].avatar = NULL;
             g_edicts[i].sleep = NULL;
+            g_edicts[i].soultrap = NULL;
+            g_edicts[i].unit_state = NULL;
+            g_edicts[i].sound = NULL;
+            g_edicts[i].missile = NULL;
+            g_edicts[i].inventory = NULL;
+            g_edicts[i].harvest = NULL;
+            g_edicts[i].vision = NULL;
+            g_edicts[i].orders = NULL;
+            g_edicts[i].movement = NULL;
+            g_edicts[i].route = NULL;
+            g_edicts[i].wander = NULL;
             g_edicts[i].channel = NULL;
         }
     }
@@ -155,6 +236,17 @@ void G_PoolsReset(void) {
     artillery_ready = false; artillery_live = artillery_peak = 0; memset(artillery_slots, 0, sizeof(artillery_slots)); artillery_free = 0;
     avatar_ready = false; avatar_live = avatar_peak = 0; memset(avatar_slots, 0, sizeof(avatar_slots)); avatar_free = 0;
     sleep_ready = false; sleep_live = sleep_peak = 0; memset(sleep_slots, 0, sizeof(sleep_slots)); sleep_free = 0;
+    soultrap_ready = false; soultrap_live = soultrap_peak = 0; memset(soultrap_slots, 0, sizeof(soultrap_slots)); soultrap_free = 0;
+    unit_state_ready = false; unit_state_live = unit_state_peak = 0; memset(unit_state_slots, 0, sizeof(unit_state_slots)); unit_state_free = 0;
+    sound_ready = false; sound_live = sound_peak = 0; memset(sound_slots, 0, sizeof(sound_slots)); sound_free = 0;
+    missile_ready = false; missile_live = missile_peak = 0; memset(missile_slots, 0, sizeof(missile_slots)); missile_free = 0;
+    inventory_ready = false; inventory_live = inventory_peak = 0; memset(inventory_slots, 0, sizeof(inventory_slots)); inventory_free = 0;
+    harvest_ready = false; harvest_live = harvest_peak = 0; memset(harvest_slots, 0, sizeof(harvest_slots)); harvest_free = 0;
+    vision_ready = false; vision_live = vision_peak = 0; memset(vision_slots, 0, sizeof(vision_slots)); vision_free = 0;
+    orders_ready = false; orders_live = orders_peak = 0; memset(orders_slots, 0, sizeof(orders_slots)); orders_free = 0;
+    movement_ready = false; movement_live = movement_peak = 0; memset(movement_slots, 0, sizeof(movement_slots)); movement_free = 0;
+    route_ready = false; route_live = route_peak = 0; memset(route_slots, 0, sizeof(route_slots)); route_free = 0;
+    wander_ready = false; wander_live = wander_peak = 0; memset(wander_slots, 0, sizeof(wander_slots)); wander_free = 0;
     channel_ready = false; channel_live = channel_peak = 0; memset(channel_slots, 0, sizeof(channel_slots)); channel_free = 0;
 }
 
@@ -186,6 +278,17 @@ void G_PoolsReleaseEdict(edict_t *ent) {
     G_FreeArtillery(ent);
     G_FreeAvatar(ent);
     G_FreeSleep(ent);
+    G_FreeSoulTrap(ent);
+    G_FreeUnitState(ent);
+    G_FreeSounds(ent);
+    G_FreeMissile(ent);
+    G_FreeInventory(ent);
+    G_FreeHarvest(ent);
+    G_FreeVisibility(ent);
+    G_FreeOrders(ent);
+    G_FreeMovement(ent);
+    G_FreeRoute(ent);
+    G_FreeWander(ent);
     G_FreeChannel(ent);
 }
 
@@ -235,6 +338,17 @@ TEST(wc3_pools, release_reuses_zeroed_owned_state) {
     CHECK_POOL(artillery, Artillery, artillery_t);
     CHECK_POOL(avatar, Avatar, avatar_t);
     CHECK_POOL(sleep, Sleep, sleep_t);
+    CHECK_POOL(soultrap, SoulTrap, soulTrap_t);
+    CHECK_POOL(unit_state, UnitState, unitState_t);
+    CHECK_POOL(sound, Sounds, unitSounds_t);
+    CHECK_POOL(missile, Missile, attackMissile_t);
+    CHECK_POOL(inventory, Inventory, inventory_t);
+    CHECK_POOL(harvest, Harvest, harvest_t);
+    CHECK_POOL(vision, Visibility, visibility_t);
+    CHECK_POOL(orders, Orders, unitOrders_t);
+    CHECK_POOL(movement, Movement, movement_t);
+    CHECK_POOL(route, Route, routeCache_t);
+    CHECK_POOL(wander, Wander, wander_t);
     CHECK_POOL(channel, Channel, channel_t);
 #undef CHECK_POOL
     G_PoolsReleaseEdict(unit);
@@ -264,6 +378,17 @@ TEST(wc3_pools, release_reuses_zeroed_owned_state) {
     T_NULL(unit->artillery);
     T_NULL(unit->avatar);
     T_NULL(unit->sleep);
+    T_NULL(unit->soultrap);
+    T_NULL(unit->unit_state);
+    T_NULL(unit->sound);
+    T_NULL(unit->missile);
+    T_NULL(unit->inventory);
+    T_NULL(unit->harvest);
+    T_NULL(unit->vision);
+    T_NULL(unit->orders);
+    T_NULL(unit->movement);
+    T_NULL(unit->route);
+    T_NULL(unit->wander);
     T_NULL(unit->channel);
     unit->ancient_root = G_AllocAncientRoot();
     G_PoolsReset();

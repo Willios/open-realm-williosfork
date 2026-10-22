@@ -355,9 +355,9 @@ TEST(wc3_sc2api, raw_visible_unit_exports_active_buff_ids_without_duplicates) {
     unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 128.0f, 256.0f);
     unit->s.player = 0;
     unit->svflags |= SVF_MONSTER;
-    unit->abilstatus[0] = (heroabilitystatus_t){ .code = buff, .level = 1 };
-    unit->abilstatus[1] = (heroabilitystatus_t){ .code = buff, .level = 2 };
-    unit->abilstatus[2] = (heroabilitystatus_t){ .code = MAKEFOURCC('B','o','l','d'), .level = 1, .timestamp = 1 };
+    unit->unit_state->statuses[0] = (heroabilitystatus_t){ .code = buff, .level = 1 };
+    unit->unit_state->statuses[1] = (heroabilitystatus_t){ .code = buff, .level = 2 };
+    unit->unit_state->statuses[2] = (heroabilitystatus_t){ .code = MAKEFOURCC('B','o','l','d'), .level = 1, .timestamp = 1 };
     level.time = 100;
 
     T_ASSERT(WC3_SC2API_FillRawUnit(0, unit, &raw));

@@ -27,7 +27,7 @@ static bool stone_form_order(edict_t *unit, cstring_t order, uint32_t code) {
      * stone form, matching Warcraft's Required Animation Names behavior. */
     G_AddUnitAnimationProperties(unit, "alternate", target == stone);
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     move_reset_progress(unit);
     unit_stand(unit);
     return true;
@@ -53,7 +53,7 @@ BZ_ABILITY_PROC(CAbilityStoneForm) {
         uint32_t subgroup_class;
         bool executed = false;
 
-        if (!ent || !call || !call->client || !(client = call->client->client)) return false;
+        if (!ent || !call || !call->entity || !(client = call->entity->client)) return false;
         subgroup_class = ent->class_id;
         /* Stone Form is an immediate subgroup command in Warcraft. Capture the
          * focused type before transforming the first Gargoyle because the same
@@ -62,7 +62,7 @@ BZ_ABILITY_PROC(CAbilityStoneForm) {
             if (unit->class_id != subgroup_class || !G_UnitAbilityLevel(unit, code)) continue;
             if (S_CastNoTargetSpell(unit, code)) executed = true;
         }
-        if (executed) Get_Commands_f(call->client);
+        if (executed) Get_Commands_f(call->entity);
         return executed;
     }
     case A_ORDER:

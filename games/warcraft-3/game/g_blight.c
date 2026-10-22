@@ -68,7 +68,7 @@ void G_BlightMarkDestructable(edict_t *ent) {
     if (!ent || !G_IsDestructable(ent) || ent->destructable->blighted) return;
     ent->destructable->blighted = true;
     ent->vertex_color = MAKE(color32_t, 120, 185, 72, 255);
-    ent->vertex_color_set = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_VERTEX_COLOR_SET, true);
     /* Preserve the authored replaceable texture: synthesizing a Blight
      * filename selected missing assets such as Cliff1Blight and rendered a
      * placeholder instead of the cliff texture with this tint. */

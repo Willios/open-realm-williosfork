@@ -56,8 +56,8 @@ typedef struct {
 
 static uint32_t stun_ms(edict_t const *unit) {
     FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (unit->abilstatus[i].level && unit->abilstatus[i].code == BZ_BSTU)
-            return unit->abilstatus[i].duration_ms;
+        if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == BZ_BSTU)
+            return unit->unit_state->statuses[i].duration_ms;
     return 0;
 }
 
@@ -105,7 +105,7 @@ static void inferno_setup(inFix_t *fix, uint32_t code) {
     fix->enemy->health.value = fix->enemy->health.max_value = 500;
     fix->far->health.value = fix->far->health.max_value = 500;
     fix->hero->health.value = fix->hero->health.max_value = 500;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 200;
     fix->point = fix->enemy->s.origin2;
 }
@@ -222,8 +222,8 @@ TEST(wc3_spell, inferno_summon_uses_datab_life) {
     T_EQ(summon->s.player, fix.caster->s.player);
     T_ASSERT(S_UnitHasStatus(summon, BZ_BTLF));
     FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (summon->abilstatus[i].level && summon->abilstatus[i].code == BZ_BTLF)
-            T_EQ(summon->abilstatus[i].duration_ms, (uint32_t)(BZ_LIFE * 1000.0f));
+        if (summon->unit_state->statuses[i].level && summon->unit_state->statuses[i].code == BZ_BTLF)
+            T_EQ(summon->unit_state->statuses[i].duration_ms, (uint32_t)(BZ_LIFE * 1000.0f));
     inferno_done(fix);
 }
 

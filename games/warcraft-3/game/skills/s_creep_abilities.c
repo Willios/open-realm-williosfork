@@ -25,17 +25,17 @@ static bool unit_has_proc_ability(edict_t const *ent, abilityProc_t proc) {
             if (item.ability && item.ability->proc == proc) return true;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t alias = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t alias = ent->unit_state->overrides.added[i];
         abilityitem_t item;
         if (!alias) continue;
         memcpy(name, &alias, 4); item = S_AbilityItem(alias);
         if (G_ActorHasSkill((edict_t *)ent, name) && item.ability && item.ability->proc == proc) return true;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
+    FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
         abilityitem_t item;
-        if (!ent->heroabilities[i].code) continue;
-        item = S_AbilityItem(ent->heroabilities[i].code);
+        if (!ent->unit_state->ranks[i].code) continue;
+        item = S_AbilityItem(ent->unit_state->ranks[i].code);
         if (item.ability && item.ability->proc == proc) return true;
     }
     return false;
@@ -102,7 +102,7 @@ static bool death_damage_aoe_allows_destructable(uint32_t code, uint32_t ability
     abilityLevel_t const *row;
     cstring_t targets;
 
-    if (!target || !G_IsDestructable(target) || target->destructable->dead || target->invulnerable) return false;
+    if (!target || !G_IsDestructable(target) || target->destructable->dead || G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE)) return false;
     row = G_AbilityLevel(code, ability_level);
     targets = row ? row->targs : NULL;
     if (!targets || !*targets) return false;

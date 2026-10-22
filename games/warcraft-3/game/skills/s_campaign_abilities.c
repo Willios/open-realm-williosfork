@@ -54,8 +54,8 @@ BZ_SIMPLE_SPELL_PROC(AbilityFeedbackCampaign) { campaign_toggle_execute(caster, 
 BZ_SIMPLE_SPELL_PROC(AbilityAbolishMagic) {
     uint32_t level = S_SpellLevel(caster, spell->code), count = 0; float area = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
     FILTER_EDICTS(target, count < (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1)) && S_SpellIsAliveTarget(target) && S_SpellIsEnemy(caster, target) && Vector2_distance(&target->s.origin2, &st.point) <= area) {
-        FOR_LOOP(i, MAX_UNIT_STATUSES) if (unit_status_can_magic_dispel(target->abilstatus + i))
-            unit_removestatus_deferred(target, target->abilstatus + i, STATUS_REMOVE_DISPEL);
+        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) if (unit_status_can_magic_dispel(target->unit_state->statuses + i))
+            unit_removestatus_deferred(target, target->unit_state->statuses + i, STATUS_REMOVE_DISPEL);
         unit_refreshstatusflags(target);
         G_InvalidateUnitInfoPanel(target);
         count++;
@@ -75,8 +75,8 @@ static bool submerge_base_code(uint32_t code) {
 
 static heroabilitystatus_t *submerge_status(edict_t *unit) {
     if (!unit) return NULL;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *status = unit->unit_state->statuses + i;
         if (status->level && submerge_base_code(status->code)) return status;
     }
     return NULL;
@@ -84,8 +84,8 @@ static heroabilitystatus_t *submerge_status(edict_t *unit) {
 
 bool S_UnitIsSubmerged(edict_t const *unit) {
     if (!unit) return false;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = unit->unit_state->statuses + i;
         if (status->level && submerge_base_code(status->code)) return true;
     }
     return false;
@@ -107,8 +107,8 @@ static bool submerge_deep_water(edict_t const *unit) {
 static uint32_t submerge_find_code(edict_t const *unit) {
     char const *abilities;
     if (!unit) return 0;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *status = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *status = unit->unit_state->statuses + i;
         if (status->level && submerge_base_code(status->code)) return status->code;
     }
     if ((abilities = unit->data.UnitAbilities ? unit->data.UnitAbilities->abilList : NULL)) {
@@ -119,12 +119,12 @@ static uint32_t submerge_find_code(edict_t const *unit) {
             if (submerge_base_code(code) && G_UnitAbilityLevel(unit, code)) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(unit->abilities.added)) {
-        uint32_t const code = unit->abilities.added[i];
+    FOR_LOOP(i, (unit->unit_state ? ARRAY_COUNT(unit->unit_state->overrides.added) : 0)) {
+        uint32_t const code = unit->unit_state->overrides.added[i];
         if (code && submerge_base_code(code) && G_UnitAbilityLevel(unit, code)) return code;
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        uint32_t const code = unit->heroabilities[i].level ? unit->heroabilities[i].code : 0;
+    FOR_LOOP(i, unit->unit_state ? MAX_HERO_ABILITIES : 0) {
+        uint32_t const code = unit->unit_state->ranks[i].level ? unit->unit_state->ranks[i].code : 0;
         if (code && submerge_base_code(code) && G_UnitAbilityLevel(unit, code)) return code;
     }
     return 0;
@@ -156,7 +156,7 @@ static bool submerge_execute(edict_t *unit, uint32_t code) {
         unit->s.renderfx |= RF_HIDDEN;
     }
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     move_reset_progress(unit);
     unit_stand(unit);
     gi.LinkEntity(unit);
@@ -174,7 +174,7 @@ static intptr_t submerge_ability(edict_t *ent, abilityMsg_t msg, abilityCall_t c
         gameClient_t *client;
         uint32_t subgroup_class;
         bool executed = false, invalid_water = false;
-        if (!ent || !call || !call->client || !(client = call->client->client) || !code) return false;
+        if (!ent || !call || !call->entity || !(client = call->entity->client) || !code) return false;
         subgroup_class = ent->class_id;
         FOR_CONTROLLABLE_SELECTED_UNITS(client, unit) {
             uint32_t unit_code;
@@ -185,8 +185,8 @@ static intptr_t submerge_ability(edict_t *ent, abilityMsg_t msg, abilityCall_t c
             }
             if (S_CastNoTargetSpell(unit, unit_code)) executed = true;
         }
-        if (!executed && invalid_water) G_ShowCommandErrorKey(call->client, "Cantsubmergethere", NULL);
-        if (executed) Get_Commands_f(call->client);
+        if (!executed && invalid_water) G_ShowCommandErrorKey(call->entity, "Cantsubmergethere", NULL);
+        if (executed) Get_Commands_f(call->entity);
         return executed;
     }
     case A_ORDER:
@@ -222,8 +222,8 @@ static bool ensnare_is_flyer(edict_t const *unit) {
 
 static heroabilitystatus_t *ensnare_status(edict_t *unit) {
     if (!unit) return NULL;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *slot = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *slot = unit->unit_state->statuses + i;
         if (!slot->level) continue;
         if (S_StatusIsEnsnare(slot->code))
             return slot;
@@ -299,8 +299,8 @@ bool S_StatusIsEnsnare(uint32_t code) {
 bool S_UnitIsEnsnared(edict_t const *unit) {
     /* Ensnare/Web remain distinct from Entangling Roots (which also disarms).
      * They are bound status families, so avoid making ROOTED mean Ensnared. */
-    if (unit) FOR_LOOP(i, MAX_UNIT_STATUSES)
-        if (S_StatusIsEnsnare(unit->abilstatus[i].code) && S_UnitHasStatus(unit, unit->abilstatus[i].code)) return true;
+    if (unit) FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (S_StatusIsEnsnare(unit->unit_state->statuses[i].code) && S_UnitHasStatus(unit, unit->unit_state->statuses[i].code)) return true;
     return false;
 }
 
@@ -353,8 +353,8 @@ static void ensnare_remove(edict_t *unit, heroabilitystatus_t const *expiring) {
     float adjust, target;
     if (!unit || !expiring) return;
     /* Web and Ensnare share one height transition: removing either cannot release the other. */
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *slot = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *slot = unit->unit_state->statuses + i;
         if (slot->level && slot != expiring && S_StatusIsEnsnare(slot->code)) return;
     }
     if (ensnare_is_flyer(unit)) {

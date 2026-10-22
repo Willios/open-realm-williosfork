@@ -26,8 +26,8 @@ static uint32_t cargo_actor_ability_alias(edict_t *ent, uint32_t base_code) {
             if (G_AbilityCode(code) == base_code) return code;
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(ent->abilities.added)) {
-        uint32_t const code = ent->abilities.added[i];
+    FOR_LOOP(i, (ent->unit_state ? ARRAY_COUNT(ent->unit_state->overrides.added) : 0)) {
+        uint32_t const code = ent->unit_state->overrides.added[i];
         if (!code) continue;
         memcpy(alias, &code, 4);
         if (G_ActorHasSkill(ent, alias) && G_AbilityCode(code) == base_code) return code;
@@ -139,9 +139,9 @@ static void cargo_update_burrow_attacks(edict_t *transport) {
     weapons = G_UnitWeapons(transport->class_id);
     divisor = (float)(1u << MIN(transport->cargo->count, 30u));
     if (weapons->attack1.cooldown > 0.0f)
-        transport->attack1.cooldown = weapons->attack1.cooldown / divisor;
+        transport->unit_state->attack1.cooldown = weapons->attack1.cooldown / divisor;
     if (weapons->attack2.cooldown > 0.0f)
-        transport->attack2.cooldown = weapons->attack2.cooldown / divisor;
+        transport->unit_state->attack2.cooldown = weapons->attack2.cooldown / divisor;
 }
 
 void S_CargoInitUnit(edict_t *unit) {
@@ -163,10 +163,10 @@ static void cargo_add_unit(edict_t *transport, edict_t *unit) {
     transport->cargo->units[transport->cargo->count++] = unit;
     G_ClearUnitOrderQueue(unit);
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     unit_stand(unit);
     unit->s.renderfx |= RF_HIDDEN;
-    unit->paused = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, true);
     G_InvalidateUnitShortcutsForUnit(unit);
     cargo_update_burrow_attacks(transport);
     cargo_update_entangled_animation(transport, old_count);
@@ -207,7 +207,7 @@ static edict_t *cargo_drop_unit(edict_t *transport, uint32_t index) {
         bool const was_corpse = S_CorpseCargoIsStored(unit);
         cargo_place_unloaded_unit(transport, unit);
         unit->s.renderfx &= ~RF_HIDDEN;
-        unit->paused = false;
+        G_SetUnitFlag(unit, UNIT_FLAG_PAUSED, false);
         unit->aiflags &= ~AI_CORPSE_IN_CARGO;
         if (was_corpse) G_RestartCorpseBoneDecayAfterCargo(unit);
     }
@@ -263,7 +263,7 @@ static void cargo_unload_all(edict_t *transport) {
 
 bool S_CargoBeginUnloadAll(edict_t *transport) {
     if (!transport || !transport->inuse || !transport->cargo || !transport->cargo->count || M_IsDead(transport) ||
-        transport->paused || transport->stunned || !cargo_living_hold_alias(transport)) return false;
+        G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit_hasstatusstate(transport, WC3_STATUS_STATE_STUNNED) || !cargo_living_hold_alias(transport)) return false;
     if (transport->currentmove == &cargo_move_unload) return true;
     order_stop_cleanup(transport);
     unit_setmove(transport, &cargo_move_unload);
@@ -274,10 +274,10 @@ bool S_CargoBeginUnloadAll(edict_t *transport) {
 
 static void cargo_clear_pending_unload(edict_t *transport) {
     if (!transport) return;
-    transport->movement.cargo_unload_pending = false;
-    transport->movement.cargo_unload_ability = 0;
-    transport->movement.cargo_unload_goal = NULL;
-    transport->movement.cargo_unload_goal_spawn_time = 0;
+    transport->orders->cargo_unload_pending = false;
+    transport->orders->cargo_unload_ability = 0;
+    transport->orders->cargo_unload_goal = NULL;
+    transport->orders->cargo_unload_goal_spawn_time = 0;
 }
 
 static bool cargo_begin_unload_at(edict_t *transport, vec2_t const *point, uint32_t ability_code) {
@@ -285,7 +285,7 @@ static bool cargo_begin_unload_at(edict_t *transport, vec2_t const *point, uint3
     edict_t *waypoint;
 
     if (!transport || !point || !transport->inuse || !transport->cargo || !transport->cargo->count || M_IsDead(transport) ||
-        transport->paused || transport->stunned || !cargo_living_hold_alias(transport) || !ability_code) return false;
+        G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit_hasstatusstate(transport, WC3_STATUS_STATE_STUNNED) || !cargo_living_hold_alias(transport) || !ability_code) return false;
     destination = *point;
     if (!CM_ClosestPathablePointForRadiusFlags(point, transport->collision,
                                                M_UnitStaticPathingFlags(transport), &destination)) return false;
@@ -293,19 +293,19 @@ static bool cargo_begin_unload_at(edict_t *transport, vec2_t const *point, uint3
     waypoint = Waypoint_add(&destination);
     order_move(transport, waypoint);
     if (!move_is_active_order_walk(transport) || transport->goalentity != waypoint) return false;
-    transport->movement.cargo_unload_ability = ability_code;
-    transport->movement.cargo_unload_goal = transport->goalentity;
-    transport->movement.cargo_unload_goal_spawn_time = transport->goalentity->spawn_time;
-    transport->movement.cargo_unload_pending = true;
+    transport->orders->cargo_unload_ability = ability_code;
+    transport->orders->cargo_unload_goal = transport->goalentity;
+    transport->orders->cargo_unload_goal_spawn_time = transport->goalentity->spawn_time;
+    transport->orders->cargo_unload_pending = true;
     return true;
 }
 
 static bool cargo_unload_move_arrive(edict_t *transport, abilityCall_t const *call) {
-    if (!transport || !transport->movement.cargo_unload_pending || !call || !call->item ||
-        call->item->code != transport->movement.cargo_unload_ability) return false;
-    if (transport->goalentity != transport->movement.cargo_unload_goal ||
-        !transport->movement.cargo_unload_goal || !transport->movement.cargo_unload_goal->inuse ||
-        transport->movement.cargo_unload_goal->spawn_time != transport->movement.cargo_unload_goal_spawn_time) {
+    if (!transport || !transport->orders || !transport->orders->cargo_unload_pending || !call || !call->item ||
+        call->item->code != transport->orders->cargo_unload_ability) return false;
+    if (transport->goalentity != transport->orders->cargo_unload_goal ||
+        !transport->orders->cargo_unload_goal || !transport->orders->cargo_unload_goal->inuse ||
+        transport->orders->cargo_unload_goal->spawn_time != transport->orders->cargo_unload_goal_spawn_time) {
         cargo_clear_pending_unload(transport);
         return false;
     }
@@ -455,7 +455,7 @@ void corpse_cargo_approach_think(edict_t *thinker) {
         S_CorpseCargoTryLoad(transport, corpse);
         return;
     }
-    if (transport->movement.flow_unreachable || transport->movement.flow_goal_reached) {
+    if (transport->movement->flow_unreachable || transport->movement->flow_goal_reached) {
         corpse_cargo_approach_cancel(thinker);
         return;
     }
@@ -514,7 +514,7 @@ BZ_ABILITY_PROC(CAbilityCargoLoad) {
 
     switch (msg) {
     case A_COMMAND: {
-        edict_t *clent = call && call->client ? call->client : ent;
+        edict_t *clent = call && call->entity ? call->entity : ent;
         if (corpse_load) {
             if (clent && clent->client) {
                 clent->client->menu.on_entity_selected = NULL;
@@ -528,7 +528,7 @@ BZ_ABILITY_PROC(CAbilityCargoLoad) {
         return true;
     }
     case A_AUTOCAST_ON:
-        return corpse_load && ent && ent->autocast_code == code;
+        return corpse_load && ent && ent->unit_state->autocast == code;
     case A_AUTOCAST_SET:
         return corpse_load;
     case A_AUTOCAST_ACQUIRE:
@@ -546,7 +546,7 @@ static uint32_t battlestations_alias(edict_t *transport) {
 
 static bool cargo_board_target_valid(edict_t *unit, edict_t *transport) {
     if (!unit || !transport || unit == transport || M_IsDead(unit) || M_IsDead(transport)) return false;
-    if (unit->paused || transport->paused || unit->s.player != transport->s.player) return false;
+    if (G_UnitHasFlag(unit, UNIT_FLAG_PAUSED) || G_UnitHasFlag(transport, UNIT_FLAG_PAUSED) || unit->s.player != transport->s.player) return false;
     if (!cargo_living_hold_alias(transport) || !cargo_has_capacity(transport, 1)) return false;
     /* Keep the approach order alive through Entangled Mine construction. The
      * final load attempt is retried by this same movement order on completion. */
@@ -570,7 +570,7 @@ static bool cargo_prepare_board_approach(edict_t *unit, edict_t *transport) {
         unit->goalentity = transport;
     }
     if (!unit->goalentity) return false;
-    unit->secondarygoal = transport;
+    unit->orders->resource_goal = transport;
     move_reset_progress(unit);
     return true;
 }
@@ -578,7 +578,7 @@ static bool cargo_prepare_board_approach(edict_t *unit, edict_t *transport) {
 static void cargo_board_cancel(edict_t *unit) {
     if (!unit) return;
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     move_reset_progress(unit);
     unit_stand(unit);
 }
@@ -586,7 +586,7 @@ static void cargo_board_cancel(edict_t *unit) {
 static umove_t cargo_board_move_walk, cargo_board_move_wait;
 
 static void ai_cargo_board_walk(edict_t *unit) {
-    edict_t *transport = unit ? unit->secondarygoal : NULL;
+    edict_t *transport = unit ? unit->orders->resource_goal : NULL;
     float distance, step;
 
     if (!cargo_board_target_valid(unit, transport)) {
@@ -599,7 +599,7 @@ static void ai_cargo_board_walk(edict_t *unit) {
                 unit->goalentity->class_id == 0)
                 G_FreeEdict(unit->goalentity);
             unit->goalentity = transport;
-            unit->secondarygoal = transport;
+            unit->orders->resource_goal = transport;
             move_reset_progress(unit);
             /* Keep the boarding owner active while presenting a stand pose.
              * The same behavior retries on the first tick after construction
@@ -618,19 +618,19 @@ static void ai_cargo_board_walk(edict_t *unit) {
     }
     distance = M_DistanceToGoal(unit);
     step = unit_movedistance(unit);
-    if (move_is_blocked(unit, distance, step) || unit->movement.flow_unreachable) {
+    if (move_is_blocked(unit, distance, step) || unit->movement->flow_unreachable) {
         cargo_board_cancel(unit);
         return;
     }
     unit_changeangle_for_radius_worker(unit, unit->collision);
-    if (unit->movement.flow_goal_reached && !cargo_target_in_range(transport, unit)) {
+    if (unit->movement->flow_goal_reached && !cargo_target_in_range(transport, unit)) {
         cargo_board_cancel(unit);
         return;
     }
     unit_moveindirection(unit);
 }
 
-static umove_t cargo_board_move_walk = { "walk", ai_cargo_board_walk, NULL, CAbilityBattlestations };
+static umove_t cargo_board_move_walk = { "walk", ai_cargo_board_walk, NULL, CAbilityBattlestations, .travel = true };
 static umove_t cargo_board_move_wait = { "stand", ai_cargo_board_walk, NULL, CAbilityBattlestations };
 
 bool S_CargoOrderBoard(edict_t *unit, edict_t *transport) {
@@ -639,7 +639,7 @@ bool S_CargoOrderBoard(edict_t *unit, edict_t *transport) {
         if (cargo_is_entangled_mine(transport) && transport->construction) {
             G_ClearUnitOrderQueue(unit);
             unit->goalentity = transport;
-            unit->secondarygoal = transport;
+            unit->orders->resource_goal = transport;
             move_reset_progress(unit);
             unit_setmove(unit, &cargo_board_move_wait);
             return true;
@@ -647,12 +647,12 @@ bool S_CargoOrderBoard(edict_t *unit, edict_t *transport) {
         return S_CargoTryLoad(transport, unit);
     }
     G_ClearUnitOrderQueue(unit);
-    unit->movement.follow_target = NULL;
-    unit->movement.attackmove_waypoint = NULL;
-    unit->movement.patrol_a = NULL;
-    unit->movement.patrol_b = NULL;
-    unit->movement.patrol_target = NULL;
-    unit->movement.holding_position = false;
+    unit->orders->follow_target = NULL;
+    unit->orders->attackmove_waypoint = NULL;
+    unit->orders->patrol_a = NULL;
+    unit->orders->patrol_b = NULL;
+    unit->orders->patrol_target = NULL;
+    unit->orders->holding_position = false;
     if (!cargo_prepare_board_approach(unit, transport)) return false;
     unit_setmove(unit, &cargo_board_move_walk);
     return true;
@@ -756,16 +756,16 @@ static void drop_command(edict_t *clent) {
 
 BZ_ABILITY_PROC(CAbilityCargoDrop) {
     if (msg == A_MOVE_ARRIVE && cargo_unload_move_arrive(ent, call)) return true;
-    if (msg == A_DISABLE && ent && call && call->item && ent->movement.cargo_unload_pending && call->item->code == ent->movement.cargo_unload_ability) {
+    if (msg == A_DISABLE && ent && call && call->item && ent->orders->cargo_unload_pending && call->item->code == ent->orders->cargo_unload_ability) {
         cargo_clear_pending_unload(ent);
         return true;
     }
-    if (msg == A_MOVE_LEAVE && ent && ent->movement.cargo_unload_pending) {
+    if (msg == A_MOVE_LEAVE && ent && ent->orders->cargo_unload_pending) {
         cargo_clear_pending_unload(ent);
         return true;
     }
     if (msg != A_COMMAND) return 0;
-    drop_command(call && call->client ? call->client : ent);
+    drop_command(call && call->entity ? call->entity : ent);
     return true;
 }
 

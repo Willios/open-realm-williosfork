@@ -163,7 +163,7 @@ even presentation-neutral special state such as Militia expiry, Wind Walk, and
 ability-owned timed toggles now uses `S_SpellApplyTimedStatus()`, while each owner
 still keeps its transform, invisibility, animation, expiry, and payload policy. This
 presentation-neutral primitive returns the authoritative status slot, so special
-abilities can attach payload without rescanning `abilstatus`; this also replaces
+abilities can attach payload without rescanning `unit_state->statuses`; this also replaces
 manual post-apply status lookups in Avatar/Polymorph and preserves presentation-
 neutral transfer/pulse uses such as Spell Steal, Stasis Trap, and Earthquake. Ordinary target buffs
 that also use standard authored TargetArt layer `S_SpellApplyTimedTargetStatus()`
@@ -269,7 +269,7 @@ identity.
 
 ```sh
 make test-wc3-engine WC3_PATTERN='wc3_spell.<name>*'
-make test-wc3-engine WC3_PATTERN='wc3_save.*'   # edict_t / abilstatus / new think pointer
+make test-wc3-engine WC3_PATTERN='wc3_save.*'   # edict_t / unit_state->statuses / new think pointer
 ```
 
 Do not debug `make test` `+test '*'` while finishing one ability. Never
@@ -281,7 +281,7 @@ that path dies in `jass_runevents(NULL)`. Advance buffs with
 
 When finishing several abilities in one pass, split the list into groups that
 do not share a procedure, `s_*.c` owner, or shared hook (`S_SpellDamage`,
-`S_UnitSpellImmune`, `edict_t` fields, `abilstatus` payload). Spawn one
+`S_UnitSpellImmune`, `edict_t` fields, `unit_state->statuses` payload). Spawn one
 subagent per unrelated group. Each child polls its own rawcodes, writes its
 own tests and docs, and commits only its group.
 

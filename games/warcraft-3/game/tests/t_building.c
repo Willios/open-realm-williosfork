@@ -617,7 +617,7 @@ TEST(wc3_building, selected_building_rebuilds_info_panel_for_construction_and_up
     /* This is the cache state of an ordinary selected-unit panel immediately
      * before the selected building enters construction. */
     client->infopanel.entity = building->s.number;
-    client->infopanel.hp = (int32_t)building->health.value;
+    client->infopanel.count = (int32_t)building->health.value;
     client->infopanel.xp = 0;
     building->build = building;
     if (!building->construction) building->construction = G_AllocConstruction();
@@ -675,17 +675,17 @@ TEST(wc3_building, unsummoning_refreshes_training_queue_progress_panel) {
     building->data.UnitBalance = &balance;
     building->s.player = trainee->s.player = client->ps.number;
     building->build = trainee;
-    trainee->training = true;
+    G_SetUnitFlag(trainee, UNIT_FLAG_TRAINING, true);
     if (!trainee->food) trainee->food = G_AllocFood();
     assert(trainee->food);
     trainee->food->used = 1;
     trainee->health.max_value = 100.0f;
     trainee->health.value = 50.0f;
-    building->abilstatus[0] = (heroabilitystatus_t){
+    building->unit_state->statuses[0] = (heroabilitystatus_t){
         .code = MAKEFOURCC('B','u','n','s'), .level = 1 };
     G_SelectEntity(client, building);
     client->infopanel.entity = 0;
-    client->infopanel.hp = -1;
+    client->infopanel.count = -1;
 
     building_queue_frame_count = 0;
     gi.Write = building_queue_capture_write;
@@ -1165,27 +1165,27 @@ TEST(wc3_building, researched_blacksmith_effects_update_existing_and_future_unit
     memset(client->tech, 0, sizeof(client->tech));
     unit->s.player = client->ps.number;
     unit->data.UnitBalance = &balance;
-    unit->attack1.numberOfDice = 2;
-    unit->armor_value = 3.0f;
+    unit->unit_state->attack1.numberOfDice = 2;
+    unit->unit_state->armor_value = 3.0f;
 
     G_SetPlayerTechResearched(client, weapon, 1);
-    T_EQ(unit->attack1.numberOfDice, 3);
+    T_EQ(unit->unit_state->attack1.numberOfDice, 3);
     G_SetPlayerTechResearched(client, weapon, 2);
-    T_EQ(unit->attack1.numberOfDice, 4);
+    T_EQ(unit->unit_state->attack1.numberOfDice, 4);
 
     G_SetPlayerTechResearched(client, armor, 1);
-    T_FEQ(unit->armor_value, 5.0f, 0.001f);
+    T_FEQ(unit->unit_state->armor_value, 5.0f, 0.001f);
     G_SetPlayerTechResearched(client, armor, 2);
-    T_FEQ(unit->armor_value, 7.0f, 0.001f);
+    T_FEQ(unit->unit_state->armor_value, 7.0f, 0.001f);
 
     future = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
     future->s.player = client->ps.number;
     future->data.UnitBalance = &balance;
-    future->attack1.numberOfDice = 2;
-    future->armor_value = 3.0f;
+    future->unit_state->attack1.numberOfDice = 2;
+    future->unit_state->armor_value = 3.0f;
     G_ApplyPlayerUpgradesToUnit(future);
-    T_EQ(future->attack1.numberOfDice, 4);
-    T_FEQ(future->armor_value, 7.0f, 0.001f);
+    T_EQ(future->unit_state->attack1.numberOfDice, 4);
+    T_FEQ(future->unit_state->armor_value, 7.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, weapon, 0);
     G_SetPlayerTechResearched(client, armor, 0);
@@ -1203,28 +1203,28 @@ TEST(wc3_building, researched_attack_damage_effect_tracks_level_delta) {
     memset(client->tech, 0, sizeof(client->tech));
     unit->s.player = client->ps.number;
     unit->data.UnitBalance = &balance;
-    unit->attack1.numberOfDice = 1;
-    unit->attack1.damageBase = 10;
-    unit->attack2.numberOfDice = 1;
-    unit->attack2.damageBase = 20;
+    unit->unit_state->attack1.numberOfDice = 1;
+    unit->unit_state->attack1.damageBase = 10;
+    unit->unit_state->attack2.numberOfDice = 1;
+    unit->unit_state->attack2.damageBase = 20;
 
     G_SetPlayerTechResearched(client, attack_damage, 1);
-    T_EQ(unit->attack1.damageBase, 12);
-    T_EQ(unit->attack2.damageBase, 22);
-    T_FEQ(unit->attack1.permanentDamageBonus, 2.0f, 0.001f);
-    T_FEQ(unit->attack2.permanentDamageBonus, 2.0f, 0.001f);
+    T_EQ(unit->unit_state->attack1.damageBase, 12);
+    T_EQ(unit->unit_state->attack2.damageBase, 22);
+    T_FEQ(unit->unit_state->attack1.permanentDamageBonus, 2.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.permanentDamageBonus, 2.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, attack_damage, 3);
-    T_EQ(unit->attack1.damageBase, 14);
-    T_EQ(unit->attack2.damageBase, 24);
-    T_FEQ(unit->attack1.permanentDamageBonus, 4.0f, 0.001f);
-    T_FEQ(unit->attack2.permanentDamageBonus, 4.0f, 0.001f);
+    T_EQ(unit->unit_state->attack1.damageBase, 14);
+    T_EQ(unit->unit_state->attack2.damageBase, 24);
+    T_FEQ(unit->unit_state->attack1.permanentDamageBonus, 4.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.permanentDamageBonus, 4.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, attack_damage, 0);
-    T_EQ(unit->attack1.damageBase, 10);
-    T_EQ(unit->attack2.damageBase, 20);
-    T_FEQ(unit->attack1.permanentDamageBonus, 0.0f, 0.001f);
-    T_FEQ(unit->attack2.permanentDamageBonus, 0.0f, 0.001f);
+    T_EQ(unit->unit_state->attack1.damageBase, 10);
+    T_EQ(unit->unit_state->attack2.damageBase, 20);
+    T_FEQ(unit->unit_state->attack1.permanentDamageBonus, 0.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.permanentDamageBonus, 0.0f, 0.001f);
 
     building_restore_upgrade_data(old, rows);
 }
@@ -1241,30 +1241,30 @@ TEST(wc3_building, researched_attack_range_effect_updates_existing_and_future_un
     memset(client->tech, 0, sizeof(client->tech));
     unit->s.player = client->ps.number;
     unit->data.UnitBalance = &balance;
-    unit->attack1.numberOfDice = 1;
-    unit->attack1.range = 400.0f;
-    unit->attack2.numberOfDice = 1;
-    unit->attack2.range = 250.0f;
+    unit->unit_state->attack1.numberOfDice = 1;
+    unit->unit_state->attack1.range = 400.0f;
+    unit->unit_state->attack2.numberOfDice = 1;
+    unit->unit_state->attack2.range = 250.0f;
 
     G_SetPlayerTechResearched(client, long_rifles, 1);
-    T_FEQ(unit->attack1.range, 537.0f, 0.001f);
-    T_FEQ(unit->attack2.range, 387.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack1.range, 537.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.range, 387.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, long_rifles, 3);
-    T_FEQ(unit->attack1.range, 559.0f, 0.001f);
-    T_FEQ(unit->attack2.range, 409.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack1.range, 559.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.range, 409.0f, 0.001f);
 
     future = alloc_test_unit(MAKEFOURCC('h','r','i','f'), 0, 0);
     future->s.player = client->ps.number;
     future->data.UnitBalance = &balance;
-    future->attack1.numberOfDice = 1;
-    future->attack1.range = 400.0f;
+    future->unit_state->attack1.numberOfDice = 1;
+    future->unit_state->attack1.range = 400.0f;
     G_ApplyPlayerUpgradesToUnit(future);
-    T_FEQ(future->attack1.range, 559.0f, 0.001f);
+    T_FEQ(future->unit_state->attack1.range, 559.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, long_rifles, 0);
-    T_FEQ(unit->attack1.range, 400.0f, 0.001f);
-    T_FEQ(unit->attack2.range, 250.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack1.range, 400.0f, 0.001f);
+    T_FEQ(unit->unit_state->attack2.range, 250.0f, 0.001f);
     building_restore_upgrade_data(old, rows);
 }
 
@@ -1286,12 +1286,12 @@ TEST(wc3_building, researched_hit_points_effect_preserves_health_ratio) {
     G_SetPlayerTechResearched(client, animal_war_training, 1);
     T_FEQ(unit->health.max_value, 173.0f, 0.001f);
     T_FEQ(unit->health.value, 86.5f, 0.001f);
-    T_FEQ(unit->permanent_health_bonus, 73.0f, 0.001f);
+    T_FEQ(unit->unit_state->permanent_health_bonus, 73.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, animal_war_training, 2);
     T_FEQ(unit->health.max_value, 190.0f, 0.001f);
     T_FEQ(unit->health.value, 95.0f, 0.001f);
-    T_FEQ(unit->permanent_health_bonus, 90.0f, 0.001f);
+    T_FEQ(unit->unit_state->permanent_health_bonus, 90.0f, 0.001f);
 
     future = alloc_test_unit(MAKEFOURCC('h','k','n','i'), 0, 0);
     future->s.player = client->ps.number;
@@ -1301,12 +1301,12 @@ TEST(wc3_building, researched_hit_points_effect_preserves_health_ratio) {
     G_ApplyPlayerUpgradesToUnit(future);
     T_FEQ(future->health.max_value, 290.0f, 0.001f);
     T_FEQ(future->health.value, 145.0f, 0.001f);
-    T_FEQ(future->permanent_health_bonus, 90.0f, 0.001f);
+    T_FEQ(future->unit_state->permanent_health_bonus, 90.0f, 0.001f);
 
     G_SetPlayerTechResearched(client, animal_war_training, 0);
     T_FEQ(unit->health.max_value, 100.0f, 0.001f);
     T_FEQ(unit->health.value, 50.0f, 0.001f);
-    T_FEQ(unit->permanent_health_bonus, 0.0f, 0.001f);
+    T_FEQ(unit->unit_state->permanent_health_bonus, 0.0f, 0.001f);
     building_restore_upgrade_data(old, rows);
 }
 
@@ -1914,12 +1914,12 @@ TEST(wc3_building, researched_caster_mana_effects_update_existing_units) {
     G_SetPlayerTechResearched(client, training, 1);
     T_FEQ(unit->mana.max_value, 300.0f, 0.001f);
     T_FEQ(unit->mana.value, 100.0f, 0.001f);
-    T_FEQ(unit->mana_regen_bonus, 0.325f, 0.001f);
+    T_FEQ(unit->unit_state->mana_regen_bonus, 0.325f, 0.001f);
 
     G_SetPlayerTechResearched(client, training, 2);
     T_FEQ(unit->mana.max_value, 400.0f, 0.001f);
     T_FEQ(unit->mana.value, 200.0f, 0.001f);
-    T_FEQ(unit->mana_regen_bonus, 0.65f, 0.001f);
+    T_FEQ(unit->unit_state->mana_regen_bonus, 0.65f, 0.001f);
 
     G_SetPlayerTechResearched(client, training, 0);
     building_restore_upgrade_data(old, rows);
@@ -1941,7 +1941,7 @@ TEST(wc3_building, researched_mana_survives_hero_recompute_with_item_bonus) {
     memset(client->tech, 0, sizeof(client->tech));
     unit->s.player = client->ps.number;
     unit->data.UnitBalance = &balance;
-    unit->hero.intel = balance.intelligence;
+    unit->unit_state->hero.intel = balance.intelligence;
     unit->mana.max_value = 200.0f;
     unit->mana.value = 0.0f;
 
@@ -1953,13 +1953,13 @@ TEST(wc3_building, researched_mana_survives_hero_recompute_with_item_bonus) {
     future = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     future->s.player = client->ps.number;
     future->data.UnitBalance = &balance;
-    future->hero.intel = balance.intelligence;
+    future->unit_state->hero.intel = balance.intelligence;
     future->mana.max_value = 200.0f;
     G_RecomputeHeroStats(future);
     G_ApplyPlayerUpgradesToUnit(future);
     T_FEQ(future->mana.max_value, 300.0f, 0.001f);
 
-    unit->hero.intel++;
+    unit->unit_state->hero.intel++;
     G_RecomputeHeroStats(unit);
     T_FEQ(unit->mana.max_value, 365.0f, 0.001f);
 
@@ -2345,7 +2345,7 @@ TEST(wc3_building, queued_training_counts_against_player_tech_maximum) {
     producer->data.UnitProfile = &producer_profile;
     producer->s.player = client->ps.number;
     queued->s.player = client->ps.number;
-    queued->training = true;
+    G_SetUnitFlag(queued, UNIT_FLAG_TRAINING, true);
     G_SetPlayerTechMaxAllowed(client, trainee, 1);
 
     T_EQ(G_GetPlayerTechCountValue(client, trainee), 1);
@@ -3227,7 +3227,7 @@ TEST(wc3_building, shared_build_order_uses_authoritative_validation) {
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
-    T_EQ(builder->build_project, barracks); T_NOT_NULL(builder->goalentity);
+    T_EQ(builder->orders->build_project, barracks); T_NOT_NULL(builder->goalentity);
     T_ASSERT(!G_IssueBuildOrder(builder, MAKEFOURCC('h','f','o','o'), &point));
 }
 
@@ -3247,12 +3247,12 @@ TEST(wc3_building, build_order_clears_stop_guard) {
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = G_UnitBalance(barracks)->lumberCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
     order_stop(builder);
-    T_ASSERT(builder->movement.guard_state == GUARD_IDLE);
+    T_ASSERT(builder->orders->guard_state == GUARD_IDLE);
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
 
-    T_EQ(builder->build_project, barracks);
-    T_ASSERT(builder->movement.guard_state == GUARD_NONE);
+    T_EQ(builder->orders->build_project, barracks);
+    T_ASSERT(builder->orders->guard_state == GUARD_NONE);
 }
 
 /* Human04's opening sends these three preplaced Peasants to the centres of
@@ -3344,24 +3344,24 @@ TEST(wc3_building, human04_opening_positions_keep_townhall_build) {
                 workers[1]->s.origin2 = points[i];
                 gi.LinkEntity(workers[1]);
                 T_ASSERT(G_IssueBuildOrder(workers[i], buildings[i], &points[i]));
-                T_NOT_NULL(workers[i]->build_preview);
-                T_ASSERT(workers[i]->build_preview->svflags & SVF_OWNER_ONLY);
-                T_EQ(workers[i]->build_preview->s.player, workers[i]->s.player);
+                T_NOT_NULL(workers[i]->orders->build_preview);
+                T_ASSERT(workers[i]->orders->build_preview->svflags & SVF_OWNER_ONLY);
+                T_EQ(workers[i]->orders->build_preview->s.player, workers[i]->s.player);
                 T_ASSERT(Vector2_distance(&workers[1]->s.origin2, &before_preview) > 1.0f);
                 T_ASSERT(workers[1]->goalentity == barracks_goal);
                 T_ASSERT(move_is_active_order_walk(workers[1]));
-                T_ASSERT(workers[i]->build_preview->aiflags & AI_HOLD_FRAME);
-                T_STREQ(workers[i]->build_preview->animation_request, "stand");
-                if (workers[i]->build_preview->animation) {
-                    T_ASSERT(G_AnimationHasPrimary(workers[i]->build_preview->animation, "stand"));
-                    T_EQ(workers[i]->build_preview->s.frame,
-                         workers[i]->build_preview->animation->interval[0]);
+                T_ASSERT(workers[i]->orders->build_preview->aiflags & AI_HOLD_FRAME);
+                T_STREQ(workers[i]->orders->build_preview->animation_request, "stand");
+                if (workers[i]->orders->build_preview->animation) {
+                    T_ASSERT(G_AnimationHasPrimary(workers[i]->orders->build_preview->animation, "stand"));
+                    T_EQ(workers[i]->orders->build_preview->s.frame,
+                         workers[i]->orders->build_preview->animation->interval[0]);
                 }
-                T_ASSERT(workers[i]->build_preview->vertex_color_set);
-                T_EQ(workers[i]->build_preview->vertex_color.r, 255);
-                T_EQ(workers[i]->build_preview->vertex_color.g, 255);
-                T_EQ(workers[i]->build_preview->vertex_color.b, 255);
-                T_EQ(workers[i]->build_preview->vertex_color.a, 128);
+                T_ASSERT(G_UnitHasFlag(workers[i]->orders->build_preview, UNIT_FLAG_VERTEX_COLOR_SET));
+                T_EQ(workers[i]->orders->build_preview->vertex_color.r, 255);
+                T_EQ(workers[i]->orders->build_preview->vertex_color.g, 255);
+                T_EQ(workers[i]->orders->build_preview->vertex_color.b, 255);
+                T_EQ(workers[i]->orders->build_preview->vertex_color.a, 128);
             } else {
                 T_ASSERT(G_IssueBuildOrder(workers[i], buildings[i], &points[i]));
             }
@@ -3369,9 +3369,9 @@ TEST(wc3_building, human04_opening_positions_keep_townhall_build) {
     }
 
     FOR_LOOP(i, 3) T_ASSERT(issued[i]);
-    T_ASSERT(!farm->build_project);
-    T_ASSERT(!barracks->build_project);
-    T_ASSERT(!townhall->build_project);
+    T_ASSERT(!farm->orders->build_project);
+    T_ASSERT(!barracks->orders->build_project);
+    T_ASSERT(!townhall->orders->build_project);
     FOR_LOOP(i, globals.num_edicts)
         if (g_edicts[i].inuse && g_edicts[i].class_id == buildings[1])
             barracks_spawned = true;
@@ -3592,15 +3592,15 @@ TEST(wc3_building, shared_build_order_releases_builder_from_gold_mine) {
     if (!builder->goldmine) builder->goldmine = G_AllocGoldMine();
     assert(builder->goldmine);
     builder->goldmine->mine = mine; builder->goldmine->mine_spawn_time = mine->spawn_time;
-    builder->invulnerable = true; builder->s.renderfx |= RF_HIDDEN; mine->peonsinside = 1;
+    G_SetUnitFlag(builder, UNIT_FLAG_INVULNERABLE, true); builder->s.renderfx |= RF_HIDDEN; G_InitGoldMine(mine); mine->goldmine->occupants = 1;
     client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = G_UnitBalance(barracks)->goldCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = G_UnitBalance(barracks)->lumberCost;
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
-    T_ASSERT(!S_GoldMineWorkerIsInside(builder)); T_EQ(mine->peonsinside, 0);
-    T_ASSERT(!(builder->s.renderfx & RF_HIDDEN)); T_ASSERT(!builder->invulnerable);
-    T_EQ(builder->build_project, barracks); T_NOT_NULL(builder->goalentity);
+    T_ASSERT(!S_GoldMineWorkerIsInside(builder)); T_EQ((mine->goldmine ? mine->goldmine->occupants : 0), 0);
+    T_ASSERT(!(builder->s.renderfx & RF_HIDDEN)); T_ASSERT(!G_UnitHasFlag(builder, UNIT_FLAG_INVULNERABLE));
+    T_EQ(builder->orders->build_project, barracks); T_NOT_NULL(builder->goalentity);
 }
 
 TEST(wc3_building, building_snap_without_authored_pathing_uses_32_unit_grid) {
@@ -3668,11 +3668,11 @@ TEST(wc3_building, human_birth_emission_tracks_active_repair_not_assigned_worker
     T_ASSERT(!(building->s.flags & EF_MDX_EMISSION_PAUSED));
     T_ASSERT(!(building->s.flags & EF_MDX_ANIMATION_PAUSED));
 
-    worker->paused = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
     G_RunConstructionFrame(building);
     T_ASSERT(building->s.flags & EF_MDX_EMISSION_PAUSED);
     T_ASSERT(building->s.flags & EF_MDX_ANIMATION_PAUSED);
-    worker->paused = false;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, false);
     G_RunConstructionFrame(building);
     T_ASSERT(!(building->s.flags & EF_MDX_EMISSION_PAUSED));
     T_ASSERT(!(building->s.flags & EF_MDX_ANIMATION_PAUSED));
@@ -3918,8 +3918,8 @@ TEST(wc3_building, orc_construction_hides_worker_and_progresses_autonomously) {
     T_ASSERT(building->construction->worker == worker);
     T_ASSERT(building->construction->worker_inside);
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->build == building);
     T_FEQ(building->health.value, 100.0f, 0.001f);
 
@@ -3952,8 +3952,8 @@ TEST(wc3_building, naga_construction_hides_worker_and_progresses_autonomously) {
     T_ASSERT(building->construction->worker_inside);
     T_ASSERT(!building->construction->consumes_worker);
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_FEQ(building->health.value, 100.0f, 0.001f);
 
     hp_before = building->health.value;
@@ -4131,8 +4131,8 @@ TEST(wc3_building, removing_orc_construction_releases_internal_worker) {
     T_ASSERT(!building->inuse);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
-    T_ASSERT(!worker->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }
@@ -4144,18 +4144,18 @@ TEST(wc3_building, orc_construction_restores_worker_state_after_cancel) {
     setup_test_world();
     worker = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0, 0);
     building = alloc_test_unit(MAKEFOURCC('h', 'b', 'a', 'r'), 64, 0);
-    worker->paused = true;
-    worker->invulnerable = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
+    G_SetUnitFlag(worker, UNIT_FLAG_INVULNERABLE, true);
     worker->s.renderfx |= RF_HIDDEN;
 
     T_ASSERT(G_StartOrcConstruction(worker, building));
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
     G_StopConstruction(building);
 
-    T_ASSERT(worker->paused);
-    T_ASSERT(worker->invulnerable);
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(worker->s.renderfx & RF_HIDDEN);
 }
 
@@ -4179,8 +4179,8 @@ TEST(wc3_building, undead_construction_releases_summoner_and_keeps_progressing) 
     T_ASSERT(building->construction->worker == worker);
     T_ASSERT(!building->construction || !building->construction->worker_inside);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
-    T_ASSERT(!worker->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_INVULNERABLE));
     T_ASSERT(release_time > level.time);
 
     level.time = release_time;
@@ -4255,6 +4255,7 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
             ziggurat_balance = *ent->data.UnitBalance;
             ziggurat_balance.buildTime = 1;
             ent->data.UnitBalance = &ziggurat_balance;
+            G_InitUnitOrders(ent);
             ent->svflags |= SVF_MONSTER;
             ent->health.max_value = 1000.0f;
             ent->health.value = ent->health.max_value;
@@ -4280,8 +4281,8 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
     T_NULL(acolyte->build);
     T_ASSERT(acolyte->goalentity && acolyte->goalentity->s.origin2.x == build_point.x);
     T_ASSERT(!(acolyte->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!acolyte->paused);
-    T_ASSERT(!acolyte->invulnerable);
+    T_ASSERT(!G_UnitHasFlag(acolyte, UNIT_FLAG_PAUSED));
+    T_ASSERT(!G_UnitHasFlag(acolyte, UNIT_FLAG_INVULNERABLE));
 
     order_move(acolyte, Waypoint_add(&move_point));
     FOR_LOOP(i, 20) {
@@ -4293,9 +4294,10 @@ TEST(wc3_building, acolyte_builds_ziggurat_then_can_move_away) {
     T_ASSERT(acolyte->s.origin2.x < -64.0f);
     T_ASSERT(acolyte->goalentity == NULL || acolyte->goalentity->s.origin2.x < -64.0f);
 
-    acolyte->heroabilities[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','u','n','s'), .level = 1);
+    acolyte->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','u','n','s'), .level = 1);
     acolyte->mana.value = acolyte->mana.max_value = 100.0f;
     ziggurat->s.player = client->ps.number;
+    G_InitUnitOrders(ziggurat);
     ziggurat->svflags |= SVF_MONSTER;
     ziggurat->s.flags |= EF_BUILDING;
     ziggurat->targtype = TARG_STRUCTURE;
@@ -4364,7 +4366,7 @@ TEST(wc3_building, night_elf_ancient_cancel_restores_wisp_and_food) {
     G_StopConstruction(building);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_EQ(worker->food->used, worker_balance.foodUsed);
     T_NULL(building->construction);
 }
@@ -4411,7 +4413,7 @@ TEST(wc3_building, night_elf_non_ancient_completion_releases_wisp) {
     G_CompleteConstruction(building);
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }
@@ -4428,7 +4430,7 @@ TEST(wc3_building, cancelling_night_elf_non_ancient_construction_releases_wisp) 
 
     T_ASSERT(worker->inuse);
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_ASSERT(!worker->paused);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_PAUSED));
     T_NULL(worker->build);
     T_NULL(worker->goalentity);
 }
@@ -4453,9 +4455,9 @@ TEST(wc3_building, replacing_pre_spawn_build_order_clears_project) {
     client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 100;
 
     T_ASSERT(G_IssueBuildOrder(builder, barracks, &point));
-    T_EQ(builder->build_project, barracks);
+    T_EQ(builder->orders->build_project, barracks);
     unit_stand(builder);
-    T_EQ(builder->build_project, 0);
+    T_EQ(builder->orders->build_project, 0);
 }
 
 TEST(wc3_building, cancel_human_construction_refunds_releases_and_publishes) {
@@ -4711,7 +4713,7 @@ TEST(wc3_building, completing_construction_clears_state_publishes_once_and_grant
     T_EQ(building->food->made, 6);
     T_EQ(building_stand_calls, 1);
     T_EQ(client->score.values[WC3_PLAYER_SCORE_STRUCT_BUILT], 1);
-    T_ASSERT(building->sound.owner_pending != 0);
+    T_ASSERT(building->sound->owner_pending != 0);
     T_EQ(level.events.write, 2);
     T_EQ(level.events.queue[0].type, EVENT_PLAYER_UNIT_CONSTRUCT_FINISH);
     T_ASSERT(level.events.queue[0].edict == building);
@@ -5278,7 +5280,7 @@ TEST(wc3_building, spawn_initializes_authored_default_repair_autocast) {
 
     SP_SpawnUnit(worker);
 
-    T_EQ(worker->autocast_code, MAKEFOURCC('A','r','e','n'));
+    T_EQ(worker->unit_state->autocast, MAKEFOURCC('A','r','e','n'));
     T_ASSERT(worker->aiflags & AI_AUTOCAST_ACTIVE);
     T_ASSERT(worker->aiflags & AI_AUTOCAST_REPAIR);
     T_ASSERT(G_UnitAutocastIsOn(worker, MAKEFOURCC('A','r','e','n')));
@@ -5308,7 +5310,7 @@ TEST(wc3_building, spawn_without_default_active_repair_stays_disabled) {
     gi.LinkEntity(worker);
     gi.LinkEntity(building);
 
-    T_EQ(worker->autocast_code, 0);
+    T_EQ(worker->unit_state->autocast, 0);
     T_ASSERT(!(worker->aiflags & AI_AUTOCAST_ACTIVE));
     T_ASSERT(!(worker->aiflags & AI_AUTOCAST_REPAIR));
     T_ASSERT(!G_UnitAutocastIsOn(worker, MAKEFOURCC('A','r','e','n')));
@@ -5350,22 +5352,22 @@ TEST(wc3_building, default_self_rally_does_not_autorepair_producer) {
     worker->data.UnitBalance = &worker_balance;
     worker->collision = 16.0f;
     worker->stand = unit_stand;
-    worker->training = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_TRAINING, true);
     worker->s.renderfx |= RF_HIDDEN;
     producer->build = worker;
 
     /* The unit starts production with Auto Repair off. Completion must not
      * Smart-interact with the damaged producer as though it were a rally order. */
     SP_SpawnUnit(worker);
-    T_EQ(worker->autocast_code, 0);
+    T_EQ(worker->unit_state->autocast, 0);
     T_ASSERT(!(worker->aiflags & AI_AUTOCAST_REPAIR));
     ai_train_build(producer);
-    T_ASSERT(!worker->training);
+    T_ASSERT(!G_UnitHasFlag(worker, UNIT_FLAG_TRAINING));
     T_ASSERT(!(worker->s.renderfx & RF_HIDDEN));
-    T_EQ(worker->autocast_code, 0);
+    T_EQ(worker->unit_state->autocast, 0);
     T_ASSERT(!(worker->aiflags & AI_AUTOCAST_REPAIR));
     T_FEQ(producer->health.value, 500.0f, 0.01f);
-    T_NULL(worker->movement.follow_target);
+    T_NULL(worker->orders->follow_target);
     T_ASSERT(worker->build != producer);
     T_ASSERT(worker->goalentity != producer);
     T_ASSERT(!worker->buildwork || worker->buildwork->ability == 0);
@@ -5727,8 +5729,8 @@ TEST(wc3_building, idle_acquisition_prefers_auto_repair_over_auto_attack) {
     worker->data.UnitAbilities = &abilities;
     worker->svflags |= SVF_MONSTER;
     worker->runtime.acquisition_range = 400.0f;
-    worker->attack1.cooldown = 1.0f;
-    worker->attack1.damageBase = 1;
+    worker->unit_state->attack1.cooldown = 1.0f;
+    worker->unit_state->attack1.damageBase = 1;
     building->s.player = worker->s.player;
     building->health.max_value = 1000.0f;
     building->health.value = 500.0f;
@@ -5764,10 +5766,10 @@ TEST(wc3_building, idle_acquisition_without_autocast_still_auto_attacks) {
     enemy = alloc_test_unit(MAKEFOURCC('o','g','r','u'), 64, 0);
     worker->svflags |= SVF_MONSTER;
     worker->runtime.acquisition_range = 400.0f;
-    worker->attack1.type = ATK_NORMAL;
-    worker->attack1.cooldown = 1.0f;
-    worker->attack1.damageBase = 1;
-    worker->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    worker->unit_state->attack1.type = ATK_NORMAL;
+    worker->unit_state->attack1.cooldown = 1.0f;
+    worker->unit_state->attack1.damageBase = 1;
+    worker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
     enemy->s.player = 1;
     enemy->svflags |= SVF_MONSTER;
     enemy->targtype = TARG_GROUND;
@@ -5972,9 +5974,9 @@ static edict_t *building_queued_build_preview(edict_t *worker, uint32_t queue_of
     unitOrder_t const *queued;
     uint32_t slot;
 
-    if (!worker || queue_offset >= worker->order_queue.count) return NULL;
-    slot = (worker->order_queue.head + queue_offset) % MAX_UNIT_ORDER_QUEUE;
-    queued = &worker->order_queue.entries[slot];
+    if (!worker || queue_offset >= worker->orders->queue.count) return NULL;
+    slot = (worker->orders->queue.head + queue_offset) % MAX_UNIT_ORDER_QUEUE;
+    queued = &worker->orders->queue.entries[slot];
     if (queued->target_type != UNIT_ORDER_TARGET_BUILD || !queued->target_number ||
         queued->target_number >= globals.num_edicts) {
         return NULL;
@@ -6035,10 +6037,10 @@ TEST(wc3_building, normal_build_click_clears_placement_overlay) {
     G_ClientCommand(clent, 3, command);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(clent->client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
-    T_EQ(worker->build_project, MAKEFOURCC('h','b','a','r'));
+    T_EQ(worker->orders->build_project, MAKEFOURCC('h','b','a','r'));
 }
 
 TEST(wc3_building, shift_build_click_keeps_overlay_and_queues_followup_site) {
@@ -6054,35 +6056,35 @@ TEST(wc3_building, shift_build_click_keeps_overlay_and_queues_followup_site) {
     gi.Write = building_capture_write;
     G_ClientCommand(clent, 4, first);
 
-    T_EQ(clent->build_project, barracks);
+    T_EQ(clent->client->menu.build_project, barracks);
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(clent->client->menu.order_queue_chained);
     T_ASSERT(!building_cursor_clear_seen);
-    T_EQ(worker->build_project, barracks);
+    T_EQ(worker->orders->build_project, barracks);
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
 
     G_ClientCommand(clent, 4, second);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, barracks);
+    T_EQ(clent->client->menu.build_project, barracks);
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(!building_cursor_clear_seen);
     T_EQ(G_UnitQueuedOrderCount(worker), 1);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].order_id, barracks);
-    T_FEQ(worker->order_queue.entries[worker->order_queue.head].point.x, 512.0f, 0.01f);
-    T_FEQ(worker->order_queue.entries[worker->order_queue.head].point.y, 64.0f, 0.01f);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].order_id, barracks);
+    T_FEQ(worker->orders->queue.entries[worker->orders->queue.head].point.x, 512.0f, 0.01f);
+    T_FEQ(worker->orders->queue.entries[worker->orders->queue.head].point.y, 64.0f, 0.01f);
     {
         edict_t *preview = building_queued_build_preview(worker, 0);
         T_NOT_NULL(preview);
-        T_ASSERT(preview != worker->build_preview);
+        T_ASSERT(preview != worker->orders->build_preview);
         T_EQ(preview->class_id, barracks);
         T_EQ(preview->s.player, worker->s.player);
         T_ASSERT(preview->svflags & SVF_OWNER_ONLY);
         T_ASSERT(preview->s.flags & EF_NOT_SELECTABLE);
         T_FEQ(preview->s.origin2.x, 512.0f, 0.01f);
         T_FEQ(preview->s.origin2.y, 64.0f, 0.01f);
-        T_ASSERT(preview->vertex_color_set);
+        T_ASSERT(G_UnitHasFlag(preview, UNIT_FLAG_VERTEX_COLOR_SET));
         T_EQ(preview->vertex_color.a, 128);
     }
 }
@@ -6098,7 +6100,7 @@ TEST(wc3_building, clearing_build_queue_removes_only_queued_placeholders) {
 
     G_ClientCommand(clent, 4, first);
     G_ClientCommand(clent, 4, second);
-    active_preview = worker->build_preview;
+    active_preview = worker->orders->build_preview;
     queued_preview = building_queued_build_preview(worker, 0);
     T_NOT_NULL(active_preview);
     T_NOT_NULL(queued_preview);
@@ -6108,7 +6110,7 @@ TEST(wc3_building, clearing_build_queue_removes_only_queued_placeholders) {
 
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
     T_ASSERT(active_preview->inuse);
-    T_ASSERT(worker->build_preview == active_preview);
+    T_ASSERT(worker->orders->build_preview == active_preview);
     T_ASSERT(!queued_preview->inuse || queued_preview->spawn_time != queued_spawn_time);
 }
 
@@ -6129,15 +6131,15 @@ TEST(wc3_building, starting_queued_build_replaces_queued_placeholder_with_active
     /* Simulate completion/cancellation of the current pre-spawn leg; the
      * normal stand edge then starts the next queued construction order. */
     G_ClearBuildPreview(worker);
-    worker->build_project = 0;
+    worker->orders->build_project = 0;
     T_ASSERT(G_UnitStartNextQueuedOrder(worker));
 
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
     T_ASSERT(!queued_preview->inuse || queued_preview->spawn_time != queued_spawn_time);
-    T_NOT_NULL(worker->build_preview);
-    T_ASSERT(worker->build_preview != queued_preview);
-    T_FEQ(worker->build_preview->s.origin2.x, 512.0f, 0.01f);
-    T_FEQ(worker->build_preview->s.origin2.y, 64.0f, 0.01f);
+    T_NOT_NULL(worker->orders->build_preview);
+    T_ASSERT(worker->orders->build_preview != queued_preview);
+    T_FEQ(worker->orders->build_preview->s.origin2.x, 512.0f, 0.01f);
+    T_FEQ(worker->orders->build_preview->s.origin2.y, 64.0f, 0.01f);
 }
 
 TEST(wc3_building, scheduler_starts_queued_build_after_current_move_completes) {
@@ -6173,12 +6175,12 @@ TEST(wc3_building, scheduler_starts_queued_build_after_current_move_completes) {
     }
 
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
-    T_EQ(worker->build_project, barracks);
-    T_NOT_NULL(worker->build_preview);
-    if (!worker->build_preview) return;
-    T_ASSERT(worker->build_preview != queued_preview);
-    T_FEQ(worker->build_preview->s.origin2.x, 512.0f, 0.01f);
-    T_FEQ(worker->build_preview->s.origin2.y, 64.0f, 0.01f);
+    T_EQ(worker->orders->build_project, barracks);
+    T_NOT_NULL(worker->orders->build_preview);
+    if (!worker->orders->build_preview) return;
+    T_ASSERT(worker->orders->build_preview != queued_preview);
+    T_FEQ(worker->orders->build_preview->s.origin2.x, 512.0f, 0.01f);
+    T_FEQ(worker->orders->build_preview->s.origin2.y, 64.0f, 0.01f);
     T_ASSERT(!queued_preview->inuse || queued_preview->spawn_time != queued_spawn_time);
 }
 
@@ -6216,8 +6218,8 @@ TEST(wc3_building, scheduler_discards_queued_build_that_loses_its_resources) {
     }
 
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
-    T_EQ(worker->build_project, 0);
-    T_NULL(worker->build_preview);
+    T_EQ(worker->orders->build_project, 0);
+    T_NULL(worker->orders->build_preview);
     T_ASSERT(!queued_preview->inuse || queued_preview->spawn_time != queued_spawn_time);
 }
 
@@ -6239,21 +6241,39 @@ TEST(wc3_building, queued_build_payload_and_indicator_survive_save_load) {
     strlcpy(level.map_path, "Maps\\Campaign\\QueuedBuildSaveTest.w3m", sizeof(level.map_path));
     T_ASSERT(WriteGame(filename));
 
-    memset(&worker->order_queue, 0, sizeof(worker->order_queue));
+    memset(&worker->orders->queue, 0, sizeof(worker->orders->queue));
     preview->inuse = false;
     T_ASSERT(ReadGame(filename));
     worker = g_edicts + worker_number;
     preview = g_edicts + preview_number;
     T_EQ(G_UnitQueuedOrderCount(worker), 1);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].order_id, barracks);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_number, preview_number);
-    T_EQ(worker->order_queue.entries[worker->order_queue.head].target_spawn_time, preview_spawn_time);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_type, UNIT_ORDER_TARGET_BUILD);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].order_id, barracks);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_number, preview_number);
+    T_EQ(worker->orders->queue.entries[worker->orders->queue.head].target_spawn_time, preview_spawn_time);
     T_ASSERT(preview->inuse);
     G_ClearUnitOrderQueue(worker);
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
     T_ASSERT(!preview->inuse || preview->spawn_time != preview_spawn_time);
     remove(filename);
+}
+
+TEST(wc3_building, removing_active_preview_detaches_worker_before_slot_reuse) {
+    edict_t *clent;
+    edict_t *worker = building_begin_barracks_placement(&clent);
+    cstring_t point[] = { "point", "64", "64" };
+    G_ClientCommand(clent, 3, point);
+    edict_t *preview = worker->orders->build_preview;
+    T_NOT_NULL(preview);
+    if (!preview) return;
+    G_FreeEdict(preview);
+    T_NULL(worker->orders->build_preview);
+    level.time += 1001;
+    edict_t *replacement = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 300, 400);
+    T_ASSERT(replacement == preview);
+    G_FreeEdict(worker);
+    T_ASSERT(replacement->inuse);
+    T_NOT_NULL(replacement->unit_state);
 }
 
 TEST(wc3_building, removing_worker_clears_active_and_queued_build_placeholders) {
@@ -6267,7 +6287,7 @@ TEST(wc3_building, removing_worker_clears_active_and_queued_build_placeholders) 
 
     G_ClientCommand(clent, 4, first);
     G_ClientCommand(clent, 4, second);
-    active_preview = worker->build_preview;
+    active_preview = worker->orders->build_preview;
     queued_preview = building_queued_build_preview(worker, 0);
     T_NOT_NULL(active_preview);
     T_NOT_NULL(queued_preview);
@@ -6293,7 +6313,7 @@ TEST(wc3_building, shift_release_before_success_does_not_cancel_build_overlay) {
     G_ClientCommand(clent, 1, release);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, barracks);
+    T_EQ(clent->client->menu.build_project, barracks);
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(!building_cursor_clear_seen);
 }
@@ -6320,10 +6340,10 @@ TEST(wc3_building, final_shift_release_clears_overlay_without_discarding_build_o
     G_ClientCommand(clent, 1, release);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(clent->client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
-    T_EQ(worker->build_project, barracks);
+    T_EQ(worker->orders->build_project, barracks);
     T_EQ(G_UnitQueuedOrderCount(worker), 1);
     T_ASSERT(queued_preview->inuse);
     T_EQ(queued_preview->spawn_time, queued_preview_spawn_time);
@@ -6342,11 +6362,11 @@ TEST(wc3_building, invalid_nonshift_build_click_keeps_overlay_armed) {
     G_ClientCommand(clent, 3, command);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, barracks);
+    T_EQ(clent->client->menu.build_project, barracks);
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(!clent->client->menu.order_queue_chained);
     T_ASSERT(!building_cursor_clear_seen);
-    T_EQ(worker->build_project, 0);
+    T_EQ(worker->orders->build_project, 0);
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
 }
 
@@ -6363,11 +6383,11 @@ TEST(wc3_building, invalid_shift_build_click_keeps_overlay_armed) {
     G_ClientCommand(clent, 4, command);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, barracks);
+    T_EQ(clent->client->menu.build_project, barracks);
     T_ASSERT(clent->client->menu.on_location_selected == build_menu_send_builder);
     T_ASSERT(!clent->client->menu.order_queue_chained);
     T_ASSERT(!building_cursor_clear_seen);
-    T_EQ(worker->build_project, 0);
+    T_EQ(worker->orders->build_project, 0);
     T_EQ(G_UnitQueuedOrderCount(worker), 0);
 }
 
@@ -6388,7 +6408,7 @@ TEST(wc3_building, selection_replacement_cancels_build_overlay) {
     G_ClientCommand(clent, 2, command);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(clent->client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
     T_ASSERT(!G_IsEntitySelected(clent->client, worker));
@@ -6406,7 +6426,7 @@ TEST(wc3_building, command_card_refresh_cancels_build_overlay) {
     Get_Commands_f(clent);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(clent->client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
 }
@@ -6422,7 +6442,7 @@ TEST(wc3_building, selected_worker_death_cancels_build_overlay) {
     unit_die(worker, NULL);
     gi.Write = old_write;
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(clent->client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
     T_ASSERT(!G_IsEntitySelected(clent->client, worker));
@@ -6434,14 +6454,14 @@ TEST(wc3_building, cancel_command_clears_active_build_placement_cursor) {
     gameClient_t *client = clent->client;
 
     client->menu.on_location_selected = build_menu_send_builder;
-    clent->build_project = MAKEFOURCC('h','b','a','r');
+    clent->client->menu.build_project = MAKEFOURCC('h','b','a','r');
     building_cursor_opcode_seen = false;
     building_cursor_clear_seen = false;
     gi.Write = building_capture_write;
 
     CMD_CancelCommand(clent);
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(client->menu.on_location_selected);
     T_ASSERT(building_cursor_clear_seen);
 
@@ -6457,7 +6477,7 @@ TEST(wc3_building, smartpoint_cancels_build_placement_without_moving_selected_wo
 
     G_SelectEntity(client, worker);
     client->menu.on_location_selected = build_menu_send_builder;
-    clent->build_project = MAKEFOURCC('h','b','a','r');
+    clent->client->menu.build_project = MAKEFOURCC('h','b','a','r');
     worker->goalentity = NULL;
     building_cursor_opcode_seen = false;
     building_cursor_clear_seen = false;
@@ -6465,7 +6485,7 @@ TEST(wc3_building, smartpoint_cancels_build_placement_without_moving_selected_wo
 
     G_ClientCommand(clent, 3, command);
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(client->menu.on_location_selected);
     T_NULL(worker->goalentity);
     T_ASSERT(building_cursor_clear_seen);
@@ -6485,7 +6505,7 @@ TEST(wc3_building, smart_target_cancels_build_placement_before_issuing_order) {
     snprintf(target_number, sizeof(target_number), "%u", (unsigned)target->s.number);
     G_SelectEntity(client, worker);
     client->menu.on_location_selected = build_menu_send_builder;
-    clent->build_project = MAKEFOURCC('h','b','a','r');
+    clent->client->menu.build_project = MAKEFOURCC('h','b','a','r');
     worker->goalentity = NULL;
     building_cursor_opcode_seen = false;
     building_cursor_clear_seen = false;
@@ -6493,7 +6513,7 @@ TEST(wc3_building, smart_target_cancels_build_placement_before_issuing_order) {
 
     G_ClientCommand(clent, 2, command);
 
-    T_EQ(clent->build_project, 0);
+    T_EQ(clent->client->menu.build_project, 0);
     T_NULL(client->menu.on_location_selected);
     T_NULL(worker->goalentity);
     T_ASSERT(building_cursor_clear_seen);

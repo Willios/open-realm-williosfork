@@ -4,16 +4,16 @@
 #define ID_BMFL MAKEFOURCC('B', 'm', 'f', 'l') // rawcode; Mana Flare caster buff
 
 static void mana_flare_strip(edict_t *unit) {
-	FOR_LOOP(i, MAX_UNIT_STATUSES)
-		if (unit->abilstatus[i].level && unit->abilstatus[i].code == ID_BMFL)
-			unit_removestatus(unit, unit->abilstatus + i, STATUS_REMOVE_SCRIPT);
+	FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+		if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == ID_BMFL)
+			unit_removestatus(unit, unit->unit_state->statuses + i, STATUS_REMOVE_SCRIPT);
 	G_InvalidateUnitInfoPanel(unit);
 }
 
 static heroabilitystatus_t *mana_flare_status(edict_t *unit) {
-	FOR_LOOP(i, MAX_UNIT_STATUSES)
-		if (unit->abilstatus[i].level && unit->abilstatus[i].code == ID_BMFL)
-			return unit->abilstatus + i;
+	FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+		if (unit->unit_state->statuses[i].level && unit->unit_state->statuses[i].code == ID_BMFL)
+			return unit->unit_state->statuses + i;
 	return NULL;
 }
 

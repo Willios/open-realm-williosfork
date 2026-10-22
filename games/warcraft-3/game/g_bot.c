@@ -264,8 +264,8 @@ bool G_BotTownThreatened(player_t *player) {
  * after direct native capture. */
 static bool G_BotTowerDefenseBuilding(edict_t *unit, uint32_t owner) {
     return G_BotUnitAlive(unit) && unit->s.player == owner && G_UnitIsBuilding(unit->class_id) &&
-        ((unit->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
-         (unit->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1)));
+        ((unit->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
+         (unit->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1)));
 }
 
 bool G_BotIsTowered(player_t *player, edict_t *target) {
@@ -303,8 +303,8 @@ static bool G_BotMegaCombatDefender(edict_t *unit, uint32_t owner, edict_t *hall
     /* Workers remaining at an economy do not by themselves make the main base a defended
      * military position. Ahar is the stock/custom worker harvest command shared by melee workers. */
     if (G_ActorHasSkill(unit, "Ahar")) return false;
-    return (unit->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
-           (unit->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1));
+    return (unit->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
+           (unit->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1));
 }
 
 edict_t *G_BotGetMegaTarget(player_t *player) {
@@ -643,10 +643,10 @@ int32_t G_BotTownUnitCount(player_t *player, uint32_t class_id, int32_t town_id,
     FILTER_EDICTS(ent, ent->inuse && (ent->svflags & SVF_MONSTER) && ent->class_id == class_id &&
                          ent->s.player == PLAYER_NUM(player) && !(ent->svflags & SVF_DEADMONSTER) &&
                          G_BotUnitAtTown(player, ent, town_id)) {
-        if (!done || (!ent->construction && !ent->training)) count++;
+        if (!done || (!ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING))) count++;
     }
     if (!done) FILTER_EDICTS(builder, G_BotUnitAlive(builder) && builder->s.player == PLAYER_NUM(player) &&
-                                      builder->build_project == class_id && G_BotUnitAtTown(player, builder, town_id)) count++;
+                                      (builder->orders ? builder->orders->build_project : 0) == class_id && G_BotUnitAtTown(player, builder, town_id)) count++;
     return count;
 }
 
@@ -734,7 +734,7 @@ int32_t G_BotNextExpansion(player_t *player) {
         edict_t *builder = NULL;
         if (!bot->expansion.build_accepted) return 0;
         FILTER_EDICTS(unit, G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) &&
-                            unit->build_project == bot->expansion.hall_id) { builder = unit; break; }
+                            (unit->orders ? unit->orders->build_project : 0) == bot->expansion.hall_id) { builder = unit; break; }
         if (builder) return 0;
         bot->expansion.valid = false;
         bot->expansion.build_accepted = false;
@@ -785,7 +785,7 @@ edict_t *G_BotExpansionPeon(player_t *player) {
     float best_dist = 0;
     if (!mine || !player) return NULL;
     FILTER_EDICTS(worker, G_BotUnitAlive(worker) && worker->s.player == PLAYER_NUM(player) &&
-        !worker->construction && !worker->training && !worker->build_project &&
+        !worker->construction && !G_UnitHasFlag(worker, UNIT_FLAG_TRAINING) && !(worker->orders ? worker->orders->build_project : 0) &&
         !S_GoldMineWorkerIsInside(worker) && !G_BuildingUpgradeActive(worker) &&
         G_ActorHasSkill(worker, "Ahar") && worker->data.UnitProfile && worker->data.UnitProfile->builds) {
         float dist = Vector2_distance(&mine->s.origin2, &worker->s.origin2);
@@ -805,7 +805,7 @@ bool G_BotSetExpansion(player_t *player, edict_t *worker, uint32_t hall_id) {
     if (!bot || !mine || !worker || !G_BotUnitAlive(worker) || worker->s.player != PLAYER_NUM(player) ||
         !balance || !profile || !G_UnitIsBuilding(hall_id) || !G_WorkerCanBuild(worker, hall_id) ||
         !worker->data.UnitProfile || !G_ActorHasSkill(worker, "Ahar") ||
-        worker->construction || worker->training || worker->build_project ||
+        worker->construction || G_UnitHasFlag(worker, UNIT_FLAG_TRAINING) || (worker->orders ? worker->orders->build_project : 0) ||
         S_GoldMineWorkerIsInside(worker) || G_BuildingUpgradeActive(worker) ||
         player->stats[PLAYERSTATE_RESOURCE_GOLD] < balance->goldCost ||
         player->stats[PLAYERSTATE_RESOURCE_LUMBER] < balance->lumberCost) return false;
@@ -869,10 +869,10 @@ static bool G_BotBuildNearTown(player_t *player, uint32_t class_id, int32_t town
     if (!bot || !town) return false;
     center = bot->town_spot_valid ? &bot->town_spot : &town->s.origin2;
     /* Pending footprints are not baked yet, so serialize them to keep later orders from invalidating earlier placement. */
-    FILTER_EDICTS(unit, G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) && unit->build_project)
+    FILTER_EDICTS(unit, G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) && (unit->orders ? unit->orders->build_project : 0))
         return false;
     FILTER_EDICTS(worker, G_BotUnitAlive(worker) && worker->s.player == PLAYER_NUM(player) &&
-        !worker->construction && !worker->training && !worker->build_project &&
+        !worker->construction && !G_UnitHasFlag(worker, UNIT_FLAG_TRAINING) && !(worker->orders ? worker->orders->build_project : 0) &&
         (!worker->currentmove || worker->currentmove->proc != CAbilityRepair) && G_WorkerCanBuild(worker, class_id)) {
         for (int32_t ring = 1; ring <= BOT_BUILD_SEARCH_RINGS; ring++) {
             for (int32_t x = -ring; x <= ring; x++) for (int32_t y = -ring; y <= ring; y++) {
@@ -915,7 +915,7 @@ bool G_BotProduce(player_t *player, int32_t qty, uint32_t class_id, int32_t town
             /* Prefer empty queues. Once every eligible producer is occupied,
              * balance new orders onto the producer with the most free slots. */
             FILTER_EDICTS(ent, G_BotUnitAlive(ent) && ent->s.player == PLAYER_NUM(player) &&
-                !ent->construction && !ent->training &&
+                !ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) &&
                 G_BotUnitAtTown(player, ent, town_id) &&
                 G_GetTrainCommandState(G_GetPlayerClientByNumber(ent->s.player), ent, class_id, NULL, 0) ==
                     BUILD_COMMAND_AVAILABLE) {
@@ -953,7 +953,7 @@ bool G_BotProduce(player_t *player, int32_t qty, uint32_t class_id, int32_t town
             FILTER_EDICTS(ent, G_BotUnitAlive(ent) && ent->s.player == PLAYER_NUM(player) &&
                 G_UnitIsBuilding(ent->class_id)) {
                 owned_producers++;
-                if (ent->construction || ent->training) {
+                if (ent->construction || G_UnitHasFlag(ent, UNIT_FLAG_TRAINING)) {
                     busy_producers++;
                 } else if (!G_BotUnitAtTown(player, ent, town_id)) {
                     wrong_town++;
@@ -996,7 +996,7 @@ bool G_BotUpgrade(player_t *player, uint32_t upgrade_id) {
     gameClient_t *client;
     if (!player || !upgrade_id || !(client = PLAYER_CLIENT(player))) return false;
     FILTER_EDICTS(ent, G_BotUnitAlive(ent) && ent->s.player == PLAYER_NUM(player) &&
-        !ent->construction && !ent->training &&
+        !ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) &&
         G_GetResearchCommandState(client, ent, upgrade_id, NULL, NULL, 0) == BUILD_COMMAND_AVAILABLE)
         if (G_QueueResearch(ent, upgrade_id)) return true;
     return false;
@@ -1022,8 +1022,8 @@ void G_BotHarvest(player_t *player, int32_t town_id, int32_t peons, bool gold) {
         edict_t *best = NULL;
         float best_dist = 0;
         /* Preserve accepted construction orders; harvest reassignment used to strand their pending footprints. */
-        FILTER_EDICTS(unit, G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) && !unit->training &&
-            !unit->construction && !unit->build_project &&
+        FILTER_EDICTS(unit, G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) && !G_UnitHasFlag(unit, UNIT_FLAG_TRAINING) &&
+            !unit->construction && !(unit->orders ? unit->orders->build_project : 0) &&
             (!unit->currentmove || (unit->currentmove->proc != CAbilityGoldMine &&
              unit->currentmove->proc != CAbilityHarvest && unit->currentmove->proc != CAbilityRepair)) && unit->data.UnitAbilities &&
             G_ActorHasSkill(unit, "Ahar") && !G_BotHarvesterReserved(bot, unit)) {
@@ -1032,8 +1032,8 @@ void G_BotHarvest(player_t *player, int32_t town_id, int32_t peons, bool gold) {
         }
         if (!best) return;
         G_BotReserveHarvester(bot, best);
-        if (best->harvested_gold) harvest_gold_return_to(best, town);
-        else if (best->harvested_lumber) harvest_lumber_return_to(best, town);
+        if ((best->harvest ? best->harvest->gold : 0)) harvest_gold_return_to(best, town);
+        else if ((best->harvest ? best->harvest->lumber : 0)) harvest_lumber_return_to(best, town);
         else if (resource == RETURN_RESOURCE_GOLD) harvest_gold_start(best, target);
         else harvest_start(best, target);
     }
@@ -1085,8 +1085,8 @@ static float G_BotRetreatUnitPower(edict_t *unit) {
 
 static bool G_BotRetreatEnemyCombatant(edict_t *unit) {
     if (!G_BotUnitAlive(unit) || !(unit->svflags & SVF_MONSTER)) return false;
-    return (unit->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
-           (unit->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1));
+    return (unit->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 0)) ||
+           (unit->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(unit, 1));
 }
 
 static bool G_BotRetreatEnemyNearCaptain(botCaptain_t const *captain, edict_t *enemy) {
@@ -1255,7 +1255,7 @@ static bool G_BotCaptainFill(player_t *player, botCaptainType_t type, int32_t qt
     FOR_EACH_ARRAY(edict_t *, unit, captain->units)
         if (G_BotUnitAlive(*unit) && (*unit)->class_id == class_id) have++;
     FILTER_EDICTS(unit, have < qty && G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) &&
-        unit->class_id == class_id && !unit->construction && !unit->training && !G_BotCaptainHasUnit(bot, unit)) {
+        unit->class_id == class_id && !unit->construction && !G_UnitHasFlag(unit, UNIT_FLAG_TRAINING) && !G_BotCaptainHasUnit(bot, unit)) {
         G_BotCaptainAdd(captain, unit); have++;
     }
     return have >= qty;
@@ -1272,7 +1272,7 @@ static bool G_BotCaptainTakeAssault(player_t *player, int32_t qty, uint32_t clas
     if (!bot || qty <= 0 || !class_id) return qty <= 0;
     captain = bot->captains + BOT_CAPTAIN_ATTACK;
     FILTER_EDICTS(unit, added < qty && G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) &&
-        unit->class_id == class_id && !unit->construction && !unit->training && !G_BotCaptainHasUnit(bot, unit)) {
+        unit->class_id == class_id && !unit->construction && !G_UnitHasFlag(unit, UNIT_FLAG_TRAINING) && !G_BotCaptainHasUnit(bot, unit)) {
         G_BotCaptainAdd(captain, unit); added++;
     }
     return added >= qty;
@@ -1354,7 +1354,7 @@ static bool G_BotUnitSiege(edict_t const *unit) {
      * the native's internal classifier. Stock WC3 siege engines author their combat
      * profile with the siege attack type, so use either active attack slot's authored
      * ATK_SIEGE value rather than a hard-coded unit rawcode list. */
-    return unit->attack1.type == ATK_SIEGE || unit->attack2.type == ATK_SIEGE;
+    return unit->unit_state->attack1.type == ATK_SIEGE || unit->unit_state->attack2.type == ATK_SIEGE;
 }
 
 /* InitMeleeGroup calls RemoveSiege before building the next assault specification.
@@ -1456,7 +1456,7 @@ static bool G_BotGuardHasUnit(bot_t *bot, edict_t *unit) {
 static bool G_BotGuardReplacementTraining(player_t *player, uint32_t class_id) {
     if (!player || !class_id) return false;
     FILTER_EDICTS(unit, unit->inuse && unit->s.player == PLAYER_NUM(player) &&
-        unit->class_id == class_id && unit->training) return true;
+        unit->class_id == class_id && G_UnitHasFlag(unit, UNIT_FLAG_TRAINING)) return true;
     return false;
 }
 
@@ -1470,7 +1470,7 @@ void G_BotFillGuardPosts(player_t *player) {
         if (G_BotUnitAlive(post->unit) && post->unit->s.player == PLAYER_NUM(player) && post->unit->class_id == post->class_id) continue;
         post->unit = NULL;
         FILTER_EDICTS(unit, !post->unit && G_BotUnitAlive(unit) && unit->s.player == PLAYER_NUM(player) &&
-            unit->class_id == post->class_id && !unit->construction && !unit->training &&
+            unit->class_id == post->class_id && !unit->construction && !G_UnitHasFlag(unit, UNIT_FLAG_TRAINING) &&
             !G_BotCaptainHasUnit(bot, unit) && !G_BotGuardHasUnit(bot, unit)) post->unit = unit;
         if (post->unit) { post->replacement_pending = false; continue; }
         if (post->replacement_pending) {
@@ -1743,8 +1743,8 @@ static void G_BotOrderAssaultMember(bot_t *bot, edict_t *unit, int32_t target) {
                 S_UnitIsCycloned(enemy), S_UnitIsHiddenFromPlayer(enemy, PLAYER_NUM(bot->player)),
                 S_AttackCanTarget(unit, enemy),
                 S_UnitIsCycloned(unit), S_GoldMineWorkerIsInside(unit),
-                unit->attack1.type, unit->attack1.targetsAllowed,
-                unit->attack2.type, unit->attack2.targetsAllowed,
+                unit->unit_state->attack1.type, unit->unit_state->attack1.targetsAllowed,
+                unit->unit_state->attack2.type, unit->unit_state->attack2.targetsAllowed,
                 unit->goalentity == enemy && unit->currentmove && unit->currentmove->proc == CAbilityAttack,
                 unit->goalentity == enemy, unit->currentmove && unit->currentmove->proc == CAbilityAttack,
                 S_UnitAttackSlotEnabled(unit, 0), S_UnitAttackSlotEnabled(unit, 1));
@@ -1920,7 +1920,7 @@ bool G_BotMergeUnits(player_t *player, int32_t qty, uint32_t a, uint32_t b, uint
     (void)a; (void)b;
     if (!player || qty <= 0 || !make) return qty <= 0;
     FILTER_EDICTS(ent, G_BotUnitAlive(ent) && ent->s.player == PLAYER_NUM(player) &&
-        ent->class_id == make && !ent->construction && !ent->training) have++;
+        ent->class_id == make && !ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING)) have++;
     return have >= qty;
 }
 
@@ -1954,12 +1954,12 @@ static uint32_t G_BotConversionAbility(edict_t *unit, uint32_t *target_type) {
             TRY_CONVERSION_ABILITY(alias);
         }
     }
-    FOR_LOOP(i, ARRAY_COUNT(unit->abilities.added)) {
-        uint32_t const alias = unit->abilities.added[i];
+    FOR_LOOP(i, (unit->unit_state ? ARRAY_COUNT(unit->unit_state->overrides.added) : 0)) {
+        uint32_t const alias = unit->unit_state->overrides.added[i];
         if (alias) TRY_CONVERSION_ABILITY(alias);
     }
-    FOR_LOOP(i, MAX_HERO_ABILITIES) {
-        uint32_t const alias = unit->heroabilities[i].code;
+    FOR_LOOP(i, unit->unit_state ? MAX_HERO_ABILITIES : 0) {
+        uint32_t const alias = unit->unit_state->ranks[i].code;
         if (alias) TRY_CONVERSION_ABILITY(alias);
     }
 #undef TRY_CONVERSION_ABILITY
@@ -1988,7 +1988,7 @@ bool G_BotConvertUnits(player_t *player, int32_t qty, uint32_t source_type) {
     if (!ability || !target_type) return false;
 
     FILTER_EDICTS(ent, G_BotUnitAlive(ent) && ent->s.player == player_num &&
-        ent->class_id == target_type && !ent->construction && !ent->training) have++;
+        ent->class_id == target_type && !ent->construction && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING)) have++;
     if (have >= qty) return true;
     needed = qty - have;
 
@@ -2070,7 +2070,7 @@ static bool G_BotIndividualFleeCandidate(edict_t *unit, bool hero_policy) {
     is_hero = G_UnitIsHero(unit);
     if (is_hero != hero_policy) return false;
     if (!is_hero && (G_ActorHasSkill(unit, "Ahar") ||
-        (unit->attack1.type == ATK_NONE && unit->attack2.type == ATK_NONE))) return false;
+        (unit->unit_state->attack1.type == ATK_NONE && unit->unit_state->attack2.type == ATK_NONE))) return false;
     return unit->health.value / unit->health.max_value < BOT_INDIVIDUAL_FLEE_HEALTH_FRACTION;
 }
 
@@ -2239,9 +2239,9 @@ void G_BotUpdateDefendPlayer(player_t *player) {
 static void G_BotHeroChooseSkill(bot_t *bot, edict_t *hero) {
     int32_t skill = 0;
     if (!bot || !bot->vm || !bot->hero_levels || !hero || !G_BotUnitAlive(hero) ||
-        hero->s.player != PLAYER_NUM(bot->player) || !G_UnitIsHero(hero) || !hero->hero.skillpoints) return;
+        hero->s.player != PLAYER_NUM(bot->player) || !G_UnitIsHero(hero) || !hero->unit_state->hero.skillpoints) return;
     bot->hero_id = hero->class_id;
-    bot->hero_level = hero->hero.level;
+    bot->hero_level = hero->unit_state->hero.level;
     if (jass_evaluateplayerinteger(bot->vm, bot->hero_levels, bot->player, &skill) && skill > 0)
         (void)G_HeroLearnSkill(hero, (uint32_t)skill);
     bot->hero_id = 0;

@@ -42,7 +42,7 @@ semantically the same after loading.
 
 ## Runtime Attack Fields
 
-`edict_t.attack1` and `attack2` are mutable copies of `UnitWeapons.slk` data. Target validation checks both authored target masks without changing either profile. Attack timing, projectile setup, and damage select the compatible profile from the current target, leaving both authored runtime copies in their original slots. Candidate scans and repeated target validation are read-only, so their traversal order cannot change the active weapon.
+`edict_t.unit_state->attack1` and `attack2` are mutable copies of `UnitWeapons.slk` data. Target validation checks both authored target masks without changing either profile. Attack timing, projectile setup, and damage select the compatible profile from the current target, leaving both authored runtime copies in their original slots. Candidate scans and repeated target validation are read-only, so their traversal order cannot change the active weapon.
 
 For each `unitAttack_t`:
 
@@ -272,3 +272,5 @@ The combat tests cover representative type multipliers, Divine, data-driven cons
 
 - [Group Attack And Chase Gaps](group-attack-chase-gaps.md) — facing, target identity, range geometry, moving-target refresh, and acceptance coverage still outstanding.
 - [Unit Altitude And Support Surfaces](unit-altitude.md) — projectile target Z adds the target model-origin altitude and authored `impactZ`.
+
+Attack cooldown state and its save-format cleanup are described in the [game-state review](state-review.md).

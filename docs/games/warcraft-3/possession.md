@@ -30,7 +30,7 @@ allies, dead, and spell-immune units are invalid. `DataA` is max allowed
 | `BuffID` | `Bpos,Bpoc` | — | `Bpos` on target (stun); `Bpoc` on caster (damage amp, not `stunned`) |
 | `Dur`/`HeroDur` | 4.5 | — | channel length; successful expiry performs the takeover |
 
-`Bpoc` must **not** set `ent->stunned`: `spell_run_frame` cancels any channel on
+`Bpoc` must **not** contribute `WC3_STATUS_STATE_STUNNED`: `spell_run_frame` cancels any channel on
 stun, and an external `Bstu` is what aborts Possession. Caster lock is the
 normal `AB_CHANNEL` origin/move cancel. Target `Bpos` is a real stun status.
 

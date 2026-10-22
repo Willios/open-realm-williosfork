@@ -45,7 +45,7 @@ static rocFix_t roc_setup(uint32_t code) {
     fix.rows = parse_slk_string(roc_slk); fix.old = G_SetSLKRows("AbilityData", fix.rows);
     fix.caster = alloc_test_unit(MAKEFOURCC('U', 'w', 'a', 'r'), 0, 0);
     fix.caster->s.player = 0; fix.caster->svflags |= SVF_MONSTER; fix.caster->targtype = TARG_GROUND;
-    fix.caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+    fix.caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
     fix.caster->mana.value = fix.caster->mana.max_value = 100;
     fix.point = MAKE(vec2_t, .x = 128, .y = 96);
     return fix;

@@ -288,7 +288,7 @@ TEST(wc3_collision, resource_worker_queues_then_passes_right) {
         T_FEQ(mover->s.origin2.x, origin.x, 0.01f);
         T_FEQ(mover->s.origin2.y, origin.y, 0.01f);
     }
-    T_EQ(mover->movement.worker_avoid_blocked_frames, 4);
+    T_EQ(mover->movement->worker_avoid_blocked_frames, 4);
 
     unit_changeangle_towards_point_worker(mover, &dest);
     unit_moveindirection(mover);
@@ -314,7 +314,7 @@ TEST(wc3_collision, resource_worker_passes_opposing_traffic_immediately) {
     unit_moveindirection(mover);
     T_ASSERT(mover->s.origin2.x > 0.0f);
     T_ASSERT(mover->s.origin2.y < -0.1f);
-    T_EQ(mover->movement.worker_avoid_blocked_frames, 0);
+    T_EQ(mover->movement->worker_avoid_blocked_frames, 0);
 }
 
 /* A very fast unit (per-tick step larger than a unit) ordered straight at a

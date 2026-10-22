@@ -340,7 +340,7 @@ TEST(wc3_sc2api_protocol, raw_spell_cannot_bypass_player_disable_mana_or_cooldow
     slkTestData_t *rows = parse_slk_string(slk), *saved = G_SetSLKRows("AbilityData", rows);
     edict_t *caster = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 0, 0);
     caster->s.player = 0; caster->svflags |= SVF_MONSTER; caster->stand = unit_stand;
-    caster->heroabilities[0] = (heroability_t){ .code = code, .level = 1 };
+    caster->unit_state->ranks[0] = (heroability_t){ .code = code, .level = 1 };
     T_EQ(G_UnitAbilityLevel(caster, code), 1);
     caster->mana.max_value = caster->mana.value = 1000;
     wc3Sc2RawUnitCommand_t command = { .ability_id = G_OrderId("thunderclap"),
@@ -361,9 +361,9 @@ TEST(wc3_sc2api_protocol, raw_spell_cannot_bypass_player_disable_mana_or_cooldow
     T_FEQ(caster->mana.value, 0, 0.001f);
     T_ASSERT(!sc2_query_button_available(caster, &button, true));
     caster->mana.value = 1000;
-    caster->stunned = true;
+    unit_addtimedstatus(caster, "Bstu", 1, 10.0f);
     T_ASSERT(!sc2_query_button_available(caster, &button, true));
-    caster->stunned = false;
+    unit_removestatus(caster, unit_findstatus(caster, MAKEFOURCC('B','s','t','u')), STATUS_REMOVE_SCRIPT);
     T_EQ(WC3_SC2API_IssueRawUnitCommand(0, &command), WC3_SC2_ACTION_SUCCESS);
     T_FEQ(caster->mana.value, 963, 0.001f);
     G_SetSLKRows("AbilityData", saved);

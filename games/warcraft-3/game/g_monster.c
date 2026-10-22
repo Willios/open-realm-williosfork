@@ -101,7 +101,7 @@ void M_MoveFrame(edict_t *self) {
     if (self->aiflags & AI_HOLD_FRAME)
         return;
     /* JASS owns destructable sequences; do not restart them via the unit move clock. */
-    if (G_IsDestructable(self) && self->animation_override)
+    if (G_IsDestructable(self) && G_UnitHasFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE))
         return;
     umove_t const *move = self->currentmove;
     animation_t const *anim = self->animation;
@@ -142,7 +142,7 @@ void M_MoveFrame(edict_t *self) {
         SAFE_CALL(move->endfunc, self);
         if (!(self->aiflags & AI_HOLD_FRAME)) {
             if (self->currentmove == move && self->animation == anim &&
-                !self->animation_override && G_AnimationHasPrimary(anim, "walk"))
+                !G_UnitHasFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE) && G_AnimationHasPrimary(anim, "walk"))
                 G_SetUnitAnimation(self, self->animation_request);
             /* End callbacks may install a different move/animation. Restart
              * whichever animation is active after the callback; resetting to
@@ -166,8 +166,8 @@ void monster_think(edict_t *self) {
     G_CreepGuardTick(self);
     if (!self->currentmove)
         return;
-    if (self->paused || self->stunned) {
-        if (self->paused && self->animation_override) M_MoveFrame(self);
+    if (G_UnitHasFlag(self, UNIT_FLAG_PAUSED) || unit_hasstatusstate(self, WC3_STATUS_STATE_STUNNED)) {
+        if (G_UnitHasFlag(self, UNIT_FLAG_PAUSED) && G_UnitHasFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE)) M_MoveFrame(self);
         return;
     }
     M_MoveFrame(self);
@@ -340,7 +340,8 @@ static void G_RegisterSoundVariants(uint16_t out[], uint8_t *count, cstring_t la
 /* Cache every native selection response so repeated clicks can choose among
  * the authored UnitAckSounds variants instead of repeating the first file. */
 void G_RegisterSelectSounds(edict_t *self, cstring_t label) {
-    G_RegisterSoundVariants(self->sound.select, &self->sound.num_select, label, "What");
+    G_InitSounds(self);
+    G_RegisterSoundVariants(self->sound->select, &self->sound->num_select, label, "What");
 }
 
 /* Populate the unit's cached sound indices from UnitAckSounds.slk using the
@@ -353,11 +354,11 @@ static void G_RegisterUnitSounds(edict_t *self) {
     /* Ordinary order and ready variants are cached per unit. YesAttack and
      * Pissed are selected from UnitAckSounds at the interaction that owns
      * them; they are not weapon-swing sounds. */
-    G_RegisterSoundVariants(self->sound.yes, &self->sound.num_yes, label, "Yes");
-    G_RegisterSoundVariants(self->sound.ready, &self->sound.num_ready, label, "Ready");
+    G_RegisterSoundVariants(self->sound->yes, &self->sound->num_yes, label, "Yes");
+    G_RegisterSoundVariants(self->sound->ready, &self->sound->num_ready, label, "Ready");
     /* Death sounds may be catalogued or shipped beside the unit model. */
-    self->sound.death = G_UnitAckSoundVariantIndex(label, "Death", 0);
-    if (!self->sound.death) {
+    self->sound->death = G_UnitAckSoundVariantIndex(label, "Death", 0);
+    if (!self->sound->death) {
         cstring_t model = self->data.UnitUI->modelFile;
         if (model && model[0]) {
             char path[512];
@@ -366,7 +367,7 @@ static void G_RegisterUnitSounds(edict_t *self) {
                 snprintf(path, sizeof(path), "%.*s%sDeath%s.wav",
                          slash ? (int)(slash - model + 1) : 0, model,
                          slash ? slash + 1 : model, numbered ? "1" : "");
-                if (G_FileExists(path)) { self->sound.death = gi.SoundIndex(path); break; }
+                if (G_FileExists(path)) { self->sound->death = gi.SoundIndex(path); break; }
             }
         }
     }
@@ -375,7 +376,7 @@ static void G_RegisterUnitSounds(edict_t *self) {
     if (ws && ws[0] && ws[0] != '_') {
         char key[128];
         snprintf(key, sizeof(key), "%sWood", ws);
-        G_RegisterCombatVariants(self->sound.chop, &self->sound.num_chop, 3, key);
+        G_RegisterCombatVariants(self->sound->chop, &self->sound->num_chop, 3, key);
     }
 }
 
@@ -401,9 +402,9 @@ uint32_t unit_spawn_aiflags(uint32_t class_id) { return G_UnitIsBuilding(class_i
 void G_ApplyUnitAbilityTraits(edict_t *ent) {
     if (!G_ActorHasSkill(ent, "Aloc")) return;
     ent->s.flags |= EF_NOT_SELECTABLE;
-    ent->invulnerable = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_INVULNERABLE, true);
     ent->collision = 0.0f;
-    ent->no_pathing = true;
+    G_SetUnitFlag(ent, UNIT_FLAG_NO_PATHING, true);
 }
 
 /* Initialize a unit entity from the unit data tables.
@@ -411,6 +412,8 @@ void G_ApplyUnitAbilityTraits(edict_t *ent) {
  * (type, weapon class, damage dice, range, projectile model/speed) for the
  * unit's class_id and stores them in the edict. */
 void SP_SpawnUnit(edict_t *self) {
+    G_InitUnitOrders(self);
+    G_InitUnitState(self);
     PATHSTR model_filename;
     UnitBalance_t const *b = self->data.UnitBalance;
     UnitData_t const *d = self->data.UnitData;
@@ -460,7 +463,7 @@ void SP_SpawnUnit(edict_t *self) {
     self->health.value = b->maxHealth;
     self->health.max_value = b->maxHealth;
     G_InitStockSlots(self);
-    self->invulnerable = G_ActorHasSkill(self, "Avul");
+    G_SetUnitFlag(self, UNIT_FLAG_INVULNERABLE, G_ActorHasSkill(self, "Avul"));
     G_ApplyUnitAbilityTraits(self);
     self->unitinfo.MoveSpeed = b->speed;
     self->unitinfo.PropWindow = DEG2RAD(d->propWin);
@@ -499,8 +502,8 @@ void SP_SpawnUnit(edict_t *self) {
         level.mapinfo->players[self->s.player].playerType == kPlayerTypeNeutral)
         self->aiflags |= AI_SLEEPING;
 
-    self->defense_type = FindEnumValue(b->defenseType, defense_type);
-    self->armor_value = b->armor;
+    self->unit_state->defense_type = FindEnumValue(b->defenseType, defense_type);
+    self->unit_state->armor_value = b->armor;
     /* Heroes carry their base primary attributes.  realHP/realM/realdef already
      * bake in the level-1 attribute bonus, so we just record the base values;
      * when the attributes later change (tomes, SetHeroStr/Agi/Int, level-up)
@@ -511,54 +514,54 @@ void SP_SpawnUnit(edict_t *self) {
         int32_t const baseAgi = b->agility;
         int32_t const baseInt = b->intelligence;
         if (baseStr > 0 || baseAgi > 0 || baseInt > 0) {
-            self->hero.str   = (uint32_t)baseStr;
-            self->hero.agi   = (uint32_t)baseAgi;
-            self->hero.intel = (uint32_t)baseInt;
+            self->unit_state->hero.str   = (uint32_t)baseStr;
+            self->unit_state->hero.agi   = (uint32_t)baseAgi;
+            self->unit_state->hero.intel = (uint32_t)baseInt;
             /* war3mapUnits.doo stores Hero level but not unspent skill
              * points. Seed the level-derived point budget before the map
              * script applies its authored SelectHeroSkill calls. */
             G_HeroInitializeProgression(self);
         }
     }
-    self->attack1.type = FindEnumValue(w->attack1.attackType, attack_type);
-    self->attack1.weapon = FindEnumValue(w->attack1.weaponType, weapon_type);
-    self->attack1.damageBase = w->attack1.damageBase;
-    self->attack1.numberOfDice = w->attack1.damageDice;
-    self->attack1.sidesPerDie = w->attack1.damageSides;
-    self->attack1.cooldown = w->attack1.cooldown;
-    self->attack1.damagePoint = w->attack1.damagePoint;
-    self->attack1.backswingPoint = w->attack1.backswingPoint;
-    self->attack1.range = w->attack1.range;
-    self->attack1.rangeBuffer = w->attack1.rangeBuffer;
-    self->attack1.targetsAllowed = (uint32_t)w->attack1.targetsAllowed;
-    self->attack1.areaFull = w->attack1.areaFull;
-    self->attack1.areaMedium = w->attack1.areaMedium;
-    self->attack1.areaSmall = w->attack1.areaSmall;
-    self->attack1.factorMedium = w->attack1.factorMedium;
-    self->attack1.factorSmall = w->attack1.factorSmall;
-    self->attack1.maxTargets = w->attack1.maxTargets;
-    self->attack1.damageLoss = w->attack1.damageLossFactor;
+    self->unit_state->attack1.type = FindEnumValue(w->attack1.attackType, attack_type);
+    self->unit_state->attack1.weapon = FindEnumValue(w->attack1.weaponType, weapon_type);
+    self->unit_state->attack1.damageBase = w->attack1.damageBase;
+    self->unit_state->attack1.numberOfDice = w->attack1.damageDice;
+    self->unit_state->attack1.sidesPerDie = w->attack1.damageSides;
+    self->unit_state->attack1.cooldown = w->attack1.cooldown;
+    self->unit_state->attack1.damagePoint = w->attack1.damagePoint;
+    self->unit_state->attack1.backswingPoint = w->attack1.backswingPoint;
+    self->unit_state->attack1.range = w->attack1.range;
+    self->unit_state->attack1.rangeBuffer = w->attack1.rangeBuffer;
+    self->unit_state->attack1.targetsAllowed = (uint32_t)w->attack1.targetsAllowed;
+    self->unit_state->attack1.areaFull = w->attack1.areaFull;
+    self->unit_state->attack1.areaMedium = w->attack1.areaMedium;
+    self->unit_state->attack1.areaSmall = w->attack1.areaSmall;
+    self->unit_state->attack1.factorMedium = w->attack1.factorMedium;
+    self->unit_state->attack1.factorSmall = w->attack1.factorSmall;
+    self->unit_state->attack1.maxTargets = w->attack1.maxTargets;
+    self->unit_state->attack1.damageLoss = w->attack1.damageLossFactor;
 
     /* Keep Attack 2 runtime state parallel with Attack 1 so target selection
      * can activate the authored secondary weapon profile. */
-    self->attack2.type = FindEnumValue(w->attack2.attackType, attack_type);
-    self->attack2.weapon = FindEnumValue(w->attack2.weaponType, weapon_type);
-    self->attack2.damageBase = w->attack2.damageBase;
-    self->attack2.numberOfDice = w->attack2.damageDice;
-    self->attack2.sidesPerDie = w->attack2.damageSides;
-    self->attack2.cooldown = w->attack2.cooldown;
-    self->attack2.damagePoint = w->attack2.damagePoint;
-    self->attack2.backswingPoint = w->attack2.backswingPoint;
-    self->attack2.range = w->attack2.range;
-    self->attack2.rangeBuffer = w->attack2.rangeBuffer;
-    self->attack2.targetsAllowed = (uint32_t)w->attack2.targetsAllowed;
-    self->attack2.areaFull = w->attack2.areaFull;
-    self->attack2.areaMedium = w->attack2.areaMedium;
-    self->attack2.areaSmall = w->attack2.areaSmall;
-    self->attack2.factorMedium = w->attack2.factorMedium;
-    self->attack2.factorSmall = w->attack2.factorSmall;
-    self->attack2.maxTargets = w->attack2.maxTargets;
-    self->attack2.damageLoss = w->attack2.damageLossFactor;
+    self->unit_state->attack2.type = FindEnumValue(w->attack2.attackType, attack_type);
+    self->unit_state->attack2.weapon = FindEnumValue(w->attack2.weaponType, weapon_type);
+    self->unit_state->attack2.damageBase = w->attack2.damageBase;
+    self->unit_state->attack2.numberOfDice = w->attack2.damageDice;
+    self->unit_state->attack2.sidesPerDie = w->attack2.damageSides;
+    self->unit_state->attack2.cooldown = w->attack2.cooldown;
+    self->unit_state->attack2.damagePoint = w->attack2.damagePoint;
+    self->unit_state->attack2.backswingPoint = w->attack2.backswingPoint;
+    self->unit_state->attack2.range = w->attack2.range;
+    self->unit_state->attack2.rangeBuffer = w->attack2.rangeBuffer;
+    self->unit_state->attack2.targetsAllowed = (uint32_t)w->attack2.targetsAllowed;
+    self->unit_state->attack2.areaFull = w->attack2.areaFull;
+    self->unit_state->attack2.areaMedium = w->attack2.areaMedium;
+    self->unit_state->attack2.areaSmall = w->attack2.areaSmall;
+    self->unit_state->attack2.factorMedium = w->attack2.factorMedium;
+    self->unit_state->attack2.factorSmall = w->attack2.factorSmall;
+    self->unit_state->attack2.maxTargets = w->attack2.maxTargets;
+    self->unit_state->attack2.damageLoss = w->attack2.damageLossFactor;
     /* Heroes: fold the primary-attribute attack-damage bonus into runtime
      * attacks now that base attributes and both weapon slots are loaded. */
     G_RecomputeHeroStats(self);
@@ -567,21 +570,21 @@ void SP_SpawnUnit(edict_t *self) {
     G_ApplyPlayerUpgradesToUnit(self);
     S_CargoInitUnit(self);
 
-    if (self->attack1.weapon == WPN_MISSILE || self->attack1.weapon == WPN_ARTILLERY) {
-        self->attack1.origin.x = G_UnitAttack1LaunchX(self->class_id);
-        self->attack1.origin.y = G_UnitAttack1LaunchY(self->class_id);
-        self->attack1.origin.z = G_UnitAttack1LaunchZ(self->class_id);
-        self->attack1.projectile.model = G_RegisterModel(G_UnitProfile(self->class_id)->attack[0].art);
-        self->attack1.projectile.arc = G_UnitProfile(self->class_id)->attack[0].arc;
-        self->attack1.projectile.speed = G_UnitProfile(self->class_id)->attack[0].speed;
+    if (self->unit_state->attack1.weapon == WPN_MISSILE || self->unit_state->attack1.weapon == WPN_ARTILLERY) {
+        self->unit_state->attack1.origin.x = G_UnitAttack1LaunchX(self->class_id);
+        self->unit_state->attack1.origin.y = G_UnitAttack1LaunchY(self->class_id);
+        self->unit_state->attack1.origin.z = G_UnitAttack1LaunchZ(self->class_id);
+        self->unit_state->attack1.projectile.model = G_RegisterModel(G_UnitProfile(self->class_id)->attack[0].art);
+        self->unit_state->attack1.projectile.arc = G_UnitProfile(self->class_id)->attack[0].arc;
+        self->unit_state->attack1.projectile.speed = G_UnitProfile(self->class_id)->attack[0].speed;
     }
-    if (self->attack2.weapon == WPN_MISSILE || self->attack2.weapon == WPN_ARTILLERY) {
-        self->attack2.origin.x = G_UnitAttack1LaunchX(self->class_id);
-        self->attack2.origin.y = G_UnitAttack1LaunchY(self->class_id);
-        self->attack2.origin.z = G_UnitAttack1LaunchZ(self->class_id);
-        self->attack2.projectile.model = G_RegisterModel(G_UnitProfile(self->class_id)->attack[1].art);
-        self->attack2.projectile.arc = G_UnitProfile(self->class_id)->attack[1].arc;
-        self->attack2.projectile.speed = G_UnitProfile(self->class_id)->attack[1].speed;
+    if (self->unit_state->attack2.weapon == WPN_MISSILE || self->unit_state->attack2.weapon == WPN_ARTILLERY) {
+        self->unit_state->attack2.origin.x = G_UnitAttack1LaunchX(self->class_id);
+        self->unit_state->attack2.origin.y = G_UnitAttack1LaunchY(self->class_id);
+        self->unit_state->attack2.origin.z = G_UnitAttack1LaunchZ(self->class_id);
+        self->unit_state->attack2.projectile.model = G_RegisterModel(G_UnitProfile(self->class_id)->attack[1].art);
+        self->unit_state->attack2.projectile.arc = G_UnitProfile(self->class_id)->attack[1].arc;
+        self->unit_state->attack2.projectile.speed = G_UnitProfile(self->class_id)->attack[1].speed;
     }
 
     if ((self->pathtex = M_LoadPathTex(path_tex))) {

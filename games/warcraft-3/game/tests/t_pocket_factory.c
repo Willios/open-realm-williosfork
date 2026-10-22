@@ -43,7 +43,7 @@ static pfFix_t pf_setup(uint32_t code) {
     fix.caster->s.player = 0; fix.caster->svflags |= SVF_MONSTER; fix.caster->targtype = TARG_GROUND;
     fix.caster->mana.value = fix.caster->mana.max_value = 500;
     fix.caster->health.value = fix.caster->health.max_value = 1000;
-    fix.caster->heroabilities[0] = MAKE(heroability_t, .code = code, .level = 1);
+    fix.caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
     return fix;
 }
 

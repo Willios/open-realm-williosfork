@@ -22,10 +22,10 @@ static bool ReserveTrainingFood(edict_t *producer, edict_t *unit) {
      * consumed worker still exists; the resulting Shade inherits the slot at
      * completion. The exception policy lives in s_sacrifice.c. */
     if (S_SacrificeSkipsFoodReservation(unit)) return true;
-    was_waiting = unit->training_food_wait_notified;
+    was_waiting = G_UnitHasFlag(unit, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED);
     if (G_ReserveTrainingFood(unit)) {
         if (was_waiting) {
-            unit->training_food_wait_notified = false;
+            G_SetUnitFlag(unit, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
             RefreshTrainingQueue(producer);
         }
         return true;
@@ -34,11 +34,11 @@ static bool ReserveTrainingFood(edict_t *producer, edict_t *unit) {
     cost = MAX(0, unit->data.UnitBalance->foodUsed);
     client = G_GetPlayerClientByNumber(unit->s.player);
     if (cost <= 0 || !client || client->ps.number != unit->s.player ||
-        G_PlayerHasFoodFor(client, cost) || unit->training_food_wait_notified) {
+        G_PlayerHasFoodFor(client, cost) || G_UnitHasFlag(unit, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED)) {
         return false;
     }
 
-    unit->training_food_wait_notified = true;
+    G_SetUnitFlag(unit, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, true);
     clent = G_GetPlayerEntityByNumber(unit->s.player);
     if (clent && client->connected) {
         G_ShowCommandErrorKey(clent, G_FoodCommandErrorKey(client, cost), NULL);
@@ -64,7 +64,7 @@ static intptr_t SacrificeQueueMessage(edict_t *producer, edict_t *item, abilityM
     abilityitem_t ab = S_AbilityItem(S_SacrificeAbilityCode());
     abilityCall_t call = MAKE(abilityCall_t, .item = &ab);
     if (!ab.ability || !ab.ability->proc) return false;
-    call.queue.producer = producer; call.queue.item = item;
+    call.entity = producer; call.queue_item = item;
     return S_AbilityMessage(producer, msg, &call);
 }
 
@@ -136,7 +136,7 @@ static bool CancelTrainingQueueItem(edict_t *producer, uint32_t index, bool refu
     }
     if (!item) return false;
     if ((item->revival && item->revival->reviving)) return G_CancelHeroRevive(producer, item);
-    if (!item->training) return false;
+    if (!G_UnitHasFlag(item, UNIT_FLAG_TRAINING)) return false;
 
     next = ProductionNext(item);
     if (prev) ProductionSetNext(prev, next);
@@ -173,7 +173,7 @@ static bool CancelTrainingQueueItem(edict_t *producer, uint32_t index, bool refu
 
     if (!producer->build) {
         if (activate_next && producer->stand) producer->stand(producer);
-    } else if (!prev && activate_next && producer->build->training &&
+    } else if (!prev && activate_next && G_UnitHasFlag(producer->build, UNIT_FLAG_TRAINING) &&
                !(producer->build->research && producer->build->research->upgrade) && !(producer->build->revival && producer->build->revival->reviving)) {
         /* A new ordinary-training head becomes active immediately. Research
          * and revival do not reserve Food Used. */
@@ -187,8 +187,8 @@ bool G_CancelTrainingQueueItem(edict_t *producer, uint32_t index, bool refund) {
 }
 
 void G_CancelTrainingQueue(edict_t *producer, bool refund) {
-    if (!producer || !producer->build || !producer->build->training) return;
-    while (producer->build && producer->build->training) {
+    if (!producer || !producer->build || !G_UnitHasFlag(producer->build, UNIT_FLAG_TRAINING)) return;
+    while (producer->build && G_UnitHasFlag(producer->build, UNIT_FLAG_TRAINING)) {
         if (!CancelTrainingQueueItem(producer, 0, refund, false)) break;
     }
 }
@@ -240,7 +240,7 @@ static bool HeroReviveValues(edict_t const *hero, uint32_t *gold, uint32_t *lumb
         !HeroReviveMisc("ReviveTimeFactor", &timeFactor) ||
         !HeroReviveMisc("ReviveMaxTimeFactor", &maxTimeFactor)) return false;
 
-    level = MAX(1, hero->hero.level);
+    level = MAX(1, hero->unit_state->hero.level);
     factor = goldBase + goldLevel * (float)(level - 1);
     if (maxFactor > 0.0f) factor = MIN(factor, maxFactor);
     if (gold) *gold = (uint32_t)MAX(0.0f, (float)MAX(0, hero->data.UnitBalance->goldCost) * factor);
@@ -291,7 +291,7 @@ bool G_GetProductionQueueOrder(edict_t *producer, uint32_t index, uint32_t *abil
     edict_t *item = producer ? producer->build : NULL;
     if (index >= MAX_BUILD_QUEUE || !ability_id || !progress) return false;
     for (uint32_t i = 0; item && i < index; i++) item = ProductionNext(item);
-    if (!item || !item->training || (item->revival && item->revival->reviving)) return false;
+    if (!item || !G_UnitHasFlag(item, UNIT_FLAG_TRAINING) || (item->revival && item->revival->reviving)) return false;
     *ability_id = item->research ? item->research->upgrade : item->class_id;
     *progress = 0.0f;
     if (!index) {
@@ -335,8 +335,8 @@ static bool ShowTrainedUnit(edict_t *townhall, edict_t *unit) {
     }
     unit->s.origin2 = origin;
     unit->s.angle = angle;
-    unit->training = false;
-    unit->training_food_wait_notified = false;
+    G_SetUnitFlag(unit, UNIT_FLAG_TRAINING, false);
+    G_SetUnitFlag(unit, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
     unit->s.renderfx &= ~RF_HIDDEN;
     /* Food Used was already reserved on this queue entity. Completion only
      * activates Food Made; it must not charge Food Used a second time. */
@@ -396,7 +396,7 @@ static bool CompleteResearch(edict_t *producer, edict_t *item) {
     ShowResearchComplete(producer, upgrade_id, level_value);
     G_FreeEdict(item);
 
-    if (producer->build && producer->build->training &&
+    if (producer->build && G_UnitHasFlag(producer->build, UNIT_FLAG_TRAINING) &&
         !(producer->build->research && producer->build->research->upgrade) && !(producer->build->revival && producer->build->revival->reviving)) {
         ReserveTrainingFood(producer, producer->build);
     }
@@ -469,7 +469,7 @@ void ai_train_build(edict_t *ent) {
              * clears build for the completed unit. Preserve the producer's queue
              * link before revealing/standing the completed unit. */
             ent->build = next;
-            if (ent->build && ent->build->training && !(ent->build->research && ent->build->research->upgrade))
+            if (ent->build && G_UnitHasFlag(ent->build, UNIT_FLAG_TRAINING) && !(ent->build->research && ent->build->research->upgrade))
                 ReserveTrainingFood(ent, ent->build);
             G_InvalidateCommands(G_GetPlayerClientByNumber(ent->s.player));
             G_QueueReadySound(completed);
@@ -612,8 +612,8 @@ void unit_build(edict_t *self, uint32_t class_id) {
 
     was_empty = self->build == NULL;
     ent = SP_SpawnAtLocation(class_id, self->s.player, &self->s.origin2);
-    ent->training = true;
-    ent->training_food_wait_notified = false;
+    G_SetUnitFlag(ent, UNIT_FLAG_TRAINING, true);
+    G_SetUnitFlag(ent, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
     G_SetHealth(ent, 0);
     /* SP_SpawnAtLocation already ran birth; calling it twice reset the trained unit and crashed sparse fixtures. */
     ent->s.renderfx |= RF_HIDDEN;
@@ -670,7 +670,7 @@ bool G_QueueResearch(edict_t *producer, uint32_t upgrade_id) {
      * completed technology or owned unit of the same rawcode. */
     item->class_id = 0;
     item->s.player = producer->s.player;
-    item->training = true;
+    G_SetUnitFlag(item, UNIT_FLAG_TRAINING, true);
     item->s.renderfx |= RF_HIDDEN;
     item->research = G_AllocResearch();
     assert(item->research);

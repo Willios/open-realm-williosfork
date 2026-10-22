@@ -85,7 +85,7 @@ For temporary per-mover wait diagnostics, enable `wc3_route_wait_debug 1`. The l
 
 Nearby detours do not wait for that whole field. `CM_FindPathWaypoint()` runs a bounded point-to-point A* accelerator for endpoints within 48 pathing cells, expands at most 2,048 nodes, and returns the farthest recovered path point with a collision-sized clear line from the mover. The mover retains that waypoint until it reaches it, the target changes, or static pathing invalidates the segment. A failed or out-of-envelope acceleration request falls back to the shared incremental field, so long routes remain frame-budgeted.
 
-While a resumable request is pending, `unit_changeangle*()` leaves both `movement.flow_generation == 0` and `movement.flow_direct == false`. `unit_moveindirection()` treats that pair as "no heading resolved this tick" and does not commit a step. This shared guard is important: a caller must never turn a pending route into movement along the unit's stale facing.
+While a resumable request is pending, `unit_changeangle*()` leaves both `movement->flow_generation == 0` and `movement->flow_direct == false`. `unit_moveindirection()` treats that pair as "no heading resolved this tick" and does not commit a step. This shared guard is important: a caller must never turn a pending route into movement along the unit's stale facing.
 
 Plain Move also keeps the stand presentation while that pair is clear. The order switches to walk only after direct steering or a completed flow field supplies a heading; starting the walk pose at order submission made the old facing look like an incorrect first turn during a long route build.
 

@@ -57,7 +57,7 @@ A small world click now sends either the entity target or the terrain point, not
 
 ## Simulation ownership
 
-`edict_s.order_queue` owns the pending player orders for that unit. The active order is represented by the existing `currentmove`/behavior state and is not duplicated at the front of the FIFO.
+`ent->orders->queue` owns the pending player orders for that unit. The active order is represented by the existing `currentmove`/behavior state and is not duplicated at the front of the FIFO.
 
 Each pending entry stores:
 
@@ -167,7 +167,7 @@ OpenRealm does not yet have Warsmash's per-ability `onCancelFromQueue()` reserva
 
 The queue is inline numeric data inside `edict_t`; it contains no process pointers, so it persists with the existing raw-edict save record without adding an `F_EDICT` field. Entity targets remain number + `spawn_time` and are re-resolved only at execution.
 
-Adding the queue changes `sizeof(edict_t)`, so the save header's `edict_size` guard rejects older incompatible raw-struct saves independently of the outer `W3SV` format version. The current outer format is version 60; its evolution and compatibility policy are tracked in [Save/Load](save-load.md). The transient menu flags are still process-local: `WriteClient()` and `ReadClient()` explicitly clear `supports_order_queue`, `order_queued`, and `order_queue_chained` because targeting callbacks/menu modes are rebuilt rather than persisted.
+The FIFO is persisted in the unit-owned `orders` pool, outside the base edict. The current outer `W3SV` format is version 104; its evolution and compatibility policy are tracked in [Save/Load](save-load.md). The transient menu flags are still process-local: `WriteClient()` and `ReadClient()` explicitly clear `supports_order_queue`, `order_queued`, and `order_queue_chained` because targeting callbacks/menu modes are rebuilt rather than persisted.
 
 The existing save/load limitation still applies: arbitrary active `umove_t` behavior identity is not semantically restored. Pending queue records are persisted, but exact mid-order resume requires the separate active-behavior save work described in [Save/Load](save-load.md).
 

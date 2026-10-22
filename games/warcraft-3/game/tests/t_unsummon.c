@@ -54,7 +54,7 @@ static void uns_setup(unsFix_t *fix) {
     fix->building->data.UnitBalance = &fix->bldg_bal;
     fix->enemy_bldg->data.UnitBalance = &fix->bldg_bal;
     fix->unit->data.UnitBalance = &fix->unit_bal;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_AUNS, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AUNS, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 100;
     fix->building->health.value = fix->building->health.max_value = 100;
     fix->enemy_bldg->health.value = fix->enemy_bldg->health.max_value = 100;
@@ -340,7 +340,7 @@ TEST(wc3_spell, unsummon_building_destruction_refunds_queued_training) {
     fix.client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 0;
     fix.client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 0;
     fix.unit->data.UnitBalance = &training_bal;
-    fix.unit->training = true;
+    G_SetUnitFlag(fix.unit, UNIT_FLAG_TRAINING, true);
     fix.building->build = fix.unit;
     T_ASSERT(G_ReserveTrainingFood(fix.unit));
     T_EQ(fix.client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_USED], 3);

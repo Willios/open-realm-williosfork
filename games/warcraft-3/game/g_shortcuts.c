@@ -38,16 +38,16 @@ bool G_UnitIsWorker(edict_t const *ent) {
 
 bool G_UnitShowsHeroShortcut(gameClient_t *client, edict_t const *ent) {
     return G_ShortcutIsControlledMonster(client, ent) && ent->data.UnitBalance &&
-        ent->data.UnitUI && !ent->training && !(ent->s.renderfx & RF_HIDDEN) &&
+        ent->data.UnitUI && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) && !(ent->s.renderfx & RF_HIDDEN) &&
         !ent->data.UnitUI->hideHeroBar && !(ent->aiflags & AI_ILLUSION) &&
         G_UnitIsHero(ent);
 }
 
 bool G_UnitIsIdleWorker(edict_t const *ent) {
     if (!ent || !ent->inuse || !(ent->svflags & SVF_MONSTER) ||
-        !ent->data.UnitBalance || ent->training || G_UnitIsStructure(ent) ||
+        !ent->data.UnitBalance || G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) || G_UnitIsStructure(ent) ||
         M_IsDead(ent) || (ent->s.renderfx & RF_HIDDEN) ||
-        S_GoldMineWorkerIsInside(ent) || ent->movement.holding_position ||
+        S_GoldMineWorkerIsInside(ent) || (ent->orders && ent->orders->holding_position) ||
         !ent->currentmove || ent->currentmove->proc || !ent->currentmove->animation ||
         strcmp(ent->currentmove->animation, "stand")) {
         return false;
@@ -92,7 +92,7 @@ void G_AlertHeroShortcutDamage(edict_t *ent) {
     if (!owner || owner->ps.number != ent->s.player || !G_UnitShowsHeroShortcut(owner, ent)) return;
 
     /* Damage used to leave the persistent Hero button visually unchanged; carry one expiry timestamp in its next layout instead. */
-    ent->hero_shortcut_alert_until = G_Time() + WC3_HERO_DAMAGE_ALERT_MS;
+    ent->unit_state->shortcut_alert_until = G_Time() + WC3_HERO_DAMAGE_ALERT_MS;
     G_InvalidateUnitShortcuts(owner);
 }
 

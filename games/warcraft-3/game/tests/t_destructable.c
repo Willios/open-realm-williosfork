@@ -219,7 +219,7 @@ TEST(wc3_destructable, blight_presentation_is_initial_and_one_way) {
     G_BlightInitializeDestructable(tree);
     gi.ImageIndex = old_image_index;
     T_ASSERT(tree->destructable->blighted);
-    T_ASSERT(tree->vertex_color_set);
+    T_ASSERT(G_UnitHasFlag(tree, UNIT_FLAG_VERTEX_COLOR_SET));
     T_EQ(tree->vertex_color.r, 120);
     T_EQ(tree->vertex_color.g, 185);
     T_EQ(tree->vertex_color.b, 72);
@@ -242,9 +242,11 @@ static edict_t *make_destructable_test_attacker(float x, float y) {
     ent->s.origin = (vec3_t){ x, y, 0.0f };
     ent->health.value = 100.0f;
     ent->health.max_value = 100.0f;
+    G_InitUnitOrders(ent);
+    G_InitUnitState(ent);
     ent->svflags |= SVF_MONSTER;
-    ent->attack1.type = ATK_NORMAL;
-    ent->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS */
+    ent->unit_state->attack1.type = ATK_NORMAL;
+    ent->unit_state->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS */
     return ent;
 }
 
@@ -364,7 +366,7 @@ TEST(wc3_destructable, instant_kill_cheat_makes_gate_damage_lethal) {
     dest->targtype = TARG_WALL;
     attacker = make_destructable_test_attacker(10.0f, 0.0f);
     attacker->s.player = 0;
-    attacker->attack1.targetsAllowed = 128u; /* TARGET_FLAG_WALL */
+    attacker->unit_state->attack1.targetsAllowed = 128u; /* TARGET_FLAG_WALL */
     game.clients[0].cheat_instant_kill = true;
 
     dest->s.renderfx |= RF_HIDDEN;
@@ -437,7 +439,7 @@ TEST(wc3_destructable, smart_order_requires_destructable_target_mask) {
     edict_t *attacker = make_destructable_test_attacker(0.0f, 0.0f);
     edict_t *dest = make_test_destructable(50.0f, 32.0f, 0.0f);
 
-    attacker->attack1.targetsAllowed = 64u; /* TARGET_FLAG_TREE only */
+    attacker->unit_state->attack1.targetsAllowed = 64u; /* TARGET_FLAG_TREE only */
 
     T_ASSERT(!unit_issuetargetorder(attacker, "smart", dest));
     T_ASSERT(attacker->goalentity == NULL);
@@ -450,7 +452,7 @@ TEST(wc3_destructable, tree_requires_explicit_attack) {
     dest->targtype = TARG_TREE;
     /* Standard melee targs1 commonly contains debris but not tree. Retail
      * still lets explicit Attack cut a tree down. */
-    attacker->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS */
+    attacker->unit_state->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS */
 
     T_ASSERT(!unit_issuetargetorder(attacker, "smart", dest));
     T_ASSERT(unit_issuetargetorder(attacker, "attack", dest));
@@ -462,7 +464,7 @@ TEST(wc3_destructable, explicit_attack_rejects_disallowed_destructable_class) {
     edict_t *dest = make_test_destructable(50.0f, 32.0f, 0.0f);
 
     dest->targtype = TARG_BRIDGE;
-    attacker->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS only */
+    attacker->unit_state->attack1.targetsAllowed = 256u; /* TARGET_FLAG_DEBRIS only */
 
     T_ASSERT(!unit_issuetargetorder(attacker, "smart", dest));
     T_ASSERT(!unit_issuetargetorder(attacker, "attack", dest));
@@ -474,7 +476,7 @@ TEST(wc3_destructable, explicit_attack_accepts_allowed_bridge) {
     edict_t *dest = make_test_destructable(50.0f, 32.0f, 0.0f);
 
     dest->targtype = TARG_BRIDGE;
-    attacker->attack1.targetsAllowed = 1024u; /* TARGET_FLAG_BRIDGE */
+    attacker->unit_state->attack1.targetsAllowed = 1024u; /* TARGET_FLAG_BRIDGE */
 
     T_ASSERT(!unit_issuetargetorder(attacker, "smart", dest));
     T_ASSERT(unit_issuetargetorder(attacker, "attack", dest));
@@ -780,6 +782,7 @@ TEST(wc3_destructable, non_destructable_path_texture_keeps_axis_aligned_contract
     building = G_Spawn();
     building->class_id = MAKEFOURCC('h', 't', 'o', 'w');
     building->s.class_id = building->class_id;
+    G_InitUnitOrders(building);
     building->svflags |= SVF_MONSTER;
     building->s.angle = (float)M_PI / 2.0f;
     building->pathtex = (pathTex_t *)&pathtex;
@@ -1322,13 +1325,13 @@ TEST(wc3_destructable, set_animation_selects_only_resolved_model_sequences) {
         T_FEQ(valid->destructable->occluder_height, 256.0f, 0.001f);
         T_STREQ(missing->animation_request, "death alternate");
         T_NULL(missing->animation);
-        T_ASSERT(!missing->animation_override);
+        T_ASSERT(!G_UnitHasFlag(missing, UNIT_FLAG_ANIMATION_OVERRIDE));
         T_NOT_NULL(valid->animation);
         T_NOT_NULL(fast->animation);
         if (valid->animation) {
             T_STREQ(valid->animation->name, "Stand Alternate");
             T_EQ(valid->s.frame, valid->animation->interval[0]);
-            T_ASSERT(valid->animation_override);
+            T_ASSERT(G_UnitHasFlag(valid, UNIT_FLAG_ANIMATION_OVERRIDE));
             /* A frozen clip must remain in place through the real scheduler. */
             G_RunEntities();
             T_EQ(valid->s.frame, valid->animation->interval[0]);

@@ -186,7 +186,7 @@ void land_mine_think(edict_t *thinker) {
 	 * selector falls back within the Death family. */
 	if (mine->inuse && M_IsDead(mine)) {
 		G_SetUnitAnimation(mine, "death spell");
-		mine->animation_override = true;
+		G_SetUnitFlag(mine, UNIT_FLAG_ANIMATION_OVERRIDE, true);
 		if (mine->animation) mine->s.frame = mine->animation->interval[0];
 	}
 }
@@ -302,7 +302,7 @@ bool S_GhostActive(edict_t const *unit) {
 
 bool S_PermanentInvisibilityActive(edict_t const *unit) {
 	return unit && unit->inuse && (unit->runtime.flags & UNIT_BALANCE_PERMANENT_INVISIBLE) &&
-		G_Time() >= unit->permanent_invisibility_reveal_until;
+		(!unit->vision || G_Time() >= unit->vision->reveal_until);
 }
 
 bool S_UnitStatusIsTemporaryInvisibility(heroabilitystatus_t const *status) {
@@ -317,9 +317,9 @@ bool S_UnitStatusIsTemporaryInvisibility(heroabilitystatus_t const *status) {
 
 bool S_UnitHasTemporaryInvisibility(edict_t const *unit, heroabilitystatus_t const *except) {
 	if (!unit) return false;
-	FOR_LOOP(i, MAX_UNIT_STATUSES)
-		if (unit->abilstatus + i != except &&
-		    S_UnitStatusIsTemporaryInvisibility(unit->abilstatus + i)) return true;
+	FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0)
+		if (unit->unit_state->statuses + i != except &&
+		    S_UnitStatusIsTemporaryInvisibility(unit->unit_state->statuses + i)) return true;
 	return false;
 }
 
@@ -333,7 +333,7 @@ void S_PermanentInvisibilityInitialize(edict_t *unit) {
     if (!unit || !G_UnitAbilityLevel(unit, ID_APIV)) {
         if (unit) {
             unit->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
-            unit->permanent_invisibility_reveal_until = 0;
+            if (unit->vision) unit->vision->reveal_until = 0;
         }
         return;
 	}
@@ -341,11 +341,12 @@ void S_PermanentInvisibilityInitialize(edict_t *unit) {
 	/* Negative transition is the authored opt-out: this unit never enters invisibility. */
 	if (transition < 0.0f) {
 		unit->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
-		unit->permanent_invisibility_reveal_until = 0;
+		if (unit->vision) unit->vision->reveal_until = 0;
 		return;
 	}
 	unit->runtime.flags |= UNIT_BALANCE_PERMANENT_INVISIBLE;
-    unit->permanent_invisibility_reveal_until =
+    G_InitVisibility(unit);
+    unit->vision->reveal_until =
         G_Time() + (uint32_t)(MAX(0.0f, transition) * 1000.0f);
 }
 
@@ -360,7 +361,7 @@ BZ_ABILITY_PROC(CAbilityPermanentInvisibility) {
     case A_UNIT_REMOVE:
         if (ent) {
             ent->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
-            ent->permanent_invisibility_reveal_until = 0;
+            if (ent->vision) ent->vision->reveal_until = 0;
         }
         return true;
     default: return CAbilityPassive(ent, msg, call);
@@ -373,10 +374,11 @@ void S_PermanentInvisibilityReveal(edict_t *unit) {
 	transition = permanent_invisibility_transition(unit);
 	if (transition < 0.0f) {
 		unit->runtime.flags &= ~UNIT_BALANCE_PERMANENT_INVISIBLE;
-		unit->permanent_invisibility_reveal_until = 0;
+		if (unit->vision) unit->vision->reveal_until = 0;
 		return;
 	}
-	unit->permanent_invisibility_reveal_until =
+	G_InitVisibility(unit);
+	unit->vision->reveal_until =
 		G_Time() + (uint32_t)(MAX(0.0f, transition) * 1000.0f);
 }
 

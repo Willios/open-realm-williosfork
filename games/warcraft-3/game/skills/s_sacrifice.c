@@ -73,7 +73,7 @@ static void sacrifice_release_worker(edict_t *item) {
     if (!item || !item->sacrifice || !(worker = item->sacrifice->worker)) return;
     if (worker->inuse && worker->spawn_time == item->sacrifice->worker_spawn_time) {
         if (!item->sacrifice->restore_hidden) worker->s.renderfx &= ~RF_HIDDEN;
-        worker->paused = item->sacrifice->restore_paused;
+        G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, item->sacrifice->restore_paused);
         G_InvalidateUnitShortcutsForUnit(worker);
     }
 }
@@ -121,19 +121,19 @@ bool G_QueueSacrifice(edict_t *producer, edict_t *worker, uint32_t result_id) {
         return false;
     }
 
-    result->training = true;
-    result->training_food_wait_notified = false;
+    G_SetUnitFlag(result, UNIT_FLAG_TRAINING, true);
+    G_SetUnitFlag(result, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
     G_SetHealth(result, 0);
     result->s.renderfx |= RF_HIDDEN;
     if (!result->sacrifice) result->sacrifice = G_AllocSacrifice();
     assert(result->sacrifice);
     result->sacrifice->worker = worker;
     result->sacrifice->worker_spawn_time = worker->spawn_time;
-    result->sacrifice->restore_paused = worker->paused;
+    result->sacrifice->restore_paused = G_UnitHasFlag(worker, UNIT_FLAG_PAUSED);
     restore_hidden = (worker->s.renderfx & RF_HIDDEN) != 0;
     result->sacrifice->restore_hidden = restore_hidden;
     worker->s.renderfx |= RF_HIDDEN;
-    worker->paused = true;
+    G_SetUnitFlag(worker, UNIT_FLAG_PAUSED, true);
     G_InvalidateUnitShortcutsForUnit(worker);
 
     unit_add_build_queue(producer, result);
@@ -152,7 +152,7 @@ BZ_ABILITY_PROC(CAbilitySacrifice) {
         *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
     if (msg == A_QUEUE_VALIDATE || msg == A_QUEUE_COMPLETE || msg == A_QUEUE_CANCEL) {
         if (!call) return false;
-        producer = call->queue.producer; item = call->queue.item;
+        producer = call->entity; item = call->queue_item;
         if (!item || !item->sacrifice) return false;
         if (msg == A_QUEUE_VALIDATE) return sacrifice_queue_validate(producer, item);
         if (msg == A_QUEUE_COMPLETE) { sacrifice_queue_complete(producer, item); return true; }

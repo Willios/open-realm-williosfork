@@ -5,32 +5,33 @@
 /* Record the point Stop must restore after its automatic-combat detour. */
 void G_SetUnitGuardPosition(edict_t *ent) {
     if (!ent) return;
-    ent->movement.guard_position = ent->s.origin2;
-    ent->movement.guard_state = GUARD_IDLE;
+    G_InitUnitOrders(ent);
+    ent->orders->guard_position = ent->s.origin2;
+    ent->orders->guard_state = GUARD_IDLE;
 }
 
 /* Remove the Stop anchor and any in-progress guard-return phase. */
 void G_ClearUnitGuardPosition(edict_t *ent) {
-    if (!ent) return;
-    ent->movement.guard_state = GUARD_NONE;
+    if (!ent || !ent->orders) return;
+    ent->orders->guard_state = GUARD_NONE;
 }
 
 /* Resume ordinary Move toward the saved Stop point after idle combat ends. */
 static bool start_guard_return(edict_t *ent) {
     edict_t *waypoint;
 
-    if (!ent || ent->movement.guard_state == GUARD_NONE || ent->movement.holding_position ||
+    if (!ent || !ent->orders || ent->orders->guard_state == GUARD_NONE || ent->orders->holding_position ||
         (ent->aiflags & AI_IMMOBILE) || G_UnitQueuedOrderCount(ent)) {
         return false;
     }
-    if (Vector2_distance(&ent->s.origin2, &ent->movement.guard_position) <= GUARD_RETURN_EPSILON) {
-        ent->movement.guard_state = GUARD_IDLE;
+    if (Vector2_distance(&ent->s.origin2, &ent->orders->guard_position) <= GUARD_RETURN_EPSILON) {
+        ent->orders->guard_state = GUARD_IDLE;
         return false;
     }
-    waypoint = Waypoint_add(&ent->movement.guard_position);
+    waypoint = Waypoint_add(&ent->orders->guard_position);
     if (!waypoint) return false;
     order_move(ent, waypoint);
-    ent->movement.guard_state = GUARD_RETURNING;
+    ent->orders->guard_state = GUARD_RETURNING;
     return true;
 }
 
@@ -43,12 +44,12 @@ static void order_stop_state(edict_t *ent, bool preserve_queue, bool record_guar
         return;
     /* Channeling can retain the idle move, so Stop must cancel even without a move-leave notification. */
     S_SpellCancelChannel(ent);
-    ent->movement.attackmove_waypoint = NULL;
-    ent->movement.patrol_a = NULL;
-    ent->movement.patrol_b = NULL;
-    ent->movement.patrol_target = NULL;
-    ent->movement.follow_target = NULL;
-    ent->movement.holding_position = false;
+    ent->orders->attackmove_waypoint = NULL;
+    ent->orders->patrol_a = NULL;
+    ent->orders->patrol_b = NULL;
+    ent->orders->patrol_target = NULL;
+    ent->orders->follow_target = NULL;
+    ent->orders->holding_position = false;
     if (record_guard) G_SetUnitGuardPosition(ent);
     unit_leavecombat(ent);
     if (preserve_queue) unit_stand_no_queue(ent);
@@ -75,17 +76,17 @@ static void AbilityStop_Command(edict_t *clent);
 
 BZ_ABILITY_PROC(CAbilityStop) {
     if (msg == A_COMMAND) {
-        AbilityStop_Command(call && call->client ? call->client : ent);
+        AbilityStop_Command(call && call->entity ? call->entity : ent);
         return true;
     }
     if (msg == A_AUTO_COMBAT_START) {
-        if (ent && ent->movement.guard_state == GUARD_IDLE && ent->currentmove &&
+        if (ent && ent->orders && ent->orders->guard_state == GUARD_IDLE && ent->currentmove &&
             ent->currentmove->think == ai_stand)
-            ent->movement.guard_state = GUARD_COMBAT;
+            ent->orders->guard_state = GUARD_COMBAT;
     } else if (msg == A_AUTO_COMBAT_END) {
-        if (!ent || ent->movement.guard_state != GUARD_COMBAT) return false;
+        if (!ent || !ent->orders || ent->orders->guard_state != GUARD_COMBAT) return false;
         if (start_guard_return(ent)) return true;
-        if (ent->movement.guard_state == GUARD_COMBAT) ent->movement.guard_state = GUARD_IDLE;
+        if (ent->orders->guard_state == GUARD_COMBAT) ent->orders->guard_state = GUARD_IDLE;
     } else if (msg == A_ORDER_ACCEPTED && ent && call && call->order && strcmp(call->order, "stop")) {
         G_ClearUnitGuardPosition(ent);
     }

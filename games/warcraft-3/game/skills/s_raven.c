@@ -154,7 +154,7 @@ static bool raven_form_order(edict_t *unit, bool raven_form) {
     }
 
     unit->goalentity = NULL;
-    unit->secondarygoal = NULL;
+    unit->orders->resource_goal = NULL;
     move_reset_progress(unit);
     unit_stand(unit);
     raven_play_morph(unit, raven_form);
@@ -178,7 +178,7 @@ static void raven_command(edict_t *ent) {
 
 BZ_ABILITY_PROC(CAbilityRavenForm) {
     switch (msg) {
-    case A_COMMAND: raven_command(call && call->client ? call->client : ent); return true;
+    case A_COMMAND: raven_command(call && call->entity ? call->entity : ent); return true;
     case A_TOGGLE_ON: return raven_is_on(ent);
     case A_ORDER: return call && call->order && raven_order(ent, call->order);
     case A_UPDATE: raven_update(ent); return true;

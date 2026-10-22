@@ -178,7 +178,7 @@ bool WC3_SC2API_FillRawUnit(uint32_t player, edict_t const *ent, wc3Sc2RawUnit_t
     if (!out || !ent || !WC3_SC2API_PlayerClient(player)) return false;
     visible = ent->inuse && G_FowPlayerCanHoverEntity(player, ent);
     bool const alive = ent->inuse && ((ent->svflags & SVF_MONSTER) || destructable) &&
-        !(ent->svflags & SVF_DEADMONSTER) && !ent->training && ent->health.value > 0.0f;
+        !(ent->svflags & SVF_DEADMONSTER) && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) && ent->health.value > 0.0f;
     sc2FogMemory_t *memory = sc2api_remembered_entity(player, ent);
     if (memory && (!alive || !visible)) {
         if ((visible && ent->inuse) || G_FowPointIsVisible(player, &memory->world)) memory->tag = 0;
@@ -250,12 +250,12 @@ bool WC3_SC2API_FillRawUnit(uint32_t player, edict_t const *ent, wc3Sc2RawUnit_t
     /*Resolve the same authored WC3 buff rawcode used by the normal status
      * panel, then expose that stable uint32 id as SC2 Raw Unit.buff_ids. Only
      * publish live visible state; snapshots return before this point. */
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        uint32_t const buff = G_UnitStatusBuffCode(&ent->abilstatus[i]);
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        uint32_t const buff = G_UnitStatusBuffCode(&ent->unit_state->statuses[i]);
         bool duplicate = false;
 
         if (!buff ||
-            (ent->abilstatus[i].timestamp && ent->abilstatus[i].timestamp <= G_Time()) ||
+            (ent->unit_state->statuses[i].timestamp && ent->unit_state->statuses[i].timestamp <= G_Time()) ||
             out->buff_count >= MAX_UNIT_STATUSES) continue;
         FOR_LOOP(j, out->buff_count) if (out->buff_ids[j] == buff) { duplicate = true; break; }
         if (!duplicate) out->buff_ids[out->buff_count++] = buff;

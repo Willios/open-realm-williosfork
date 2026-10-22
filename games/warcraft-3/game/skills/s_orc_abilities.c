@@ -46,8 +46,8 @@ BZ_VALIDATED_SPELL_PROC(AbilityAncestralSpirit, ancestral_spirit_validate, ances
  */
 static heroabilitystatus_t const *purge_status(edict_t const *unit) {
     if (!unit) return NULL;
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t const *slot = unit->abilstatus + i;
+    FOR_LOOP(i, unit->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *slot = unit->unit_state->statuses + i;
         abilityitem_t item;
         if (!slot->level || !slot->data) continue;
         if (slot->timestamp && slot->timestamp <= G_Time()) continue;
@@ -68,8 +68,8 @@ static void purge_execute(edict_t *caster, spellTarget_t st, abilityitem_t const
     bool hostile;
     if (!st.entity) return;
     hostile = S_SpellIsEnemy(caster, st.entity);
-    FOR_LOOP(i, MAX_UNIT_STATUSES) {
-        heroabilitystatus_t *s = st.entity->abilstatus + i;
+    FOR_LOOP(i, st.entity->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t *s = st.entity->unit_state->statuses + i;
         if (!s->level || !s->timestamp) continue;
         if (!unit_status_can_magic_dispel(s)) continue;
         unit_removestatus_deferred(st.entity, s, STATUS_REMOVE_DISPEL);

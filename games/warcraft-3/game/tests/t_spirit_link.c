@@ -56,7 +56,7 @@ static void spl_setup(splFix_t *fix) {
 	fix->c->svflags |= SVF_MONSTER; fix->d->svflags |= SVF_MONSTER; fix->enemy->svflags |= SVF_MONSTER;
 	fix->caster->targtype = fix->a->targtype = fix->b->targtype = fix->c->targtype =
 		fix->d->targtype = fix->enemy->targtype = TARG_GROUND;
-	fix->caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_ASPL, .level = 1);
+	fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_ASPL, .level = 1);
 	fix->caster->mana.value = fix->caster->mana.max_value = 100;
 	fix->a->health.value = fix->a->health.max_value = 500;
 	fix->b->health.value = fix->b->health.max_value = 500;

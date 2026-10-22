@@ -72,7 +72,7 @@ static void hs_setup(hsFix_t *fix) {
     fix->enemy->health.value = 100; fix->enemy->health.max_value = 500;
     fix->mech->health.value = 100; fix->mech->health.max_value = 500;
     fix->far->health.value = 100; fix->far->health.max_value = 500;
-    fix->caster->heroabilities[0] = MAKE(heroability_t, .code = BZ_ANHS, .level = 1);
+    fix->caster->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_ANHS, .level = 1);
     fix->caster->mana.value = fix->caster->mana.max_value = 200;
     fix->caster->health.value = fix->caster->health.max_value = 500;
 }

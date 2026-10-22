@@ -133,7 +133,7 @@ void SV_Physics_Toss(edict_t *ent) {
                 S_ResolveArtilleryPointHit(ent->owner, primary, &impact, ent->damage, ent->artillery);
             } else {
                 int const damage = G_AttackDamageWithType(ent->owner, ent->goalentity, ent->damage,
-                                                          ent->projectile_attack_type);
+                                                          ent->missile ? ent->missile->attack_type : ATK_NORMAL);
                 S_ResolveAttackHit(ent->owner, ent->goalentity, damage);
             }
             G_FreeEdict(ent);
@@ -204,8 +204,8 @@ void G_RunEntity(edict_t *ent) {
     if (ent->mana.max_value > 0 && ent->mana.value < ent->mana.max_value) {
         float const natural = !S_UnitAbilityEvent(ent, A_NATURAL_MANA_REGEN_BLOCKED) ?
             ent->data.UnitBalance->manaRegen : 0.0f;
-        float const rate = natural + ent->mana_regen_bonus
-                 + (float)ent->hero.intel * INT_REGEN_BONUS + S_BrillianceManaRegen(ent)
+        float const rate = natural + (ent->unit_state ? ent->unit_state->mana_regen_bonus : 0)
+                 + (float)(ent->unit_state ? ent->unit_state->hero.intel : 0) * INT_REGEN_BONUS + S_BrillianceManaRegen(ent)
                  + S_RegenerationManaAura(ent);
         ent->mana.value = MIN(ent->mana.max_value, ent->mana.value + rate * (FRAMETIME / 1000.0f));
     }
@@ -221,7 +221,7 @@ void G_RunEntity(edict_t *ent) {
         bool const natural = G_UnitRegeneratesHP(ent);
         if (natural)
             rate += ent->data.UnitBalance->healthRegen +
-                    (float)ent->hero.str * STR_REGEN_BONUS + S_UnholyHealthRegen(ent);
+                    (float)(ent->unit_state ? ent->unit_state->hero.str : 0) * STR_REGEN_BONUS + S_UnholyHealthRegen(ent);
         if (rate != 0.0f) G_AddHealth(ent, rate * (FRAMETIME / 1000.0f));
     }
     /* Unholy Frenzy drains HP at DataB HP/sec regardless of current health. */

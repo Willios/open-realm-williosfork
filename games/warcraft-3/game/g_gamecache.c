@@ -626,13 +626,13 @@ bool G_GameCacheStoreUnit(gameCache_t *cache, cstring_t mission, cstring_t key, 
     saved = &entry->value.unit;
     memset(saved, 0, sizeof(*saved));
     saved->class_id = unit->class_id;
-    saved->hero = unit->hero;
-    memcpy(saved->abilities, unit->heroabilities, sizeof(saved->abilities));
+    saved->hero = unit->unit_state->hero;
+    memcpy(saved->abilities, unit->unit_state->ranks, sizeof(saved->abilities));
     saved->health = unit->health;
     saved->mana = unit->mana;
     saved->unit_color = unit->unit_color;
     FOR_LOOP(i, MAX_INVENTORY) {
-        edict_t const *item = unit->inventory[i];
+        edict_t const *item = G_InventoryItem(unit, i);
         if (!item) continue;
         saved->inventory[i].item_id = item->class_id;
         saved->inventory[i].charges = item->item->charges;
@@ -682,8 +682,8 @@ edict_t *G_GameCacheRestoreUnit(gameCache_t const *cache, cstring_t mission, cst
     if (saved->hero.level) {
         G_HeroApplyLevel(unit, saved->hero.level);
     }
-    unit->hero = saved->hero;
-    memcpy(unit->heroabilities, saved->abilities, sizeof(unit->heroabilities));
+    unit->unit_state->hero = saved->hero;
+    memcpy(unit->unit_state->ranks, saved->abilities, sizeof(unit->unit_state->ranks));
     G_RecomputeHeroStats(unit);
     unit->health = saved->health;
     /* RestoreUnit creates a fresh living entity; a cached dead Hero must not
