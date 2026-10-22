@@ -11,6 +11,23 @@ GNU Make jobserver descriptors during parallel suite execution and avoids the Li
 
 ## Benchmark
 
+### macOS SDL event test dependency
+
+On macOS arm64, SDL2-compat 2.32.72 can crash inside SDL3's `SDL_PushEvent_REAL`
+when an events-only headless test submits `SDL_TEXTINPUT`. A standalone program
+that initializes `SDL_INIT_EVENTS` and pushes one text event reproduces it,
+without any engine code. Official SDL2 2.32.10 passes the same reproducer and
+all 618 client-input assertions, and the complete test suite passes when linked
+against it. Keep the text-input tests enabled.
+
+For isolated validation, build SDL2 in a temporary prefix and use fresh `BIN_DIR`
+and `LIB_DIR` outputs. Put its library directory before Homebrew's in `LDFLAGS`
+and add `-Wl,-rpath,<SDL2-prefix>/lib`. Setting `DYLD_LIBRARY_PATH` only on
+`make` is insufficient because macOS system shells can strip it before the
+test executable starts. A direct test invocation with that variable also works.
+
+### Measurements
+
 Measured on `main` at commit `ac44fc12` before the change:
 
 | Run | Tests | Wall time |

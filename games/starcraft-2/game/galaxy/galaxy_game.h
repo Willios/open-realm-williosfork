@@ -65,6 +65,11 @@ static uint32_t sc2_TextExpressionAssemble(jass_t *j) {
             size_t len = strlen(token->value);
             memcpy(dst, token->value, len);
             dst += len; src = end + 1;
+        } else if (end) {
+            /* Match the sizing pass: an unknown token owns both delimiters. */
+            size_t len = (size_t)(end - src + 1);
+            memcpy(dst, src, len);
+            dst += len; src = end + 1;
         } else
             *dst++ = *src++;
     }

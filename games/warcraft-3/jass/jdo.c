@@ -1959,8 +1959,19 @@ static float jass_numbervalue(jassVar_t const *var) {
     return 0.0f;
 }
 
-static void jass_set_value(jass_t *j, jassVar_t *dest, token_t const *init, cstring_t name) {
-    uint32_t stack = jass_dotoken(j, init);
+/* Compound assignments read the already-resolved lvalue, including multidimensional arrays. */
+static uint32_t jass_assignment_value(jass_t *j, jassVar_t const *dest, token_t const *init, cstring_t op) {
+    if (!op) return jass_dotoken(j, init);
+    jassCFunction_t func = find_cfunction(j, op);
+    assert(func);
+    jass_pushcfunction(j, func);
+    jass_pushvalue(j, dest);
+    if (!jass_dotoken(j, init)) jass_pushnull(j);
+    return jass_call(j, 2);
+}
+
+static void jass_set_value(jass_t *j, jassVar_t *dest, token_t const *init, cstring_t name, cstring_t op) {
+    uint32_t stack = jass_assignment_value(j, dest, init, op);
     /* Normally an initializer expression yields exactly one value.  Tolerate
      * other counts instead of aborting: a value-returning function whose body
      * fell through, or an unimplemented/void native (returns 0), would
@@ -1983,7 +1994,7 @@ static void jass_set_array_value(jass_t *j, jassVar_t *dest, token_t const *toke
     uint32_t index_val = jass_popinteger(j);
     jassVar_t *index_dest = ensure_array_value(j, dest, index_val);
     if (token->body) index_dest = jass_array_value(j, index_dest, token->body);
-    count = jass_dotoken(j, init);
+    count = jass_assignment_value(j, index_dest, init, token->primary);
     if (count != 1) { jass_pushnull(j); }
     jass_copy(j, index_dest, j->stack + jass_top(j));
     jass_discard(j, 1);
@@ -1996,7 +2007,7 @@ static jassdict_t *parse_dict(jass_t *j, token_t const *token) {
     item->value.type = find_type(j, token->primary);
     item->key = token->secondary;
     if (token->init) {
-        jass_set_value(j, &item->value, token->init, NULL);
+        jass_set_value(j, &item->value, token->init, NULL, NULL);
     }
     return item;
 }
@@ -2055,13 +2066,13 @@ TOKENFUNC(SET) {
         if (token->index) {
             return jass_set_array_value(j, v, token, token->init);
         } else {
-            return jass_set_value(j, v, token->init, token->secondary);
+            return jass_set_value(j, v, token->init, token->secondary, token->primary);
         }
     } else if ((v = find_dict(jass_stackvalue(j, 0)->env.locals, token->secondary))) {
         if (token->index) {
             return jass_set_array_value(j, v, token, token->init);
         } else {
-            return jass_set_value(j, v, token->init, NULL);
+            return jass_set_value(j, v, token->init, NULL, token->primary);
         }
     } else {
         fprintf(stderr, "Can't find variable %s\n",

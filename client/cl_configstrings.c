@@ -7,10 +7,10 @@
 #include <stdlib.h>
 
 #include "client.h"
-#include "games/warcraft-3/common/map_load_debug.h"
+#include "common/map_load_debug.h"
 #include "sound/s_local.h"
 
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
 static struct {
     uint32_t visits, cached, model_loads, portrait_probes, portrait_loads;
     double model_ms, portrait_probe_ms, portrait_load_ms;
@@ -23,7 +23,7 @@ void CL_ResetModelLoadDebug(void) {
 
 /* Emit aggregate model and portrait work for the named map-loading phase. */
 void CL_ReportModelLoadDebug(cstring_t phase, cstring_t map) {
-    WC3_MAP_LOAD_LOG("map=%s phase=%s visits=%u cached=%u model-loads=%u model-ms=%.3f portrait-probes=%u portrait-loads=%u portrait-probe-ms=%.3f portrait-load-ms=%.3f\n",
+    MAP_LOAD_LOG("map=%s phase=%s visits=%u cached=%u model-loads=%u model-ms=%.3f portrait-probes=%u portrait-loads=%u portrait-probe-ms=%.3f portrait-load-ms=%.3f\n",
                      map, phase, cl_model_load_debug.visits, cl_model_load_debug.cached,
                      cl_model_load_debug.model_loads, cl_model_load_debug.model_ms,
                      cl_model_load_debug.portrait_probes, cl_model_load_debug.portrait_loads,
@@ -40,17 +40,17 @@ static bool CL_SameResource(void const *handle, cstring_t olds, cstring_t name) 
 static void CL_RegisterModelConfigString(uint32_t index, bool replace, cstring_t olds) {
     uint32_t model = index - CS_MODELS;
     cstring_t name = cl.configstrings[index];
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
     cl_model_load_debug.visits++;
 #endif
     if (!replace && cl.models[model]) {
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
         cl_model_load_debug.cached++;
 #endif
         return;
     }
     if (replace && CL_SameResource(cl.models[model], olds, name)) {
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
         cl_model_load_debug.cached++;
 #endif
         return;
@@ -67,31 +67,31 @@ static void CL_RegisterModelConfigString(uint32_t index, bool replace, cstring_t
         portrait[base_len] = '\0';
         snprintf(portrait + base_len, sizeof(portrait) - base_len, "_Portrait%s", ext);
     }
-#ifdef WC3_DEBUG_MAP_LOAD
-    double phase_start = WC3_MAP_LOAD_NOW();
+#ifdef DEBUG_MAP_LOAD
+    double phase_start = MAP_LOAD_NOW();
 #endif
     cl.models[model] = re.LoadModel(name);
-#ifdef WC3_DEBUG_MAP_LOAD
-    cl_model_load_debug.model_ms += WC3_MAP_LOAD_NOW() - phase_start;
+#ifdef DEBUG_MAP_LOAD
+    cl_model_load_debug.model_ms += MAP_LOAD_NOW() - phase_start;
     if (cl.models[model]) cl_model_load_debug.model_loads++;
 #endif
     if (!cl.models[model]) fprintf(stderr, "CL_RegisterModelConfigString: failed to load %s\n", name);
     if (portrait[0]) {
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
         cl_model_load_debug.portrait_probes++;
-        phase_start = WC3_MAP_LOAD_NOW();
+        phase_start = MAP_LOAD_NOW();
 #endif
         bool const portrait_exists = FS_FileExists(portrait);
-#ifdef WC3_DEBUG_MAP_LOAD
-        cl_model_load_debug.portrait_probe_ms += WC3_MAP_LOAD_NOW() - phase_start;
+#ifdef DEBUG_MAP_LOAD
+        cl_model_load_debug.portrait_probe_ms += MAP_LOAD_NOW() - phase_start;
 #endif
         if (portrait_exists) {
-#ifdef WC3_DEBUG_MAP_LOAD
-            phase_start = WC3_MAP_LOAD_NOW();
+#ifdef DEBUG_MAP_LOAD
+            phase_start = MAP_LOAD_NOW();
 #endif
             cl.portraits[model] = re.LoadModel(portrait);
-#ifdef WC3_DEBUG_MAP_LOAD
-            cl_model_load_debug.portrait_load_ms += WC3_MAP_LOAD_NOW() - phase_start;
+#ifdef DEBUG_MAP_LOAD
+            cl_model_load_debug.portrait_load_ms += MAP_LOAD_NOW() - phase_start;
             if (cl.portraits[model]) cl_model_load_debug.portrait_loads++;
 #endif
         }
@@ -158,9 +158,9 @@ void CL_PrepLoading(void) {
         Com_Error(ERR_DROP, "Incomplete loading presentation");
         return;
     }
-    double const load_start = WC3_MAP_LOAD_NOW();
+    double const load_start = MAP_LOAD_NOW();
     double stage_start = load_start;
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
     CL_ResetModelLoadDebug();
 #endif
     uint32_t registered_models = 0, registered_images = 0, registered_fonts = 0;
@@ -172,31 +172,31 @@ void CL_PrepLoading(void) {
         registered_models++;
         CL_RegisterConfigString(CS_MODELS + i);
     }
-    WC3_MAP_LOAD_LOG("map=%s phase=client-preload-models count=%u ms=%.3f\n",
-                     cl.configstrings[CS_WORLD], registered_models, WC3_MAP_LOAD_NOW() - stage_start);
-#ifdef WC3_DEBUG_MAP_LOAD
+    MAP_LOAD_LOG("map=%s phase=client-preload-models count=%u ms=%.3f\n",
+                     cl.configstrings[CS_WORLD], registered_models, MAP_LOAD_NOW() - stage_start);
+#ifdef DEBUG_MAP_LOAD
     CL_ReportModelLoadDebug("client-preload-model-detail", cl.configstrings[CS_WORLD]);
 #endif
-    stage_start = WC3_MAP_LOAD_NOW();
+    stage_start = MAP_LOAD_NOW();
     for (uint32_t i = 1; i < MAX_IMAGES; i++) {
         if (!*cl.configstrings[CS_IMAGES + i]) continue;
         registered_images++;
         CL_RegisterConfigString(CS_IMAGES + i);
     }
-    WC3_MAP_LOAD_LOG("map=%s phase=client-preload-images count=%u ms=%.3f\n",
-                     cl.configstrings[CS_WORLD], registered_images, WC3_MAP_LOAD_NOW() - stage_start);
-    stage_start = WC3_MAP_LOAD_NOW();
+    MAP_LOAD_LOG("map=%s phase=client-preload-images count=%u ms=%.3f\n",
+                     cl.configstrings[CS_WORLD], registered_images, MAP_LOAD_NOW() - stage_start);
+    stage_start = MAP_LOAD_NOW();
     for (uint32_t i = 1; i < MAX_FONTSTYLES; i++) {
         if (!*cl.configstrings[CS_FONTS + i]) continue;
         registered_fonts++;
         CL_RegisterConfigString(CS_FONTS + i);
     }
-    WC3_MAP_LOAD_LOG("map=%s phase=client-preload-fonts count=%u ms=%.3f\n",
-                     cl.configstrings[CS_WORLD], registered_fonts, WC3_MAP_LOAD_NOW() - stage_start);
+    MAP_LOAD_LOG("map=%s phase=client-preload-fonts count=%u ms=%.3f\n",
+                     cl.configstrings[CS_WORLD], registered_fonts, MAP_LOAD_NOW() - stage_start);
     SCR_UpdateLoadingPlaque();
-    WC3_MAP_LOAD_LOG("map=%s phase=client-preload-total ms=%.3f\n",
-                     cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - load_start);
-#ifndef WC3_DEBUG_MAP_LOAD
+    MAP_LOAD_LOG("map=%s phase=client-preload-total ms=%.3f\n",
+                     cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - load_start);
+#ifndef DEBUG_MAP_LOAD
     (void)stage_start;
 #endif
 }

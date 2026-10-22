@@ -758,6 +758,21 @@ TEST(galaxy, vm_compound_assignment_operators) {
     gal_destroy(&s);
 }
 
+TEST(galaxy, vm_compound_assignment_evaluates_indices_once) {
+    gal_state_t s = gal_new();
+    T_ASSERT(gal_run(&s,
+        "native void TestFail(string msg);\n"
+        "int[5][5] values; int calls = 0;\n"
+        "int index() { calls = calls + 1; return calls; }\n"
+        "void main() {\n"
+        "    values[1][2] = 10; values[3][4] = 90;\n"
+        "    values[index()][index()] += 5;\n"
+        "    if (calls != 2) { TestFail(\"indices evaluated twice\"); }\n"
+        "    if (values[1][2] != 15) { TestFail(\"wrong compound destination value\"); }\n"
+        "}"));
+    gal_destroy(&s);
+}
+
 TEST(galaxy, vm_int_arithmetic) {
     gal_state_t s = gal_new();
     T_ASSERT(gal_run(&s,
@@ -1023,6 +1038,27 @@ TEST(galaxy, vm_text_expression_tokens) {
         "native void TestFail(string msg); native text TextExpressionAssemble(string id);\n"
         "void main() { if (TextExpressionAssemble(\"Param/Expression/A\") != \"Param/Expression/A\") { TestFail(\"reset\"); } }"));
     gal_destroy(&s);
+}
+
+TEST(galaxy, vm_text_expression_unknown_tokens_keep_their_delimiters) {
+    gal_state_t s = gal_new();
+    galaxy_reset();
+    jass_sethost(&MAKE(jassHost_t, .MemAlloc = gal_alloc, .MemFree = gal_free, .ReadFile = gal_read_file,
+        .natives = gal_assert_natives, .galaxy_natives = galaxy_get_natives()));
+    T_ASSERT(gal_run(&s,
+        "native void TestFail(string msg);\n"
+        "native void TextExpressionSetToken(string id, string code, text value);\n"
+        "native text TextExpressionAssemble(string id);\n"
+        "void main() {\n"
+        "    TextExpressionSetToken(\"expr\", \"(main)\", \"~missing~known~\");\n"
+        "    TextExpressionSetToken(\"expr\", \"known\", \"X\");\n"
+        "    if (TextExpressionAssemble(\"expr\") != \"~missing~known~\") { TestFail(\"shared delimiter\"); }\n"
+        "    TextExpressionSetToken(\"expr\", \"(main)\", \"~missing~~known~\");\n"
+        "    TextExpressionSetToken(\"expr\", \"known\", \"a replacement longer than the template\");\n"
+        "    if (TextExpressionAssemble(\"expr\") != \"~missing~a replacement longer than the template\") { TestFail(\"adjacent tokens\"); }\n"
+        "}"));
+    gal_destroy(&s);
+    galaxy_reset();
 }
 
 /* CampaignLib walks PlayerGroupAll with the 5.0 editor iterator: start at -1, stop at -1. */

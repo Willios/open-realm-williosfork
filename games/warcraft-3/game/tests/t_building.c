@@ -4885,7 +4885,6 @@ TEST(wc3_building, roc_peasant_aliased_repair_order_repairs_damaged_structure) {
     edict_t *building;
     UnitAbilities_t abilities = { .abilList = "Ahrp" };
     UnitBalance_t balance;
-    gameClient_t *saved_client;
     slkTestData_t *rows = parse_slk_string(roc_repair_slk);
     slkTestData_t *old_abilities = G_SetSLKRows("AbilityData", rows);
 
@@ -4912,16 +4911,23 @@ TEST(wc3_building, roc_peasant_aliased_repair_order_repairs_damaged_structure) {
     T_ASSERT(G_UnitHasHumanRepair(worker));
     T_FEQ(G_AbilityData(MAKEFOURCC('A','h','r','p'))->level[0].data[0].number, 0.35f, 0.001f);
     T_FEQ(G_AbilityData(MAKEFOURCC('A','h','r','p'))->level[0].data[1].number, 1.5f, 0.001f);
+#if BZ_COMPAT_WORKAROUNDS
     T_ASSERT(S_OrderRepair(worker, building, MAKEFOURCC('A','h','r','p')));
     T_EQ(worker->buildwork->ability, MAKEFOURCC('A','h','r','p'));
     T_NOT_NULL(worker->currentmove);
     if (worker->currentmove) T_STREQ(worker->currentmove->animation, "stand work");
 
-    saved_client = g_edicts[0].client;
+    gameClient_t *saved_client = g_edicts[0].client;
     g_edicts[0].client = NULL;
     if (worker->currentmove && worker->currentmove->think) worker->currentmove->think(worker);
     g_edicts[0].client = saved_client;
     T_ASSERT(building->health.value > 500.0f);
+#else
+    /* Without the RoC exception, the authored mask excludes structures. */
+    T_ASSERT(!S_OrderRepair(worker, building, MAKEFOURCC('A','h','r','p')));
+    T_NULL(worker->buildwork);
+    T_FEQ(building->health.value, 500.0f, 0.001f);
+#endif
 
     G_SetSLKRows("AbilityData", old_abilities);
     free_slk_rows(rows);
@@ -5545,9 +5551,15 @@ TEST(wc3_building, roc_peasant_repair_button_uses_aliased_repair_presentation) {
     worker = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
     worker->data.UnitAbilities = &abilities;
 
-    T_ASSERT(G_BuildCommandButton(worker, "Ahrp", false, 0, &button));
+    bool const built = G_BuildCommandButton(worker, "Ahrp", false, 0, &button);
     T_STREQ(button.command, "Ahrp");
+#if BZ_COMPAT_WORKAROUNDS
+    T_ASSERT(built);
     T_ASSERT(button.art[0] != '\0');
+#else
+    T_ASSERT(!built);
+    T_EQ(button.art[0], '\0');
+#endif
 
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);

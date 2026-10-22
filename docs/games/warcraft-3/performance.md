@@ -32,8 +32,11 @@ session** (1600x1200, Intel Iris Plus/Mesa OpenGL). The first load includes
 initial sound decoding; later loads use retained sound caches. These are not
 independent cold starts. The log is an external capture, not a committed test
 fixture; preserve its provenance when comparing future measurements. The log
-was produced with the optional `WC3_DEBUG_MAP_LOAD=1` instrumentation, which
+was produced with the optional `DEBUG_MAP_LOAD=1` instrumentation, which
 is available in this repository; regular builds compile the diagnostics out.
+The clock and logging macros live in `common/map_load_debug.h` so client and
+sound diagnostics do not depend on a game header or game-specific build flag.
+Disabled logging still type-checks its arguments without evaluating them.
 
 The client-load-cycle metric measures `CL_BeginLoadingMap` through client
 refresh completion; it includes the server load and must **not** be added to
@@ -94,21 +97,18 @@ based on new measured results rather than treating the order as fixed.
 
 0. **Validate the committed opt-in diagnostics and establish comparable
    baselines.** The phase instrumentation is present behind
-   `WC3_DEBUG_MAP_LOAD=1`; keep it out of regular builds and verify consistent
+   `DEBUG_MAP_LOAD=1`; keep it out of regular builds and verify consistent
    begin/end boundaries. Document the map, data set, revision, compiler flags,
    machine, command line, and whether each run is an initial start, same-map
    restart, or menu-return new initialization. Use at least five runs per
    *scenario*, report medians and spread, and record memory high-water marks.
    Do not mistake warmed filesystem caches for true cold starts.
-1. **Bulk-decode W3E terrain vertices (first optimization patch).** Audit
-   `CM_ReadWar3MapVertex` in `common/world.c` and `R_ReadWar3MapVertex` in
-   `games/warcraft-3/renderer/w3m/r_war3map.c`: each currently issues five
-   small `SFileReadFile` calls per seven-byte vertex. OrcX01 is a 193x193
-   grid (37,249 vertices), implying about 186,245 small calls per parse.
-   Prototype bounded bulk reads and decode from memory, ideally using one
-   shared *pure decoder* while preserving caller-owned output. Validate
-   dimensions and multiplication overflow, exact length/truncation handling,
-   vertex flags/values, and source ordering. Compare server heightmap,
+1. **Bulk-decode W3E terrain vertices (implemented).** The common world
+   loader and WC3 renderer now use the bounded reader in
+   `games/warcraft-3/common/war3map_vertices.h`, decoding seven-byte records
+   in batches of up to 4,096 vertices. The previous five reads per vertex
+   meant about 186,245 calls per parse for OrcX01's 193x193 grid. Tests cover
+   packed values, dimensions, truncation, and allocation bounds. Compare server heightmap,
    client heightmap when present, renderer terrain parse, and end-to-end
    cycle times; verify cliffs, ramps, water, blight, pathing and minimap.
 2. **Eliminate redundant whole-file existence reads during spawning (implemented; benchmark pending).** The game now probes `G_FileExists` and
@@ -134,8 +134,8 @@ based on new measured results rather than treating the order as fixed.
    registration readiness and cache lifetime semantics; avoid regressing the
    approximately two-millisecond repeat-load registration path. Compare
    process-first-load medians, not only restart timings.
-7. **Investigate renderer terrain construction.** After the bulk W3E
-   experiment, profile segment construction, ground layers and cliffs;
+7. **Investigate renderer terrain construction.** With bulk W3E decoding
+   in place, profile segment construction, ground layers and cliffs;
    optimize only material residual costs while preserving GPU-resource
    cleanup and visual equivalence across map transitions.
 8. **Consider sharing parsed terrain only if needed.** The server/client
@@ -704,7 +704,7 @@ parses the map on the client, while repeated same-map loads in this log do not.
 
 `common/world.c:CM_ReadHeightmap` and
 `games/warcraft-3/renderer/w3m/r_war3map.c:FileReadWar3Map` use the shared
-`common/war3map_vertices.h` W3E reader. The serialized vertex is **seven bytes**
+`games/warcraft-3/common/war3map_vertices.h` W3E reader. The serialized vertex is **seven bytes**
 (two LE16 values and three packed bytes); `war3mapVertex_t` is an expanded
 in-memory representation, not a file layout. The reader now takes **4096 vertices
 per MPQ read** instead of five calls per vertex, decoding the entire packed record

@@ -124,27 +124,6 @@ static token_t *alloc_token(TOKENTYPE type) {
     return token;
 }
 
-/* Deep copy, because every AST edge is owned and freed by JASS_FreeTokens. */
-static token_t *clone_tokens(token_t const *src) {
-    token_t *head = NULL;
-    token_t * *tail = &head;
-    for (; src; src = src->next) {
-        token_t *copy = alloc_token(src->type);
-        copy->flags = src->flags;
-        copy->primary = src->primary ? strdup(src->primary) : NULL;
-        copy->secondary = src->secondary ? strdup(src->secondary) : NULL;
-        copy->init = clone_tokens(src->init);
-        copy->body = clone_tokens(src->body);
-        copy->args = clone_tokens(src->args);
-        copy->condition = clone_tokens(src->condition);
-        copy->elseblock = clone_tokens(src->elseblock);
-        copy->index = clone_tokens(src->index);
-        *tail = copy;
-        tail = &copy->next;
-    }
-    return head;
-}
-
 /* Parsed programs own every AST edge and string; runtime declarations borrow those strings until VM close. */
 void JASS_FreeTokens(token_t *tokens) {
     while (tokens) {
@@ -745,18 +724,8 @@ static token_t *galaxy_parse_expression_stmt(wordExtractor_t *p) {
         token->index     = indices.index;
         token->body      = indices.body;
         token->init      = parse_logical_expression(p);
-        if (compound) {
-            /* `a[i] op= v` becomes `a[i] = a[i] op (v)`; index expressions are evaluated twice. */
-            token_t *current = alloc_token(indices.index ? TT_ARRAYACCESS : TT_IDENTIFIER);
-            token_t *oper = alloc_token(TT_CALL);
-            current->primary = strdup(name);
-            current->index = clone_tokens(indices.index);
-            current->body = clone_tokens(indices.body);
-            oper->primary = strdup(compound);
-            PUSH_BACK(token_t, current, oper->args);
-            PUSH_BACK(token_t, token->init, oper->args);
-            token->init = oper;
-        }
+        /* The VM resolves the destination once before applying the operator. */
+        token->primary = compound ? strdup(compound) : NULL;
         eat_token(p, ";");
         result = token;
     } else if (eat_token(p, "(")) {

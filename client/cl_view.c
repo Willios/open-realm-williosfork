@@ -3,8 +3,8 @@
 #include "client.h"
 #include "sound/s_local.h"
 #include "tr_public.h"
-#include "games/warcraft-3/common/map_load_debug.h"
-#ifdef WC3_DEBUG_MAP_LOAD
+#include "common/map_load_debug.h"
+#ifdef DEBUG_MAP_LOAD
 extern void CL_ResetModelLoadDebug(void);
 extern void CL_ReportModelLoadDebug(cstring_t phase, cstring_t map);
 #endif
@@ -28,7 +28,7 @@ static bool begin_sent = false;
 static double client_map_load_debug_start;
 
 void CL_MapLoadDebugBegin(void) {
-    client_map_load_debug_start = WC3_MAP_LOAD_NOW();
+    client_map_load_debug_start = MAP_LOAD_NOW();
 }
 
 /* Optional CS_MODELS indices become handles here. Games that do not publish
@@ -621,26 +621,26 @@ void CL_PrepRefresh(void) {
     }
 
     bool const report_load = !cl.refresh_prepped;
-    double const refresh_start = WC3_MAP_LOAD_NOW();
+    double const refresh_start = MAP_LOAD_NOW();
     double stage_start;
-#ifdef WC3_DEBUG_MAP_LOAD
+#ifdef DEBUG_MAP_LOAD
     if (report_load) CL_ResetModelLoadDebug();
 #endif
     CL_LoadingStage(0.10f);
 
     if (!world_loaded) {
         if (!CM_IsMapLoaded(cl.configstrings[CS_WORLD])) {
-            stage_start = WC3_MAP_LOAD_NOW();
+            stage_start = MAP_LOAD_NOW();
             CM_LoadMap(cl.configstrings[CS_WORLD], CL_LoadingFrame);
             if (report_load)
-                WC3_MAP_LOAD_LOG("map=%s phase=client-CM_LoadMap ms=%.3f\n",
-                                 cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - stage_start);
+                MAP_LOAD_LOG("map=%s phase=client-CM_LoadMap ms=%.3f\n",
+                                 cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - stage_start);
         }
-        stage_start = WC3_MAP_LOAD_NOW();
+        stage_start = MAP_LOAD_NOW();
         re.RegisterMap(cl.configstrings[CS_WORLD]);
         if (report_load)
-            WC3_MAP_LOAD_LOG("map=%s phase=client-register-map ms=%.3f\n",
-                             cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - stage_start);
+            MAP_LOAD_LOG("map=%s phase=client-register-map ms=%.3f\n",
+                             cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - stage_start);
         world_loaded = true;
     }
     CL_LoadingStage(0.40f);
@@ -670,7 +670,7 @@ void CL_PrepRefresh(void) {
 #endif
 
     uint32_t registered_models = 0;
-    stage_start = WC3_MAP_LOAD_NOW();
+    stage_start = MAP_LOAD_NOW();
     for (uint32_t i = 1; i < MAX_MODELS; i++) {
         if (!*cl.configstrings[CS_MODELS + i]) continue;
         registered_models++;
@@ -678,27 +678,27 @@ void CL_PrepRefresh(void) {
     }
     CL_RegisterConfigString(CS_ORDER_MARKER);
     if (report_load)
-        WC3_MAP_LOAD_LOG("map=%s phase=client-refresh-models count=%u ms=%.3f\n",
-                         cl.configstrings[CS_WORLD], registered_models, WC3_MAP_LOAD_NOW() - stage_start);
-#ifdef WC3_DEBUG_MAP_LOAD
+        MAP_LOAD_LOG("map=%s phase=client-refresh-models count=%u ms=%.3f\n",
+                         cl.configstrings[CS_WORLD], registered_models, MAP_LOAD_NOW() - stage_start);
+#ifdef DEBUG_MAP_LOAD
     if (report_load) CL_ReportModelLoadDebug("client-refresh-model-detail", cl.configstrings[CS_WORLD]);
 #endif
     CL_LoadingStage(0.60f);
 
     uint32_t registered_images = 0;
-    stage_start = WC3_MAP_LOAD_NOW();
+    stage_start = MAP_LOAD_NOW();
     for (uint32_t i = 1; i < MAX_IMAGES; i++) {
         if (!*cl.configstrings[CS_IMAGES + i]) continue;
         registered_images++;
         CL_RegisterConfigString(CS_IMAGES + i);
     }
     if (report_load)
-        WC3_MAP_LOAD_LOG("map=%s phase=client-refresh-images count=%u ms=%.3f\n",
-                         cl.configstrings[CS_WORLD], registered_images, WC3_MAP_LOAD_NOW() - stage_start);
+        MAP_LOAD_LOG("map=%s phase=client-refresh-images count=%u ms=%.3f\n",
+                         cl.configstrings[CS_WORLD], registered_images, MAP_LOAD_NOW() - stage_start);
     CL_LoadingStage(0.75f);
 
     uint32_t registered_sounds = 0;
-    stage_start = WC3_MAP_LOAD_NOW();
+    stage_start = MAP_LOAD_NOW();
     if (register_sounds) {
         for (uint32_t i = 1; i < MAX_SOUNDS; i++)
             if (*cl.configstrings[CS_SOUNDS + i]) {
@@ -707,30 +707,30 @@ void CL_PrepRefresh(void) {
             }
     }
     if (report_load)
-        WC3_MAP_LOAD_LOG("map=%s phase=client-refresh-sounds count=%u ms=%.3f\n",
-                         cl.configstrings[CS_WORLD], registered_sounds, WC3_MAP_LOAD_NOW() - stage_start);
+        MAP_LOAD_LOG("map=%s phase=client-refresh-sounds count=%u ms=%.3f\n",
+                         cl.configstrings[CS_WORLD], registered_sounds, MAP_LOAD_NOW() - stage_start);
     CL_LoadingStage(0.87f);
 
     uint32_t registered_fonts = 0;
-    stage_start = WC3_MAP_LOAD_NOW();
+    stage_start = MAP_LOAD_NOW();
     for (uint32_t i = 1; i < MAX_FONTSTYLES; i++) {
         if (!*cl.configstrings[CS_FONTS + i]) continue;
         registered_fonts++;
         CL_RegisterConfigString(CS_FONTS + i);
     }
     if (report_load)
-        WC3_MAP_LOAD_LOG("map=%s phase=client-refresh-fonts count=%u ms=%.3f\n",
-                         cl.configstrings[CS_WORLD], registered_fonts, WC3_MAP_LOAD_NOW() - stage_start);
+        MAP_LOAD_LOG("map=%s phase=client-refresh-fonts count=%u ms=%.3f\n",
+                         cl.configstrings[CS_WORLD], registered_fonts, MAP_LOAD_NOW() - stage_start);
     CL_LoadingStage(0.94f);
 
     CL_LoadingStage(0.98f);
 
     if (world_loaded && !cl.refresh_prepped) {
-        stage_start = WC3_MAP_LOAD_NOW();
+        stage_start = MAP_LOAD_NOW();
         S_EndRegistration();
         if (report_load)
-            WC3_MAP_LOAD_LOG("map=%s phase=client-sound-finalize ms=%.3f\n",
-                             cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - stage_start);
+            MAP_LOAD_LOG("map=%s phase=client-sound-finalize ms=%.3f\n",
+                             cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - stage_start);
         cl.refresh_prepped = true;
     }
     if (cl.refresh_prepped) CL_LoadingStage(1.0f);
@@ -747,13 +747,13 @@ void CL_PrepRefresh(void) {
         }
     }
     if (report_load) {
-        WC3_MAP_LOAD_LOG("map=%s phase=client-refresh-total ms=%.3f\n",
-                         cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - refresh_start);
+        MAP_LOAD_LOG("map=%s phase=client-refresh-total ms=%.3f\n",
+                         cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - refresh_start);
         if (client_map_load_debug_start > 0.0)
-            WC3_MAP_LOAD_LOG("map=%s phase=client-load-cycle ms=%.3f\n",
-                             cl.configstrings[CS_WORLD], WC3_MAP_LOAD_NOW() - client_map_load_debug_start);
+            MAP_LOAD_LOG("map=%s phase=client-load-cycle ms=%.3f\n",
+                             cl.configstrings[CS_WORLD], MAP_LOAD_NOW() - client_map_load_debug_start);
     }
-#ifndef WC3_DEBUG_MAP_LOAD
+#ifndef DEBUG_MAP_LOAD
     (void)stage_start;
     (void)refresh_start;
 #endif

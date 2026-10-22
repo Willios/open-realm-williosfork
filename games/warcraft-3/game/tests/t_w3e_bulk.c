@@ -1,6 +1,6 @@
 #ifdef BZ_TESTS
 #include "shared/test.h"
-#include "common/war3map_vertices.h"
+#include "games/warcraft-3/common/war3map_vertices.h"
 #include <stdlib.h>
 
 /* Match the engine allocation callback while keeping fixture ownership local. */

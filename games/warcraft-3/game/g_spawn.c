@@ -1,5 +1,5 @@
 #include "g_local.h"
-#include "games/warcraft-3/common/map_load_debug.h"
+#include "common/map_load_debug.h"
 #include "games/warcraft-3/common/difficulty.h"
 #include "jass/jass.h"
 
@@ -1049,7 +1049,7 @@ void G_SpawnEntities(cstring_t map_path) {
     CM_BakeStaticObstacles();
     /* Start simulation from the map load itself so dedicated and listen-server restores share one lifecycle. */
     level.started = true;
-    WC3_MAP_LOAD_LOG("map=%s phase=spawn-counts placements=%u spawned=%u units=%u destructables=%u static-scenery=%u skipped-script-owned=%u\n",
+    MAP_LOAD_LOG("map=%s phase=spawn-counts placements=%u spawned=%u units=%u destructables=%u static-scenery=%u skipped-script-owned=%u\n",
                      map_path, spawn_count, spawned_entities, spawned_units, spawned_destructables,
                      spawned_static_scenery, skipped_script_owned);
 }

@@ -1,5 +1,5 @@
 #include "common.h"
-#include "common/war3map_vertices.h"
+#include "games/warcraft-3/common/war3map_vertices.h"
 #include <ctype.h>
 
 #ifndef _WIN32

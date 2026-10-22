@@ -264,6 +264,9 @@ TEST(wc3_slk, roc_chain_lightning_uses_primary_and_secondary_bolt_rows) {
 #if BZ_COMPAT_WORKAROUNDS
     T_EQ(G_AbilityLightningId(ability, 0), MAKEFOURCC('C','L','P','B'));
     T_EQ(G_AbilityLightningId(ability, 1), MAKEFOURCC('C','L','S','B'));
+#else
+    T_EQ(G_AbilityLightningId(ability, 0), 0);
+    T_EQ(G_AbilityLightningId(ability, 1), 0);
 #endif
     ShutdownUnitData();
     InitUnitData(); /* Restore shared tables for later tests in this process. */
