@@ -91,6 +91,13 @@ native Screenshot behavior unchanged. The browser-only controller lives at
 `port/web/site/game-shortcut-menus.js` with synthetic event tests at
 `port/web/tests/game-shortcut-menus.test.cjs`.
 
+Keyboard-open popups start without an owning pointer. A press inside transfers
+ownership to that pointer and uses the same captured drag/release path. An
+outside press or keyboard focus moving outside dismisses the popup; otherwise
+the unowned popup could stay open and block all later launcher drags. Regression
+tests cover keyboard-to-pointer selection, outside dismissal, and tabbing to
+another launcher without sending an unintended game shortcut.
+
 The canvas's SDL logical size and CSS display size can differ; use the
 renderer-provided SDL window size and SDL's normalized finger positions, not
 browser `pageX/pageY` or backing WebGL pixel dimensions. Physical hybrid

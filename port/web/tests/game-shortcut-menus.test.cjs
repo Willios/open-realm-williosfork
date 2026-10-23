@@ -171,3 +171,36 @@ test('keyboard activation and Escape dismissal use the same shortcut path', () =
   f.game.fire('keydown', {key:'Enter', target:f.quests, preventDefault() {}});
   assert.deepEqual(f.emitted.map(e => e.code), ['F9','F9']);
 });
+
+test('keyboard-open popup supports pointer selection and outside dismissal', () => {
+  const f = fixture();
+  const open = () => f.launchGame.fire('keydown', {key:'Enter', preventDefault() {}});
+  open();
+  f.setHit(f.quests);
+  f.doc.fire('pointerdown', {...f.pointer('pointerdown'), target:f.quests});
+  f.doc.fire('pointerup', f.pointer('pointerup'));
+  assert.equal(f.game.hidden, true);
+  assert.deepEqual(f.emitted.map(e => e.code), ['F9', 'F9']);
+
+  f.emitted.length = 0;
+  open();
+  f.setHit(null);
+  f.doc.fire('pointerdown', {...f.pointer('pointerdown'), target:f.canvas});
+  f.doc.fire('pointerup', f.pointer('pointerup'));
+  assert.equal(f.game.hidden, true);
+  assert.deepEqual(f.emitted, []);
+  f.drag(f.launchGroups, f.plain);
+  assert.deepEqual(f.emitted.map(e => e.code), ['Digit1', 'Digit1']);
+});
+
+test('tabbing out closes a keyboard popup without blocking another launcher', () => {
+  const f = fixture();
+  f.launchGame.fire('keydown', {key:'Enter', preventDefault() {}});
+  f.doc.fire('focusin', {target:f.quests});
+  assert.equal(f.game.hidden, false);
+  f.doc.fire('focusin', {target:f.launchGroups});
+  assert.equal(f.game.hidden, true);
+  assert.deepEqual(f.emitted, []);
+  f.drag(f.launchGroups, f.ctrl);
+  assert.deepEqual(f.emitted.map(e => e.code), ['ControlLeft', 'Digit1', 'Digit1', 'ControlLeft']);
+});

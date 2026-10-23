@@ -92,20 +92,24 @@
       if (selected) sendShortcut(selected);
     }
 
+    function capturePointer(button, event) {
+      // Capture applies to mouse/pen as well as touch, including a pointer
+      // taking over a popup that was opened from the keyboard.
+      if (typeof button.setPointerCapture === 'function') {
+        try { button.setPointerCapture(event.pointerId); } catch (_) {
+          // The document-level listeners still handle the gesture.
+        }
+      }
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+    }
+
     for (const [button, popup] of menus) {
       button.addEventListener('pointerdown', (event) => {
         if (active || (event.button !== undefined && event.button !== 0) ||
             event.isPrimary === false) return;
         open(button, popup, event.pointerId);
-        // Explicit capture keeps mouse and pen drags reliable too. For touch,
-        // browsers normally apply implicit capture to the pressed launcher.
-        if (typeof button.setPointerCapture === 'function') {
-          try { button.setPointerCapture(event.pointerId); } catch (_) {
-            // The document-level listeners still handle the gesture.
-          }
-        }
-        if (event.cancelable) event.preventDefault();
-        event.stopPropagation();
+        capturePointer(button, event);
       });
       // Keyboard and assistive input can open the same popup without a drag.
       button.addEventListener('keydown', (event) => {
@@ -137,6 +141,20 @@
         }
       });
     }
+    doc.addEventListener('pointerdown', (event) => {
+      if (!active || active.pointerId !== null) return;
+      // A keyboard-open popup has no owning pointer until one presses inside.
+      // Dismiss outside presses so it cannot block subsequent launcher drags.
+      if (!active.popup.contains(event.target)) { close(); return; }
+      if ((event.button !== undefined && event.button !== 0) || event.isPrimary === false) return;
+      active.pointerId = event.pointerId;
+      highlight(shortcutAt(event.clientX, event.clientY));
+      capturePointer(active.button, event);
+    }, true);
+    doc.addEventListener('focusin', (event) => {
+      if (active && active.pointerId === null && event.target !== active.button &&
+          !active.popup.contains(event.target)) close();
+    });
     doc.addEventListener('pointermove', pointerMove, true);
     doc.addEventListener('pointerup', pointerEnd, true);
     doc.addEventListener('pointercancel', pointerEnd, true);
