@@ -337,6 +337,7 @@ var openrealmAudio = { context: null, node: null, pending: null,
                        connecting: false, workletLoaded: false };
 var openrealmIOSAudio = openrealmCreateIOSAudioSession(window, document);
 function openrealmAudioUnlock() {
+  if (document.hidden) return;
   openrealmIOSAudio.unlock();
   if (!openrealmAudio.context) {
     try {
@@ -377,7 +378,13 @@ async function openrealmAudioConnect() {
     node.connect(openrealmAudio.context.destination);
     openrealmAudio.node = node;
     openrealmAudio.pending = null;
-    await openrealmAudio.context.resume();
+    // Resume may stay pending until Safari receives another user gesture.
+    // Ring attachment is complete: never hold the connection lock for it,
+    // and never restart playback after the page was hidden during addModule.
+    if (!document.hidden)
+      openrealmAudio.context.resume().catch(function (error) {
+        console.warn('OpenRealm browser sound resume deferred:', error);
+      });
   } catch (error) {
     // Preserve pending for retry on the next user gesture.
     console.warn('OpenRealm browser sound unavailable:', error);

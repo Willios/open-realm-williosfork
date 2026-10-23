@@ -166,3 +166,50 @@ test('detaching before worklet registration completes does not attach a stale ri
   await flush();
   assert.equal(f.nodes.length, 0);
 });
+
+test('worklet registration completing in a hidden page does not resume audio', async () => {
+  const f = bridgeFixture();
+  let release;
+  f.audio.audioWorklet.addModule = () => new Promise(resolve => {release = resolve;});
+  f.events.get('pointerdown')();
+  f.win.openrealmAudioAttach(new SharedArrayBuffer(128), 0, 8, 64, 68, 44100);
+  f.doc.hidden = true;
+  f.events.get('visibilitychange')();
+  release();
+  await flush();
+  assert.equal(f.nodes.length, 1);
+  assert.equal(f.audio.state, 'suspended');
+  f.doc.hidden = false;
+  f.events.get('visibilitychange')();
+  await flush();
+  assert.equal(f.audio.state, 'running');
+});
+
+test('an interrupted resume cannot block a replacement audio ring', async () => {
+  const f = bridgeFixture();
+  f.events.get('pointerdown')();
+  // Safari may leave resume pending until a future user gesture.
+  f.audio.resume = () => new Promise(() => {});
+  f.win.openrealmAudioAttach(new SharedArrayBuffer(128), 0, 8, 64, 68, 44100);
+  await flush();
+  assert.equal(f.nodes.length, 1);
+  f.win.openrealmAudioDetach();
+  const replacement = new SharedArrayBuffer(128);
+  f.win.openrealmAudioAttach(replacement, 0, 8, 64, 68, 48000);
+  await flush();
+  assert.equal(f.nodes.length, 2);
+  assert.equal(f.nodes[0].connected, false);
+  assert.equal(f.nodes[1].connected, true);
+  assert.equal(f.nodes[1].options.processorOptions.memory, replacement);
+  assert.equal(f.attempts(), 1);
+});
+
+test('synthetic shortcut input cannot resume a hidden page', async () => {
+  const f = bridgeFixture();
+  f.events.get('pointerdown')();
+  f.doc.hidden = true;
+  f.events.get('visibilitychange')();
+  f.events.get('keydown')();
+  await flush();
+  assert.equal(f.audio.state, 'suspended');
+});

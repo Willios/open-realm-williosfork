@@ -11,6 +11,18 @@
 > element). This can pause music playing in other apps. If Safari interrupts
 > audio, return to the page and tap the game once to resume it.
 
+Safari's playback-session behavior is described in
+[WebKit's silent-mode issue](https://bugs.webkit.org/show_bug.cgi?id=237322#c6).
+The browser audio bridge keeps worklet registration separate from context
+resumption: `AudioContext.resume()` may remain pending during an interruption,
+so it must not hold the connection lock and block a new engine audio ring after
+shutdown/restart. If worklet registration finishes while the page is hidden,
+the ring may attach but playback stays suspended until the page returns.
+Hidden-page shortcut events also cannot unlock audio. The bridge regressions in
+`port/web/tests/ios-audio-session.test.cjs` cover these cases, registration retry,
+and detach during registration; they do not replace an audible check on an iOS
+device with the silent switch enabled.
+
 This guide builds the playable browser engine. `make web-warcraft3-foundation`
 builds a separate WebGL smoke test and does not run Warcraft III.
 
