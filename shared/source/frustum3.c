@@ -85,6 +85,13 @@ static int Frustum_ContainsBoxCorners(frustum3_t const *frustum, box3_t const *b
 }
 
 int Frustum_ContainsBox(frustum3_t const *frustum, box3_t const *box, mat4_t const *matrix) {
+    /* Support endpoints require ordered finite bounds. Preserve the original
+     * corner semantics for malformed authored model boxes, as for AABBs. */
+    if (!isfinite(box->min.x) || !isfinite(box->min.y) || !isfinite(box->min.z) ||
+        !isfinite(box->max.x) || !isfinite(box->max.y) || !isfinite(box->max.z) ||
+        box->min.x > box->max.x || box->min.y > box->max.y || box->min.z > box->max.z)
+        return Frustum_ContainsBoxCorners(frustum, box, matrix);
+
     /* The homogeneous divide is not constant for perspective matrices.
      * Preserve their original eight-corner path (e.g. model-camera views). */
     if (matrix->v[3] != 0.0f || matrix->v[7] != 0.0f ||

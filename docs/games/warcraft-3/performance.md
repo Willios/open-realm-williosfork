@@ -753,8 +753,12 @@ local coordinates when the model matrix is affine. It transforms only that
 candidate corner, rather than all eight corners, to determine whether the
 box is wholly outside the plane. Reflection, rotation and nonuniform scale
 are supported; the original eight-corner algorithm handles projective
-matrices and plane-contact cases where float rounding could change the strict
-`> 0` test. This is not an occlusion or visibility-rule change. No persistent
+matrices, reversed or non-finite box endpoints, and plane-contact cases where
+float rounding could change the strict `> 0` test. Support-point selection
+requires ordered finite endpoints; the original corner path preserves authored
+boxes that violate that assumption. The regression
+`renderer_model.affine_frustum_box_preserves_inverted_bounds` covers all seven
+combinations of reversed axes. This is not an occlusion or visibility-rule change. No persistent
 cache, build-system flags, new diagnostics or save/network fields were added.
 
 `renderer_model.affine_frustum_box_matches_corner_test_across_rotations_and_boundaries`

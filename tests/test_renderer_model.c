@@ -235,6 +235,23 @@ TEST(renderer_model, affine_frustum_box_matches_corner_test_across_rotations_and
          renderer_test_frustum_box_corners(&frustum, &box, &camera));
 }
 
+TEST(renderer_model, affine_frustum_box_preserves_inverted_bounds) {
+    mat4_t matrix;
+    frustum3_t frustum;
+    Matrix4_identity(&matrix);
+    Frustum_Calculate(&matrix, &frustum);
+    /* An authored box can have reversed endpoints. The old corner test
+     * visits both endpoints; the support-point shortcut requires ordering. */
+    for (unsigned axes = 1; axes < 8; axes++) {
+        box3_t box = { .min = {-2, -2, -2}, .max = {2, 2, 2} };
+        if (axes & 1) { box.min.x = 2; box.max.x = -2; }
+        if (axes & 2) { box.min.y = 2; box.max.y = -2; }
+        if (axes & 4) { box.min.z = 2; box.max.z = -2; }
+        T_EQ(renderer_test_frustum_box_corners(&frustum, &box, &matrix), 1);
+        T_EQ(Frustum_ContainsBox(&frustum, &box, &matrix), 1);
+    }
+}
+
 static char shader_src[16384];
 static void reset_shader(void);
 static rect_t backdrop_uv, backdrop_rect;
