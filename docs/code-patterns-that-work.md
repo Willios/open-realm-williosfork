@@ -118,6 +118,25 @@ sscanf(token, "%f,%f,%f", &x, &y, &z);
 
 Not character walking, not separator loops. The format string IS the parser.
 
+## Intrusive typed components over fixed pools
+
+WC3 attaches optional per-entity records to `edict_t.components` instead of adding one pointer per behavior. Each record
+type puts a `component_t { uint32_t id; component_t *next; }` header first, which `COMPONENT_ALLOC` checks with
+`_Static_assert(offsetof(type, component) == 0)`. Records are allocated from a static typed pool, and one registry row
+maps each exact `COMPONENT_*` ID to its allocator and release function:
+
+```c
+construction_t *site = G_GetConstruction(building);   /* NULL-safe read, never allocates */
+research_t *study = G_AddComponent(item, COMPONENT_RESEARCH); /* idempotent attach */
+G_FreeResearch(item);                                  /* unlink, then release the slot */
+```
+
+IDs name exact layouts. They are not class or family masks, and they are separate from authored rawcodes. Lookup walks a
+short list, so cache the pointer once per operation and re-read it after any call that may release the record. Test
+builds overwrite released slots with `0xa5`, so a pointer held across a release faults in the suite instead of reading
+stale data. Saves write the payload with its ID and clear the link; restore checks the ID and reattaches. Details:
+[pooled entity state](games/warcraft-3/pooled-entity-state.md).
+
 ## Function tables for cross-module boundaries
 
 Renderer ↔ Game ↔ UI boundaries use function tables (`ri.*`, `gi.*`, `mi.*`). Each module exports a `*_GetAPI(import_t)` function. This is the Quake 2/3 pattern — no direct includes across module boundaries, no global function calls.
