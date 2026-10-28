@@ -53,13 +53,37 @@ BZ_SIMPLE_SPELL_PROC(AbilitySpiritBeast) { S_SummonAbilityUnits(caster, spell->c
 BZ_SIMPLE_SPELL_PROC(AbilityReincarnationCampaign) { campaign_toggle_execute(caster, st, spell); }
 BZ_SIMPLE_SPELL_PROC(AbilityFeedbackCampaign) { campaign_toggle_execute(caster, st, spell); }
 BZ_SIMPLE_SPELL_PROC(AbilityAbolishMagic) {
-    uint32_t level = S_SpellLevel(caster, spell->code), count = 0; float area = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
-    FILTER_EDICTS(target, count < (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1)) && S_SpellIsAliveTarget(target) && S_SpellIsEnemy(caster, target) && Vector2_distance(&target->s.origin2, &st.point) <= area) {
-        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) if (unit_status_can_magic_dispel(target->unit_state->statuses + i))
-            unit_removestatus_deferred(target, target->unit_state->statuses + i, STATUS_REMOVE_DISPEL);
-        unit_refreshstatusflags(target);
-        G_InvalidateUnitInfoPanel(target);
-        count++;
+    uint32_t level = S_SpellLevel(caster, spell->code), count = 0;
+    float area = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
+    float max_targets = MAX(1.0f, S_SpellData(spell->code, level, 1));
+    float summon_damage = S_SpellData(spell->code, level, 2);
+    FILTER_EDICTS(target, target != caster && count < (uint32_t)max_targets &&
+                  S_SpellIsAliveTarget(target) &&
+                  Vector2_distance(&target->s.origin2, &st.point) <= area) {
+        bool friendly = S_SpellIsFriend(caster, target), affected = false;
+        uint32_t removed = 0;
+        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) {
+            heroabilitystatus_t *status = target->unit_state->statuses + i;
+            uint32_t polarity = status->buff_flags & (WC3_STATUS_BUFF_POSITIVE | WC3_STATUS_BUFF_NEGATIVE);
+            bool should_dispel = polarity == WC3_STATUS_BUFF_POSITIVE ||
+                                 (friendly && polarity == WC3_STATUS_BUFF_NEGATIVE);
+            if (should_dispel && unit_status_can_magic_dispel(status)) {
+                unit_removestatus_deferred(target, status, STATUS_REMOVE_DISPEL);
+                removed++;
+            }
+        }
+        if (removed) {
+            unit_refreshstatusflags(target);
+            G_InvalidateUnitInfoPanel(target);
+            affected = true;
+        }
+        if (!friendly && summon_damage > 0.0f && (target->owner || target->summon_ability ||
+            (target->aiflags & AI_ILLUSION)) && !S_SummonIsDispelImmune(target))
+            affected |= S_SpellDamage(target, caster, (int)summon_damage);
+        if (affected) {
+            G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, target, NULL, true);
+            count++;
+        }
     }
 }
 cstring_t const submerge_orders[] = { "submerge", "unsubmerge", NULL };
