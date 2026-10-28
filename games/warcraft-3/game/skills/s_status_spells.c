@@ -28,8 +28,12 @@ static void status_execute(edict_t *caster, spellTarget_t st, abilityitem_t cons
     if (!st.entity || !buff) return;
     heroabilitystatus_t *status = S_SpellApplyTimedTargetStatus(st.entity, spell->code, level, buff,
                                   S_SpellResistantDuration(spell->code, level, st.entity));
-    if (status && (status->code == MAKEFOURCC('B','c','r','i') ||
-                   status->code == MAKEFOURCC('B','N','s','o')))
+    if (status && status->code == MAKEFOURCC('B','c','r','i')) {
+        status->buff_flags |= WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL |
+                              WC3_STATUS_BUFF_TARGET_ART;
+        unit_status_enabletargetart(st.entity, status, "origin");
+    }
+    else if (status && status->code == MAKEFOURCC('B','N','s','o'))
         status->buff_flags |= WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL;
 }
 

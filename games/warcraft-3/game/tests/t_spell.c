@@ -6002,7 +6002,17 @@ TEST(wc3_spell, cripple_and_soul_burn_apply_status_and_read_authored_consumers) 
 		"C;Y3;X1;K\"ANso\"\nC;Y3;X2;K\"ANso\"\nC;Y3;X4;K\"10\"\nC;Y3;X5;K\"10\"\n"
 		"C;Y3;X6;K\"5\"\nC;Y3;X8;K\"BNso\"\nC;Y3;X9;K\"0.25\"\n"
 		"C;Y4;X1;K\"Atau\"\nC;Y4;X2;K\"Atau\"\nC;Y4;X10;K\"400\"\nE\n";
+	const char buff_slk[] =
+		"ID;PWXL;N;EBB;Y2;X13\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"comments\"\n"
+		"C;Y1;X4;K\"isEffect\"\nC;Y1;X5;K\"version\"\nC;Y1;X6;K\"useInEditor\"\n"
+		"C;Y1;X7;K\"sort\"\nC;Y1;X8;K\"race\"\nC;Y1;X9;K\"Buffart\"\n"
+		"C;Y1;X10;K\"Bufftip\"\nC;Y1;X11;K\"Buffubertip\"\nC;Y1;X12;K\"TargetArt\"\n"
+		"C;Y1;X13;K\"SpecialArt\"\n"
+		"C;Y2;X1;K\"Bcri\"\nC;Y2;X2;K\"Bcri\"\nC;Y2;X9;K\"ReplaceableTextures\\CommandButtons\\BTNCripple.blp\"\n"
+		"C;Y2;X12;K\"Abilities\\Spells\\Undead\\Cripple\\CrippleTarget.mdx\"\nE\n";
 	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	slkTestData_t *buff_rows = parse_slk_string(buff_slk), *old_buff = G_SetSLKRows("AbilityBuffData", buff_rows);
 	edict_t *caster = make_hero(MAKEFOURCC('h','p','r','i'), 300, 300, 0, 0);
 	edict_t *enemy = alloc_test_unit(MAKEFOURCC('o','g','r','u'), 500, 0);
 	abilityitem_t cri = S_AbilityItem(FS_SLKKey("Acri"));
@@ -6016,6 +6026,19 @@ TEST(wc3_spell, cripple_and_soul_burn_apply_status_and_read_authored_consumers) 
 	T_EQ(tau.ability->proc, CAbilityTaunt);
 	test_execute_code(caster, "Acri", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = enemy));
 	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','c','r','i')));
+	T_STREQ(G_AbilityBuffArt(MAKEFOURCC('B','c','r','i')),
+	        "ReplaceableTextures\\CommandButtons\\BTNCripple.blp");
+	T_STREQ(G_AbilityEffectArt(MAKEFOURCC('B','c','r','i'), WC3_EFFECT_TARGET, 0),
+	        "Abilities\\Spells\\Undead\\Cripple\\CrippleTarget.mdx");
+	T_ASSERT(unit_findstatus(enemy, MAKEFOURCC('B','c','r','i'))->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+	{
+		uint32_t target_art_count = 0;
+		FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','c','r','i') && effect->goalentity == enemy) {
+			T_EQ(effect->s.model, G_RegisterModel("Abilities\\Spells\\Undead\\Cripple\\CrippleTarget.mdx"));
+			target_art_count++;
+		}
+		T_EQ(target_art_count, 1u);
+	}
 	T_FEQ(S_CrippleMoveReduction(enemy), 0.5f, 0.001f);
 	T_FEQ(unit_status_modifier_total(enemy, WC3_STATUS_MOD_MOVE_SPEED_PERCENT), -0.5f, 0.001f);
 	T_FEQ(S_CrippleAttackReduction(enemy), 0.4f, 0.001f);
@@ -6027,6 +6050,7 @@ TEST(wc3_spell, cripple_and_soul_burn_apply_status_and_read_authored_consumers) 
 	test_execute_code(caster, "Atau", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
 
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+	G_SetSLKRows("AbilityBuffData", old_buff); free_slk_rows(buff_rows);
 }
 
 TEST(wc3_spell, cripple_roc_empty_buffid_applies_bcri) {

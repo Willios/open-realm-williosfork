@@ -372,7 +372,13 @@ cstring_t G_AbilityEffectArt(uint32_t ability_id, wc3EffectType_t type, uint32_t
 }
 
 cstring_t G_AbilityBuffArt(uint32_t buff_id) {
+    char name[5] = { 0 };
+    cstring_t art;
     AbilityBuffData_t const *row = G_AbilityBuffData(buff_id);
+
+    memcpy(name, &buff_id, 4);
+    art = FindConfigValue(name, "Buffart");
+    if (art && *art && strcmp(art, "-") && strcmp(art, "_")) return art;
     if (row->id == buff_id && row->buffArt && *row->buffArt &&
         strcmp(row->buffArt, "-") && strcmp(row->buffArt, "_")) return row->buffArt;
     /* AbilityBuffData names this row Buhf, while Auhf's TFT BuffID is BUhf. */
