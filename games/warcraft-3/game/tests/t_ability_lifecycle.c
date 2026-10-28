@@ -572,7 +572,6 @@ TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
     slkTestData_t *ability_rows, *old_ability, *ui_rows, *old_ui;
     slkTestData_t *data_rows, *old_data, *balance_rows, *old_balance;
     edict_t *caster;
-    vec2_t const target = {100, 100};
     uint32_t owl_count = 0;
 
     reset_entities();
@@ -586,14 +585,13 @@ TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
     caster = review_unit(0, 0);
     caster->data.UnitAbilities = &scout_abilities;
 
-    T_ASSERT(S_CastPointTargetSpell(caster, FS_SLKKey("AEst"), &target));
+    T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AEst")));
     FILTER_EDICTS(unit, unit->inuse && unit->owner == caster &&
                   unit->summon_ability == FS_SLKKey("AEst") &&
                   unit->class_id == MAKEFOURCC('n','o','w','l')) {
         T_EQ(unit->s.player, caster->s.player);
         T_EQ(G_UnitStatusLevel(unit, MAKEFOURCC('B','T','L','F')), 1);
-        T_FEQ(unit->s.origin2.x, target.x, 0.001f);
-        T_FEQ(unit->s.origin2.y, target.y, 0.001f);
+        T_ASSERT(Vector2_distance(&unit->s.origin2, &caster->s.origin2) <= 128.0f);
         owl_count++;
     }
     T_EQ(owl_count, 1);
