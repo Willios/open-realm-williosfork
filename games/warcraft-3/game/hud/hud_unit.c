@@ -489,6 +489,31 @@ static void G_AddPillageIndicator(edict_t *ent, gameCommandButton_t *buttons,
     if (*count > index) buttons[index].disabled = 1;
 }
 
+static void G_AddDiseaseCloudIndicator(edict_t *ent, gameCommandButton_t *buttons,
+                                       uint8_t max_buttons, uint8_t *count) {
+    static uint32_t const research = MAKEFOURCC('R', 'u', 'p', 'c');
+    static uint32_t const disease_cloud = MAKEFOURCC('A', 'a', 'p', 'l');
+    static uint32_t const abomination_disease_cloud = MAKEFOURCC('A', 'a', 'p', '1');
+    gameClient_t *owner;
+    uint32_t ability;
+    char code[5] = {0};
+    uint8_t index;
+
+    if (!ent || !buttons || !count || *count >= max_buttons) return;
+    ability = G_UnitAbilityLevel(ent, abomination_disease_cloud) ? abomination_disease_cloud : disease_cloud;
+    if (!G_UnitAbilityLevel(ent, ability) ||
+        G_HasCommandRawcode(buttons, *count, ability) ||
+        G_HasCommandRawcode(buttons, *count, disease_cloud) ||
+        G_HasCommandRawcode(buttons, *count, abomination_disease_cloud)) return;
+    owner = G_GetPlayerClientByNumber(ent->s.player);
+    if (!owner || G_GetPlayerTechResearchedLevel(owner, research) <= 0) return;
+
+    memcpy(code, &ability, 4);
+    index = *count;
+    G_AddCommandButton(ent, buttons, max_buttons, count, code, false, 0);
+    if (*count > index) buttons[index].disabled = 1;
+}
+
 static void G_AddPassiveEffectIndicator(edict_t *ent, gameCommandButton_t *buttons,
                                         uint8_t max_buttons, uint8_t *count,
                                         uint32_t owned_ability, uint32_t button_ability) {
@@ -754,6 +779,7 @@ uint8_t G_GetCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t 
     }
     G_AddMagicSentryIndicator(ent, buttons, max_buttons, &count);
     G_AddPillageIndicator(ent, buttons, max_buttons, &count);
+    G_AddDiseaseCloudIndicator(ent, buttons, max_buttons, &count);
     G_AddPassiveEffectIndicators(ent, buttons, max_buttons, &count);
     FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
         heroability_t const *ha = ent->unit_state->ranks + i;
