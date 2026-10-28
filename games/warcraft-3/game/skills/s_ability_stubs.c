@@ -77,13 +77,30 @@ BZ_SIMPLE_SPELL_PROC(AbilityManaBurn) {
  * Ubertip="Sacrifices a friendly non-Hero unit, converting a percentage of its hit points into mana for the caster."
  * Dark Ritual converts the authored fraction of an allied non-hero's maximum
  * life into caster mana, then uses the normal damage/death path to sacrifice it. */
-BZ_SIMPLE_SPELL_PROC(AbilityDarkRitual) {
+static void AbilityDarkRitual_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
     edict_t *target = st.entity;
     uint32_t level = S_SpellLevel(caster, spell->code);
     float mana = target->health.max_value * S_SpellData(spell->code, level, 1);
 
     caster->mana.value = MIN(caster->mana.max_value, caster->mana.value + mana);
     T_Damage(target, caster, (uint32_t)MAX(1.0f, target->health.value));
+}
+
+BZ_ABILITY_PROC(CAbilityDarkRitual) {
+    abilityitem_t const *spell = call ? call->item : NULL;
+    if (msg == A_COMMAND) {
+        edict_t *clent = call ? call->entity : NULL;
+        edict_t *caster = clent && clent->client ? G_GetMainSelectedUnit(clent->client) : ent;
+        if (caster && caster->mana.max_value > 0.0f && caster->mana.value >= caster->mana.max_value) {
+            G_ShowCommandErrorKey(clent, "Manamaxed", "Already at full mana.");
+            return true;
+        }
+    } else if (msg == A_EXECUTE) {
+        spellTarget_t target = call && call->target ? *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+        AbilityDarkRitual_Execute(ent, target, spell);
+        return true;
+    }
+    return CAbilitySimpleSpell(ent, msg, call);
 }
 
 /* Name=Frost Armor

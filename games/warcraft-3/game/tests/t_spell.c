@@ -107,6 +107,14 @@ static void spell_panel_test_write(pfWriteType_t type, void const *data) {
 
 static void spell_panel_test_unicast(edict_t *ent) { (void)ent; }
 
+static char dark_ritual_command_error[64];
+static void capture_dark_ritual_command_error(pfWriteType_t type, void const *data) {
+    if (type != PF_UIFRAME || !data) return;
+    uiFrame_t const *frame = data;
+    if (frame->flags.type == FT_STRING && frame->text && frame->textLength < sizeof(dark_ritual_command_error))
+        strlcpy(dark_ritual_command_error, frame->text, sizeof(dark_ritual_command_error));
+}
+
 edict_t *alloc_test_unit(uint32_t class_id, float x, float y);
 void AbilitySummonMisha_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell);
 void reset_entities(void);
@@ -114,6 +122,7 @@ void setup_test_world(void);
 slkTestData_t *parse_slk_string(char const *slk_text);
 void free_slk_rows(slkTestData_t *rows);
 void SV_Physics_Toss(edict_t *ent);
+static edict_t *make_hero(uint32_t class_id, float hp, float mana, float x, float y);
 
 static intptr_t test_ability_message(edict_t *ent, abilityMsg_t msg, abilityitem_t const *item, spellTarget_t const *target) {
     abilityCall_t call = MAKE(abilityCall_t, .item = item, .target = target);
@@ -123,6 +132,39 @@ static intptr_t test_ability_message(edict_t *ent, abilityMsg_t msg, abilityitem
 static intptr_t test_execute_code(edict_t *ent, cstring_t code, spellTarget_t target) {
     abilityitem_t item = S_AbilityItem(FS_SLKKey(code));
     return test_ability_message(ent, A_EXECUTE, &item, &target);
+}
+
+TEST(wc3_spell, dark_ritual_full_mana_command_shows_error_without_targeting) {
+    static UnitAbilities_t const abilities = { .abilList = "AUdr" };
+    edict_t *caster, *clent;
+    gameClient_t *client = &game.clients[0];
+    abilityitem_t item = S_AbilityItem(FS_SLKKey("AUdr"));
+    abilityCall_t call;
+    void (*old_write)(pfWriteType_t, void const *) = gi.Write;
+    void (*old_unicast)(edict_t *) = gi.unicast;
+
+    reset_entities();
+    setup_test_world();
+    clent = &g_edicts[0];
+    call = (abilityCall_t){ .item = &item, .entity = clent };
+    caster = make_hero(MAKEFOURCC('U','l','i','c'), 500, 300, 0, 0);
+    caster->data.UnitAbilities = &abilities;
+    caster->mana.value = caster->mana.max_value = 300.0f;
+    caster->s.player = client->ps.number = 0;
+    clent->client = client;
+    G_SetClientConnected(clent, true);
+    G_SelectEntity(client, caster);
+    dark_ritual_command_error[0] = '\0';
+    gi.Write = capture_dark_ritual_command_error;
+    gi.unicast = spell_panel_test_unicast;
+
+    T_ASSERT(S_AbilityMessage(caster, A_COMMAND, &call));
+    T_STREQ(dark_ritual_command_error, "Already at full mana.");
+    T_NULL(client->menu.on_entity_selected);
+    T_FEQ(caster->mana.value, caster->mana.max_value, 0.001f);
+
+    gi.Write = old_write;
+    gi.unicast = old_unicast;
 }
 
 static const char slk_spell_data[] =
