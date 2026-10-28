@@ -904,6 +904,9 @@ TEST(wc3_spell, hero_passives_use_authored_data_and_runtime_consumers) {
 	edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
 	level.time = 0;
 	source->s.player = target->s.player = 0;
+	target->unit_state->attack1.type = ATK_NORMAL;
+	target->unit_state->attack1.weapon = WPN_NORMAL;
+	target->unit_state->attack1.range = 90.0f;
 	source->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','H','a','b'), .level = 1);
 	source->unit_state->ranks[1] = MAKE(heroability_t, .code = MAKEFOURCC('A','U','a','u'), .level = 1);
 	source->unit_state->ranks[2] = MAKE(heroability_t, .code = MAKEFOURCC('A','U','a','v'), .level = 1);
@@ -1651,6 +1654,36 @@ static uint32_t hero_aura_art_count(edict_t *unit, uint32_t base, uint32_t model
             fx->summon_ability == base && (uint32_t)fx->s.model == model) count++;
     }
     return count;
+}
+
+TEST(wc3_spell, vampiric_aura_status_only_applies_to_melee_units) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X7\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+        "C;Y1;X4;K\"Area1\"\nC;Y1;X5;K\"DataA1\"\nC;Y1;X6;K\"BuffID1\"\nC;Y1;X7;K\"levels\"\n"
+        "C;Y2;X1;K\"AUav\"\nC;Y2;X2;K\"AUav\"\nC;Y2;X3;K\"ground,air,friend,self,organic\"\n"
+        "C;Y2;X4;K\"500\"\nC;Y2;X5;K\"0.2\"\nC;Y2;X6;K\"BUav\"\nC;Y2;X7;K\"1\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *source = make_hero(MAKEFOURCC('U','d','e','a'), 500, 200, 0, 0);
+    edict_t *melee = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+    edict_t *ranged = alloc_test_unit(MAKEFOURCC('h','r','i','f'), 100, 0);
+    source->s.player = melee->s.player = ranged->s.player = 0;
+    source->targtype = melee->targtype = ranged->targtype = TARG_GROUND;
+    source->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','U','a','v'), .level = 1);
+    melee->unit_state->attack1.type = ATK_NORMAL;
+    melee->unit_state->attack1.weapon = WPN_NORMAL;
+    melee->unit_state->attack1.range = 90.0f;
+    ranged->unit_state->attack1.type = ATK_PIERCE;
+    ranged->unit_state->attack1.weapon = WPN_INSTANT;
+    ranged->unit_state->attack1.range = 400.0f;
+
+    S_UpdateHeroAuraEffects(melee);
+    S_UpdateHeroAuraEffects(ranged);
+    T_EQ(S_VampiricAuraBuff(melee), MAKEFOURCC('B','U','a','v'));
+    T_EQ(S_VampiricAuraBuff(ranged), 0u);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
 }
 
 #if BZ_COMPAT_WORKAROUNDS
