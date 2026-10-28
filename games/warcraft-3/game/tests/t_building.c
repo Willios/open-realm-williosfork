@@ -1455,6 +1455,26 @@ TEST(wc3_building, passive_true_sight_and_spell_immunity_show_disabled_indicator
     }
 }
 
+TEST(wc3_building, dryad_slow_poison_shows_disabled_passive_indicator) {
+    static UnitAbilities_t const dryad_abilities = { .abilList = "Aadm,Amim,Aspo,Aien,Ault" };
+    gameCommandButton_t buttons[16];
+    edict_t *dryad;
+    uint8_t count;
+    bool found = false;
+
+    reset_entities();
+    setup_test_world();
+    dryad = alloc_test_unit(MAKEFOURCC('e','d','r','y'), 0, 0);
+    dryad->data.UnitAbilities = (UnitAbilities_t *)&dryad_abilities;
+    count = G_GetCommandButtons(dryad, buttons, sizeof(buttons) / sizeof(buttons[0]));
+    FOR_LOOP(i, count) if (!strcmp(buttons[i].command, "Aspo")) {
+        found = true;
+        T_ASSERT(buttons[i].disabled);
+        T_STREQ(buttons[i].art, "ReplaceableTextures\\PassiveButtons\\PASBTNSlowPoison.blp");
+    }
+    T_ASSERT(found);
+}
+
 TEST(wc3_building, naga_production_buttons_have_distinct_command_card_cells) {
     static uint32_t const producers[] = {
         MAKEFOURCC('n','n','t','t'), MAKEFOURCC('n','n','s','g'), MAKEFOURCC('n','n','s','a')

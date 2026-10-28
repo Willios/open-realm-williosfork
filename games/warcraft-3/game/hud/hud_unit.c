@@ -530,6 +530,7 @@ static void G_AddPassiveEffectIndicator(edict_t *ent, gameCommandButton_t *butto
 
 static void G_AddPassiveEffectIndicators(edict_t *ent, gameCommandButton_t *buttons,
                                          uint8_t max_buttons, uint8_t *count) {
+    static uint32_t const slow_poison[] = { MAKEFOURCC('A','s','p','o') };
     static uint32_t const true_sight[] = {
         MAKEFOURCC('A','g','y','v'), /* Flying Machine True Sight */
         MAKEFOURCC('A','t','r','u')  /* Shade True Sight */
@@ -541,6 +542,8 @@ static void G_AddPassiveEffectIndicators(edict_t *ent, gameCommandButton_t *butt
         MAKEFOURCC('A','C','m','3')  /* Dragon Magic Immunity */
     };
 
+    FOR_LOOP(i, sizeof(slow_poison) / sizeof(slow_poison[0]))
+        G_AddPassiveEffectIndicator(ent, buttons, max_buttons, count, slow_poison[i], slow_poison[i]);
     FOR_LOOP(i, sizeof(true_sight) / sizeof(true_sight[0]))
         G_AddPassiveEffectIndicator(ent, buttons, max_buttons, count, true_sight[i], true_sight[i]);
     /* Adtg aliases Atru but has no authored button art of its own. Show the

@@ -32,6 +32,10 @@ LightningEffect=MBUR
 [Aroa]
 Casterart=TestUI\Models\anim_oneshot.mdx
 
+[Aspo]
+Art=ReplaceableTextures\PassiveButtons\PASBTNSlowPoison.blp
+Buttonpos=1,2
+
 [Bspo]
 Buffart=ReplaceableTextures\CommandButtons\BTNSlowPoison.blp
 Targetart=TestUI\Models\anim_pulse.mdx
