@@ -5949,15 +5949,17 @@ TEST(wc3_spell, melee_status_roc_empty_buffid_applies_default_fourcc) {
 
 /* targs have no allegiance token; TFT BuffID BUhf must drive the attack/drain consumers. */
 TEST(wc3_spell, unholy_frenzy_accepts_enemy_and_reads_tft_buffid) {
+	/* Retail AbilityData: +75% attack rate, 4 HP/sec drain, 45-second duration. */
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X10\n"
 		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
 		"C;Y1;X4;K\"Cost1\"\nC;Y1;X5;K\"Dur1\"\nC;Y1;X6;K\"HeroDur1\"\n"
 		"C;Y1;X7;K\"DataA1\"\nC;Y1;X8;K\"DataB1\"\nC;Y1;X9;K\"BuffID1\"\nC;Y1;X10;K\"Rng1\"\n"
 		"C;Y2;X1;K\"Auhf\"\nC;Y2;X2;K\"Auhf\"\nC;Y2;X3;K\"air,ground,organic\"\n"
-		"C;Y2;X4;K\"11\"\nC;Y2;X5;K\"15\"\nC;Y2;X6;K\"15\"\n"
-		"C;Y2;X7;K\"0.5\"\nC;Y2;X8;K\"2\"\nC;Y2;X9;K\"BUhf\"\nC;Y2;X10;K\"500\"\nE\n";
+		"C;Y2;X4;K\"50\"\nC;Y2;X5;K\"45\"\nC;Y2;X6;K\"45\"\n"
+		"C;Y2;X7;K\"0.75\"\nC;Y2;X8;K\"4\"\nC;Y2;X9;K\"BUhf\"\nC;Y2;X10;K\"500\"\nE\n";
 	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	UnitBalance_t enemy_balance = { .healthRegenType = "none" };
 	edict_t *caster = make_hero(MAKEFOURCC('u','n','e','c'), 300, 300, 0, 0);
 	edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
 	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
@@ -5967,11 +5969,13 @@ TEST(wc3_spell, unholy_frenzy_accepts_enemy_and_reads_tft_buffid) {
 	G_InitUnitOrders(caster);
 	caster->svflags |= SVF_MONSTER; enemy->svflags |= SVF_MONSTER;
 	caster->targtype = enemy->targtype = TARG_GROUND;
+	enemy->data.UnitBalance = &enemy_balance;
 	caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','u','h','f'), .level = 1);
 	caster->mana.value = caster->mana.max_value = 100;
 	enemy->health.value = enemy->health.max_value = 200;
 	T_ASSERT(S_CastUnitTargetSpell(caster, MAKEFOURCC('A','u','h','f'), enemy));
 	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','U','h','f')));
+	T_EQ(unit_findstatus(enemy, MAKEFOURCC('B','U','h','f'))->duration_ms, 45000u);
 	T_EQ(G_UnitStatusBuffCode(unit_findstatus(enemy, MAKEFOURCC('B','U','h','f'))), MAKEFOURCC('B','u','h','f'));
 	T_STREQ(G_AbilityBuffArt(MAKEFOURCC('B','U','h','f')),
 	        "ReplaceableTextures\\CommandButtons\\BTNUnholyFrenzy.blp");
@@ -5986,8 +5990,14 @@ TEST(wc3_spell, unholy_frenzy_accepts_enemy_and_reads_tft_buffid) {
 		}
 		T_EQ(target_art_count, 1u);
 	}
-	T_FEQ(unit_status_modifier_total(enemy, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT), 0.5f, 0.001f);
-	T_FEQ(S_UnholyFrenzyLifeDrain(enemy), 2.0f, 0.001f);
+	T_FEQ(unit_status_modifier_total(enemy, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT), 0.75f, 0.001f);
+	T_FEQ(S_UnholyFrenzyLifeDrain(enemy), 4.0f, 0.001f);
+	enemy->unit_state->attack1.cooldown = 1.0f;
+	enemy->unit_state->attack1.damagePoint = 0.3f;
+	attack_melee(enemy);
+	T_FEQ(enemy->wait, 0.3f / 1.75f, 0.001f);
+	FOR_LOOP(i, 10) G_RunEntity(enemy);
+	T_FEQ(enemy->health.value, 196.0f, 0.001f);
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
