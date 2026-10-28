@@ -670,6 +670,12 @@ static void possession_takeover(edict_t *caster, edict_t *target) {
     possession_select_target(target);
 }
 
+static void possession_projectile_death_think(edict_t *missile) {
+    M_MoveFrame(missile);
+}
+
+static umove_t possession_projectile_death_move = { "death", NULL, G_FreeEdict, CAbilityPossession };
+
 static void possession_projectile_hit(edict_t *missile) {
     edict_t *caster = S_SpellProjectileOwner(missile);
     edict_t *target = S_SpellProjectileTarget(missile);
@@ -677,17 +683,36 @@ static void possession_projectile_hit(edict_t *missile) {
     if (caster && !M_IsDead(caster) && target &&
         possession_validate(caster, (spellTarget_t){ .type = SPELL_TARGET_UNIT, .entity = target }, &spell))
         possession_takeover(caster, target);
-    G_FreeEdict(missile);
+    if (G_GetAnimation(missile->s.model, "Death")) {
+        missile->goalentity = NULL;
+        missile->movetype = MOVETYPE_NONE;
+        missile->think = possession_projectile_death_think;
+        missile->animation_speed = 1.0f;
+        unit_setmove(missile, &possession_projectile_death_move);
+    } else {
+        G_FreeEdict(missile);
+    }
 }
 
 static umove_t possession_projectile_move = { "stand", NULL, possession_projectile_hit, CAbilityPossession };
 
 static void possession_execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
+    edict_t *missile;
     if (!st.entity) return;
-    if (!S_SpawnUnitTargetSpellMissile(caster, spell->code, st.entity,
-                                      possession_missile_speed(spell->code),
-                                      &possession_projectile_move))
+    missile = S_SpawnUnitTargetSpellMissile(caster, spell->code, st.entity,
+                                            possession_missile_speed(spell->code),
+                                            &possession_projectile_move);
+    if (!missile) {
         possession_takeover(caster, st.entity);
+        return;
+    }
+    /* The authored missile has a short Birth sequence before its Stand travel
+     * loop. The projectile physics advances it and transitions to Stand. */
+    animation_t const *birth = G_GetAnimation(missile->s.model, "Birth");
+    if (birth) {
+        missile->animation = birth;
+        missile->s.frame = birth->interval[0];
+    }
 }
 
 static void possession_strip_channel(edict_t *thinker) {

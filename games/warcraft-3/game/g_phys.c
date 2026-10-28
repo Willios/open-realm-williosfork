@@ -85,6 +85,16 @@ static void G_AdvanceProjectilePresentation(edict_t *ent) {
     step = (uint32_t)MAX(1.0f, FRAMETIME);
     next = ent->s.frame + step;
     if (next >= anim->interval[1]) {
+        /* An authored projectile Birth plays once before its Stand travel
+         * loop. Ordinary missiles still start directly in Stand. */
+        if (G_AnimationHasPrimary(anim, "birth")) {
+            animation_t const *stand = G_GetAnimation(ent->s.model, "Stand");
+            if (stand) {
+                ent->animation = stand;
+                ent->s.frame = stand->interval[0];
+                return;
+            }
+        }
         if (anim->flags & 1)
             next = anim->interval[1] - 1;
         else

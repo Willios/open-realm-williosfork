@@ -66,11 +66,21 @@ static edict_t *pos_missile(edict_t *caster, uint32_t code) {
     return NULL;
 }
 
-static void pos_advance_missile(edict_t *caster, uint32_t code) {
+static edict_t *pos_impact_missile(edict_t *caster, uint32_t code) {
     edict_t *missile = pos_missile(caster, code);
     uint32_t frame;
-    for (frame = 0; missile && missile->inuse && frame < 32; frame++)
+    for (frame = 0; missile && missile->inuse && missile->movetype == MOVETYPE_FLYMISSILE && frame < 32; frame++)
         SV_Physics_Toss(missile);
+    return missile;
+}
+
+static void pos_finish_missile(edict_t *missile) {
+    uint32_t frame;
+    for (frame = 0; missile && missile->inuse && frame < 32; frame++) M_MoveFrame(missile);
+}
+
+static void pos_advance_missile(edict_t *caster, uint32_t code) {
+    pos_finish_missile(pos_impact_missile(caster, code));
 }
 
 /* Fill the caller's POSFIX. Returning a copy would dangle UnitBalance pointers
@@ -136,18 +146,23 @@ TEST(wc3_spell, possession_apos_takes_over_and_consumes_caster) {
     T_FEQ(fix.caster->mana.value, 60, 0.001f);
     missile = pos_missile(fix.caster, BZ_APOS);
     T_NOT_NULL(missile);
-    T_EQ(missile->s.model, G_RegisterModel("TestUI\\Models\\anim_pulse.mdx"));
+    T_EQ(missile->s.model, G_RegisterModel("TestUI\\Models\\anim_projectile.mdx"));
     T_FEQ(missile->velocity, 1.5f, 0.001f);
+    T_STREQ(missile->animation->name, "Birth");
     T_ASSERT(!M_IsDead(fix.caster));
     T_EQ(fix.enemy->s.player, 1);
-    pos_advance_missile(fix.caster, BZ_APOS);
+    missile = pos_impact_missile(fix.caster, BZ_APOS);
     T_EQ(fix.enemy->s.player, 0);
     T_ASSERT(M_IsDead(fix.caster));
     T_ASSERT(!M_IsDead(fix.enemy));
+    T_ASSERT(missile->inuse);
+    T_STREQ(missile->animation->name, "Death");
     T_ASSERT(pos_has_attached_effect(fix.caster, caster_effect));
     T_ASSERT(pos_has_attached_effect(fix.enemy, target_effect));
     T_ASSERT(G_IsEntitySelected(client, fix.enemy));
     T_ASSERT(!G_IsEntitySelected(client, fix.caster));
+    pos_finish_missile(missile);
+    T_ASSERT(!missile->inuse);
     pos_done(fix);
 }
 
