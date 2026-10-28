@@ -167,6 +167,38 @@ TEST(wc3_spell, dark_ritual_full_mana_command_shows_error_without_targeting) {
     gi.unicast = old_unicast;
 }
 
+TEST(wc3_spell, death_pact_full_health_command_uses_localized_error) {
+    static UnitAbilities_t const abilities = { .abilList = "AUdp" };
+    edict_t *caster, *clent;
+    gameClient_t *client = &game.clients[0];
+    abilityitem_t item = S_AbilityItem(FS_SLKKey("AUdp"));
+    abilityCall_t call;
+    void (*old_write)(pfWriteType_t, void const *) = gi.Write;
+    void (*old_unicast)(edict_t *) = gi.unicast;
+
+    reset_entities();
+    setup_test_world();
+    clent = &g_edicts[0];
+    call = (abilityCall_t){ .item = &item, .entity = clent };
+    caster = make_hero(MAKEFOURCC('U','d','e','a'), 500, 300, 0, 0);
+    caster->data.UnitAbilities = &abilities;
+    caster->health.value = caster->health.max_value;
+    caster->s.player = client->ps.number = 0;
+    clent->client = client;
+    G_SetClientConnected(clent, true);
+    G_SelectEntity(client, caster);
+    dark_ritual_command_error[0] = '\0';
+    gi.Write = capture_dark_ritual_command_error;
+    gi.unicast = spell_panel_test_unicast;
+
+    T_ASSERT(S_AbilityMessage(caster, A_COMMAND, &call));
+    T_STREQ(dark_ritual_command_error, "Hero has full health.");
+    T_NULL(client->menu.on_entity_selected);
+
+    gi.Write = old_write;
+    gi.unicast = old_unicast;
+}
+
 TEST(wc3_spell, dark_ritual_requests_caster_spell_animation) {
     const char slk[] =
         "ID;PWXL;N;EBB;Y2;X3\n"

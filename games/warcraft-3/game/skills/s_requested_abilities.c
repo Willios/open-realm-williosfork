@@ -858,7 +858,23 @@ static void death_pact_execute(edict_t *caster, spellTarget_t st, abilityitem_t 
     if (st.entity->die) st.entity->die(st.entity, caster);
     else unit_die(st.entity, caster);
 }
-BZ_VALIDATED_SPELL_PROC(AbilityDeathPact, death_pact_validate, death_pact_execute)
+BZ_ABILITY_PROC(CAbilityDeathPact) {
+    spellTarget_t target = (msg == A_VALIDATE || msg == A_EXECUTE) && call && call->target ?
+        *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+    if (msg == A_COMMAND) {
+        edict_t *clent = call && call->entity ? call->entity : NULL;
+        edict_t *caster = clent && clent->client ? G_GetMainSelectedUnit(clent->client) : ent;
+        if (caster && caster->health.value >= caster->health.max_value) {
+            G_ShowCommandErrorKey(clent, "HPmaxed", NULL);
+            return true;
+        }
+    }
+    switch (msg) {
+    case A_VALIDATE: return death_pact_validate(ent, target, call ? call->item : NULL);
+    case A_EXECUTE: death_pact_execute(ent, target, call ? call->item : NULL); return true;
+    default: return CAbilitySimpleSpell(ent, msg, call);
+    }
+}
 /* Name=Metamorphosis
  * Ubertip="Transforms the Demon Hunter into a powerful demon."
  */
