@@ -604,6 +604,7 @@ static void WriteBuffStatusFrames(edict_t *ent) {
     WriteVirtualBuffStatusFrame(S_UnholyAuraBuff(ent), shown, &slot);
     WriteVirtualBuffStatusFrame(S_EnduranceAuraBuff(ent), shown, &slot);
     WriteVirtualBuffStatusFrame(S_VampiricAuraBuff(ent), shown, &slot);
+    WriteVirtualBuffStatusFrame(S_ThornsAuraBuff(ent), shown, &slot);
 }
 
 static void WriteSelectedUnitStatusFrames(edict_t *ent, UnitWeapons_t const *weapons,

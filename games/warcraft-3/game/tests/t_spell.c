@@ -2349,6 +2349,50 @@ TEST(wc3_spell, thorns_aura_returns_authored_fraction_for_melee_hits) {
 	free_slk_rows(rows);
 }
 
+TEST(wc3_spell, thorns_aura_shows_recipient_status_and_buff_art) {
+	const char ability_slk[] =
+		"ID;PWXL;N;EBB;Y2;X7\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+		"C;Y1;X4;K\"Area1\"\nC;Y1;X5;K\"DataA1\"\nC;Y1;X6;K\"BuffID1\"\n"
+		"C;Y1;X7;K\"levels\"\n"
+		"C;Y2;X1;K\"AEah\"\nC;Y2;X2;K\"AEah\"\nC;Y2;X3;K\"ground,air,friend,self,organic\"\n"
+		"C;Y2;X4;K900\nC;Y2;X5;K0.1\nC;Y2;X6;K\"BEah\"\nC;Y2;X7;K1\nE\n";
+	const char buff_slk[] =
+		"ID;PWXL;N;EBB;Y2;X4\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"TargetArt\"\nC;Y1;X4;K\"Buffart\"\n"
+		"C;Y2;X1;K\"BEah\"\nC;Y2;X2;K\"BEah\"\n"
+		"C;Y2;X3;K\"TestUI\\\\Models\\\\anim_pulse.mdx\"\n"
+		"C;Y2;X4;K\"ReplaceableTextures\\\\CommandButtons\\\\BTNThornsAura.blp\"\nE\n";
+	slkTestData_t *rows = parse_slk_string(ability_slk), *old = G_SetSLKRows("AbilityData", rows);
+	slkTestData_t *buff_rows = parse_slk_string(buff_slk), *old_buff = G_SetSLKRows("AbilityBuffData", buff_rows);
+	edict_t *source = make_hero(MAKEFOURCC('E','d','r','u'), 500, 200, 0, 0);
+	edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+	uint32_t const base = MAKEFOURCC('A','E','a','h');
+	uint32_t const buff = MAKEFOURCC('B','E','a','h');
+	int const glow = G_RegisterModel(G_AbilityEffectArt(buff, WC3_EFFECT_TARGET, 0));
+
+	T_NOT_NULL(G_AbilityEffectArt(buff, WC3_EFFECT_TARGET, 0));
+	T_ASSERT(glow > 0);
+	source->s.player = target->s.player = 0;
+	source->targtype = target->targtype = TARG_GROUND;
+	source->unit_state->ranks[0] = MAKE(heroability_t, .code = base, .level = 1);
+	level.time = level.framenum = 0;
+	S_UpdateHeroAuraEffects(target);
+	T_EQ(S_ThornsAuraBuff(target), buff);
+	T_EQ(hero_aura_art_count(target, base, glow), 1);
+
+	target->s.origin2.x = 901.0f;
+	level.time = AURA_UPDATE_MS;
+	S_UpdateHeroAuraEffects(target);
+	T_EQ(S_ThornsAuraBuff(target), 0u);
+	T_EQ(hero_aura_art_count(target, base, glow), 0);
+
+	G_SetSLKRows("AbilityData", old);
+	G_SetSLKRows("AbilityBuffData", old_buff);
+	free_slk_rows(rows);
+	free_slk_rows(buff_rows);
+}
+
 TEST(wc3_spell, requested_thirty_have_concrete_handlers) {
 	static cstring_t const rawcodes[] = {
 		"AHab", "AHmt", "ANst", "ANsg", "ANsq", "ANsw", "AOww", "AOcr", "AHbn", "AHfs",
