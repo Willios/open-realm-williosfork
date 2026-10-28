@@ -293,6 +293,9 @@ static stockAbilityUpgradeRequirement_t const stock_ability_requirements[] = {
     { MAKEFOURCC('R', 'o', 's', 't'), MAKEFOURCC('A', 'b', 'l', 'o'), 2 },
     { MAKEFOURCC('R', 'o', 'w', 'd'), MAKEFOURCC('A', 's', 't', 'a'), 1 },
     { MAKEFOURCC('R', 'o', 'w', 'd'), MAKEFOURCC('A', 'h', 'w', 'd'), 2 },
+    { MAKEFOURCC('R', 'e', 'd', 'c'), MAKEFOURCC('A', 'r', 'e', 'j'), 1 },
+    { MAKEFOURCC('R', 'e', 'd', 'c'), MAKEFOURCC('A', 'b', 'r', 'f'), 2 },
+    { MAKEFOURCC('R', 'e', 's', 'i'), MAKEFOURCC('A', 'a', 'd', 'm'), 1 },
 };
 
 static abilityUpgradeRequirement_t G_GetAbilityUpgradeRequirement(

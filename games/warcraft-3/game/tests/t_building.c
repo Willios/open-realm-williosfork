@@ -313,7 +313,7 @@ static const char building_dependency_ability_slk[] =
  * archive. Install rows so the research gate tests exercise parsed game data. */
 static const char building_caster_ability_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X4;Y15;D0\n"
+    "B;X4;Y18;D0\n"
     "C;X1;Y1;K\"alias\"\n"
     "C;X2;K\"code\"\n"
     "C;X3;K\"checkDep\"\n"
@@ -332,11 +332,14 @@ static const char building_caster_ability_slk[] =
     "C;X1;Y13;K\"Asta\"\nC;X2;K\"Asta\"\nC;X3;K1\nC;X4;K\"Stasis Trap\"\n"
     "C;X1;Y14;K\"Ahwd\"\nC;X2;K\"Ahwd\"\nC;X3;K1\nC;X4;K\"Healing Ward\"\n"
     "C;X1;Y15;K\"Alsh\"\nC;X2;K\"Alsh\"\nC;X3;K1\nC;X4;K\"Lightning Shield\"\n"
+    "C;X1;Y16;K\"Arej\"\nC;X2;K\"Arej\"\nC;X3;K1\nC;X4;K\"Rejuvenation\"\n"
+    "C;X1;Y17;K\"Abrf\"\nC;X2;K\"Abrf\"\nC;X3;K1\nC;X4;K\"Bear Form\"\n"
+    "C;X1;Y18;K\"Aadm\"\nC;X2;K\"Aadm\"\nC;X3;K1\nC;X4;K\"Abolish Magic\"\n"
     "E\n";
 
 static const char building_caster_upgrade_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X3;Y7;D0\n"
+    "B;X3;Y9;D0\n"
     "C;X1;Y1;K\"upgradeid\"\nC;X3;K\"maxlevel\"\n"
     "C;X1;Y2;K\"Rhst\"\nC;X3;K2\n"
     "C;X1;Y3;K\"Rhpt\"\nC;X3;K2\n"
@@ -344,6 +347,8 @@ static const char building_caster_upgrade_slk[] =
     "C;X1;Y5;K\"Ruba\"\nC;X3;K2\n"
     "C;X1;Y6;K\"Rowd\"\nC;X3;K2\n"
     "C;X1;Y7;K\"Rost\"\nC;X3;K2\n"
+    "C;X1;Y8;K\"Redc\"\nC;X3;K2\n"
+    "C;X1;Y9;K\"Resi\"\nC;X3;K1\n"
     "E\n";
 
 typedef struct {
@@ -1851,6 +1856,84 @@ TEST(wc3_building, orc_caster_training_gates_shaman_and_witch_doctor_spells) {
     G_SetPlayerTechResearched(client, witch_doctor_training, 0);
     G_SetPlayerTechMaxAllowed(client, shaman_training, -1);
     G_SetPlayerTechMaxAllowed(client, witch_doctor_training, -1);
+    building_restore_caster_data(caster_rows);
+}
+
+TEST(wc3_building, night_elf_caster_training_gates_druid_and_dryad_spells) {
+    buildingCasterRows_t caster_rows;
+    gameClient_t *client;
+    edict_t *druid, *dryad, *ancient_lore;
+    UnitBalance_t druid_balance = { .upgrades = "Redc,Reuv,Repm,Reeb" };
+    UnitBalance_t dryad_balance = { .upgrades = "Resw,Rerh,Resi,Reuv,Repm" };
+    UnitAbilities_t druid_abilities = { .abilList = "Arej,Abrf" };
+    UnitAbilities_t dryad_abilities = { .abilList = "Aadm" };
+    UnitProfile_t ancient_lore_profile = { .researches = "Resi,Redc" };
+    uint32_t const druid_training = MAKEFOURCC('R','e','d','c');
+    uint32_t const dryad_training = MAKEFOURCC('R','e','s','i');
+    int32_t next_level;
+    char reason[128];
+
+    setup_test_world();
+    caster_rows = building_install_caster_data();
+    client = &game.clients[0];
+    client->ps.number = 0;
+    memset(client->tech, 0, sizeof(client->tech));
+    G_SetPlayerTechMaxAllowed(client, druid_training, 1);
+    G_SetPlayerTechMaxAllowed(client, dryad_training, 1);
+    client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 1000;
+    client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 1000;
+
+    ancient_lore = alloc_test_unit(MAKEFOURCC('e','a','o','e'), 0, 0);
+    ancient_lore->s.player = client->ps.number;
+    ancient_lore->s.flags |= EF_BUILDING;
+    ancient_lore->runtime.flags |= UNIT_BALANCE_BUILDING;
+    ancient_lore->data.UnitProfile = &ancient_lore_profile;
+    T_ASSERT(G_ProducerCanResearch(ancient_lore, druid_training));
+    T_ASSERT(G_ProducerCanResearch(ancient_lore, dryad_training));
+    T_EQ(G_GetResearchCommandState(client, ancient_lore, druid_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 1);
+    T_EQ(G_GetResearchCommandState(client, ancient_lore, dryad_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 1);
+
+    druid = alloc_test_unit(MAKEFOURCC('e','d','o','c'), 64, 0);
+    druid->s.player = client->ps.number;
+    druid->data.UnitBalance = &druid_balance;
+    druid->data.UnitAbilities = &druid_abilities;
+    dryad = alloc_test_unit(MAKEFOURCC('e','d','r','y'), 128, 0);
+    dryad->s.player = client->ps.number;
+    dryad->data.UnitBalance = &dryad_balance;
+    dryad->data.UnitAbilities = &dryad_abilities;
+
+    T_ASSERT(G_UnitAbilityResearchVisible(druid, MAKEFOURCC('A','r','e','j')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(druid, MAKEFOURCC('A','r','e','j')));
+    T_ASSERT(!G_UnitAbilityResearchVisible(druid, MAKEFOURCC('A','b','r','f')));
+    T_ASSERT(G_UnitAbilityResearchVisible(dryad, MAKEFOURCC('A','a','d','m')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(dryad, MAKEFOURCC('A','a','d','m')));
+
+    G_SetPlayerTechResearched(client, druid_training, 1);
+    G_SetPlayerTechResearched(client, dryad_training, 1);
+    T_ASSERT(G_UnitAbilityResearchAvailable(druid, MAKEFOURCC('A','r','e','j')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(dryad, MAKEFOURCC('A','a','d','m')));
+    T_EQ(G_GetResearchCommandState(client, ancient_lore, druid_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
+
+    G_SetPlayerTechMaxAllowed(client, druid_training, 2);
+    T_EQ(G_GetResearchCommandState(client, ancient_lore, druid_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 2);
+    T_ASSERT(G_UnitAbilityResearchVisible(druid, MAKEFOURCC('A','b','r','f')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(druid, MAKEFOURCC('A','b','r','f')));
+    G_SetPlayerTechResearched(client, druid_training, 2);
+    T_ASSERT(G_UnitAbilityResearchAvailable(druid, MAKEFOURCC('A','b','r','f')));
+    T_EQ(G_GetResearchCommandState(client, ancient_lore, druid_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
+
+    G_SetPlayerTechResearched(client, druid_training, 0);
+    G_SetPlayerTechResearched(client, dryad_training, 0);
+    G_SetPlayerTechMaxAllowed(client, druid_training, -1);
+    G_SetPlayerTechMaxAllowed(client, dryad_training, -1);
     building_restore_caster_data(caster_rows);
 }
 
