@@ -1778,6 +1778,13 @@ void unit_statusdeath(edict_t *ent) {
         if (slot->level && (!slot->timestamp || slot->timestamp > G_Time()))
             UnitDispatchStatus(ent, slot, (slot->source_ability ? slot->source_ability : slot->data), A_STATUS_DEATH, STATUS_REMOVE_DEATH);
     }
+    /* Status state can remain on the corpse for its death presentation, but
+     * attached target art must not keep following the dead unit. */
+    FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0) {
+        heroabilitystatus_t const *slot = ent->unit_state->statuses + i;
+        if (slot->level && (slot->buff_flags & WC3_STATUS_BUFF_TARGET_ART))
+            G_DestroyStatusEffectTarget(slot->code, ent);
+    }
 }
 
 /* Legacy Warcraft buff identities provide their categorical contributions even

@@ -5863,6 +5863,15 @@ TEST(wc3_spell, frenzy_unholy_frenzy_curse_use_authored_status_and_bonus_values)
 	unit_removestatus(enemy, unit_findstatus(enemy, MAKEFOURCC('B','c','r','s')), STATUS_REMOVE_SCRIPT);
 	T_EQ(curse_effect->status_effect_code, 0);
 
+	/* Death keeps timed status state for corpse presentation but ends its art. */
+	T_ASSERT(test_execute_code(caster, "Acrs", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = enemy)));
+	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','c','r','s')));
+	unit_die(enemy, caster);
+	curse_effect_count = 0;
+	FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','c','r','s') && effect->goalentity == enemy)
+		curse_effect_count++;
+	T_EQ(curse_effect_count, 0);
+
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
