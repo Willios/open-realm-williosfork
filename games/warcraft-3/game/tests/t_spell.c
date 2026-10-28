@@ -6063,6 +6063,43 @@ TEST(wc3_spell, cripple_and_soul_burn_apply_status_and_read_authored_consumers) 
 	G_SetSLKRows("AbilityBuffData", old_buff); free_slk_rows(buff_rows);
 }
 
+TEST(wc3_spell, cripple_reduces_enemy_movement_attack_rate_and_damage_from_data) {
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X9\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+		"C;Y1;X4;K\"Dur1\"\nC;Y1;X5;K\"HeroDur1\"\n"
+		"C;Y1;X6;K\"DataA1\"\nC;Y1;X7;K\"DataB1\"\n"
+		"C;Y1;X8;K\"DataC1\"\nC;Y1;X9;K\"BuffID1\"\n"
+		"C;Y2;X1;K\"Acri\"\nC;Y2;X2;K\"Acri\"\n"
+		"C;Y2;X3;K\"ground,enemy,organic\"\nC;Y2;X4;K\"60\"\nC;Y2;X5;K\"60\"\n"
+		"C;Y2;X6;K\"0.75\"\nC;Y2;X7;K\"0.5\"\n"
+		"C;Y2;X8;K\"0.5\"\nC;Y2;X9;K\"Bcri\"\nE\n";
+	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	edict_t *caster = make_hero(MAKEFOURCC('h','p','r','i'), 300, 300, 0, 0);
+	edict_t *enemy = alloc_test_unit(MAKEFOURCC('o','g','r','u'), 500, 0);
+	edict_t *victim = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 500, 0);
+	float const normal_move_distance = 10.0f * 270.0f / (float)FRAMETIME;
+	caster->s.player = victim->s.player = 0; enemy->s.player = 1;
+	enemy->svflags |= SVF_MONSTER;
+	enemy->health.value = enemy->health.max_value = 500;
+	enemy->unitinfo.MoveSpeed = 270.0f;
+	enemy->unit_state->attack1.type = ATK_NORMAL;
+	enemy->unit_state->attack1.cooldown = 1.0f;
+	enemy->unit_state->attack1.damagePoint = 0.3f;
+	victim->health.value = victim->health.max_value = 200;
+	test_execute_code(caster, "Acri", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = enemy));
+	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','c','r','i')));
+	T_FEQ(S_CrippleMoveReduction(enemy), 0.75f, 0.001f);
+	T_FEQ(S_CrippleAttackReduction(enemy), 0.5f, 0.001f);
+	T_FEQ(S_CrippleDamageReduction(enemy), 0.5f, 0.001f);
+	T_FEQ(unit_movedistance(enemy), normal_move_distance * 0.25f, 0.01f);
+	attack_melee(enemy);
+	T_FEQ(enemy->wait, 0.6f, 0.001f);
+	S_ResolveAttackHit(enemy, victim, 40);
+	T_FEQ(victim->health.value, 180.0f, 0.001f);
+	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
 TEST(wc3_spell, cripple_roc_empty_buffid_applies_bcri) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X7\n"
