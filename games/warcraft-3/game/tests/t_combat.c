@@ -2823,6 +2823,62 @@ TEST(wc3_combat, artillery_splash_uses_authored_three_damage_bands) {
     T_FEQ(outside->health.value, 500.0f, 0.001f);
 }
 
+TEST(wc3_combat, researched_meat_wagon_spawns_ten_second_plague_cloud_at_impact) {
+    static UnitAbilities_t const abilities = { .abilList = "Apts" };
+    static UnitWeapons_t const weapons = { .attacksEnabled = 3, .attack1 = { .areaTargets = WC3_TARGET_FLAG_GROUND } };
+    static char const ward_ui_slk[] =
+        "C;Y1;X1;K\"unitUIID\"\nC;X2;K\"modelScale\"\nC;X3;K\"scale\"\n"
+        "C;Y2;X1;K\"uplg\"\nC;X2;K1.4\nC;X3;K96\n";
+    slkTestData_t *ward_ui_rows = parse_slk_string(ward_ui_slk);
+    slkTestData_t *old_ward_ui_rows;
+    edict_t *wagon;
+    edict_t *target;
+    edict_t *cloud = NULL;
+    artillery_t profile = { .area_targets = WC3_TARGET_FLAG_GROUND,
+                            .targets_allowed = WC3_TARGET_FLAG_GROUND,
+                            .area_full = 50.0f, .area_medium = 100.0f,
+                            .area_small = 150.0f, .factor_medium = 0.5f,
+                            .factor_small = 0.25f };
+    vec2_t impact = { 240.0f, 80.0f };
+
+    setup_test_world(); reset_entities();
+    wagon = make_combat_unit(MAKEFOURCC('u','m','t','w'), 500.0f, 0.0f, 0.0f);
+    target = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, impact.x, impact.y);
+    wagon->data.UnitAbilities = &abilities;
+    wagon->data.UnitWeapons = &weapons;
+    wagon->s.player = 0;
+    target->targtype = TARG_GROUND;
+    target->unit_state->defense_type = 7;
+    target->unit_state->armor_value = 0.0f;
+
+    S_ResolveArtilleryPointHit(wagon, target, &impact, 100, &profile);
+    FILTER_EDICTS(effect, effect->inuse && effect->s.model && effect != wagon && effect != target) {
+        if (effect->spawn_time == G_Time() + 10000u) cloud = effect;
+    }
+    T_NULL(cloud);
+
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','p','c'), 1);
+    old_ward_ui_rows = G_SetSLKRows("UnitUI", ward_ui_rows);
+    S_ResolveArtilleryPointHit(wagon, target, &impact, 100, &profile);
+    cloud = NULL;
+    FILTER_EDICTS(effect, effect->inuse && effect->s.model && effect != wagon && effect != target) {
+        if (effect->spawn_time == G_Time() + 10000u) { cloud = effect; break; }
+    }
+    T_NOT_NULL(cloud);
+    if (cloud) {
+        T_FEQ(cloud->s.origin.x, impact.x, 0.001f);
+        T_FEQ(cloud->s.origin.y, impact.y, 0.001f);
+        T_EQ(cloud->spawn_time, G_Time() + 10000u);
+        T_EQ(cloud->summon_ability, MAKEFOURCC('A','p','t','s'));
+        T_FEQ(cloud->s.scale, 1.4f, 0.001f);
+        T_FEQ(cloud->s.radius, 96.0f * SEL_SCALE / 2.0f, 0.001f);
+        level.time += 10000;
+        G_EffectThink(cloud);
+        T_ASSERT(!cloud->inuse);
+    }
+    free_slk_rows(G_SetSLKRows("UnitUI", old_ward_ui_rows));
+}
+
 /* Warsmash snapshots an ARTILLERY unit target to a point at the damage point.
  * Moving the original target after launch therefore does not make the missile
  * home; splash resolves around the launch-time coordinates. */

@@ -37,6 +37,30 @@ static float attack_backswing_remaining(edict_t const *ent);
 static umove_t attack_move_melee_cooldown;
 static umove_t attack_move_ranged_cooldown;
 
+#define ID_MEAT_WAGON MAKEFOURCC('u','m','t','w')
+#define ID_PLAGUE_TOSS MAKEFOURCC('A','p','t','s')
+#define ID_DISEASE_CLOUD_RESEARCH MAKEFOURCC('R','u','p','c')
+#define MEAT_WAGON_PLAGUE_CLOUD_MS 10000u
+
+static void artillery_spawn_meat_wagon_plague_cloud(edict_t *attacker, vec2_t const *impact) {
+    gameClient_t *owner;
+    edict_t *effect;
+    UnitUI_t const *ward_ui;
+    if (!attacker || attacker->class_id != ID_MEAT_WAGON ||
+        !G_UnitAbilityLevel(attacker, ID_PLAGUE_TOSS)) return;
+    owner = G_GetPlayerClientByNumber(attacker->s.player);
+    if (!owner || G_GetPlayerTechResearchedLevel(owner, ID_DISEASE_CLOUD_RESEARCH) <= 0) return;
+    effect = G_SpawnModelEffect("Units\\Undead\\PlagueCloud\\PlagueCloud.mdl",
+                                impact, NULL, NULL, false);
+    if (effect) {
+        ward_ui = G_UnitUI(MAKEFOURCC('u','p','l','g'));
+        effect->s.scale = ward_ui->modelScale > 0.0f ? ward_ui->modelScale : 1.0f;
+        effect->s.radius = ward_ui->selectionScale * SEL_SCALE / 2.0f;
+        effect->spawn_time = G_Time() + MEAT_WAGON_PLAGUE_CLOUD_MS;
+        effect->summon_ability = ID_PLAGUE_TOSS;
+    }
+}
+
 typedef struct {
     edict_t *target;
     vec2_t const *fixed_target;
@@ -537,6 +561,7 @@ void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t cons
 
     if (!attacker || !impact || raw_damage <= 0) return;
     if (!profile) return;
+    artillery_spawn_meat_wagon_plague_cloud(attacker, impact);
     max_radius = MAX(profile->area_full, MAX(profile->area_medium, profile->area_small));
     if (max_radius < 0.0f) return;
 

@@ -41,6 +41,10 @@ through the existing save-header size check.
 
 This does not implement Plague Toss (`Apts`): it is a separate attack-triggered
 cloud producer, with zero Area/DataA/DataB and TFT UnitID `uplg`, not an aura row.
+After `Rupc`, Meat Wagon artillery impacts spawn the Plague Ward (`uplg`)
+emitter model at the impact point for 10 seconds. Its model scale and visible
+radius use the Plague Ward's UnitUI data. This visual emitter is separate from
+the 120-second `Aap1` infection applied to units in range.
 Incinerate Arrow's separate mana/autocast policy and complete target-mask
 semantics remain outside these combat-lifecycle fixes.
 

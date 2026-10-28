@@ -373,6 +373,11 @@ void G_EffectValidateTarget(edict_t *effect) {
 }
 
 void G_EffectThink(edict_t *effect) {
+    if (effect->summon_ability == MAKEFOURCC('A','p','t','s') &&
+        effect->spawn_time && G_Time() >= effect->spawn_time) {
+        G_FreeEdict(effect);
+        return;
+    }
     if (effect->goalentity && effect->wait != 0.0f) {
         effect->s.origin.z += effect->wait;
     }
