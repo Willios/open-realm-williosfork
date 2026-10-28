@@ -423,6 +423,7 @@ uint32_t S_BrillianceAuraBuff(edict_t *unit);
 uint32_t S_EnduranceAuraBuff(edict_t *unit);
 uint32_t S_VampiricAuraBuff(edict_t *unit);
 uint32_t S_ThornsAuraBuff(edict_t *unit);
+uint32_t S_TrueshotAuraBuff(edict_t *unit);
 bool S_RegenerationAuraUpdateDue(edict_t *unit);
 float S_BrillianceManaRegen(edict_t *unit);
 float S_DevotionArmorBonus(edict_t *unit);

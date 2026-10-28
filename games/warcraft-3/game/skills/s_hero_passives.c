@@ -132,6 +132,7 @@ static edict_t *unholy_overlays[MAX_ENTITIES];
 static edict_t *endurance_overlays[MAX_ENTITIES];
 static edict_t *vampiric_overlays[MAX_ENTITIES];
 static edict_t *thorns_overlays[MAX_ENTITIES];
+static edict_t *trueshot_overlays[MAX_ENTITIES];
 /* Ability TargetArt on the caster. Recipient slots above keep BuffID TargetArt. */
 static edict_t *brilliance_source_fx[MAX_ENTITIES];
 static edict_t *devotion_source_fx[MAX_ENTITIES];
@@ -139,6 +140,7 @@ static edict_t *unholy_source_fx[MAX_ENTITIES];
 static edict_t *endurance_source_fx[MAX_ENTITIES];
 static edict_t *vampiric_source_fx[MAX_ENTITIES];
 static edict_t *thorns_source_fx[MAX_ENTITIES];
+static edict_t *trueshot_source_fx[MAX_ENTITIES];
 /* Visual-only, rebuilt on level/map reset and save restore. The per-entity
  * generation checks avoid retaining an effect across recycled edict slots. */
 static edict_t *spiked_barricades_fx[MAX_ENTITIES];
@@ -148,6 +150,7 @@ static uint32_t brilliance_recipient_buff[MAX_ENTITIES];
 static uint32_t endurance_recipient_buff[MAX_ENTITIES];
 static uint32_t vampiric_recipient_buff[MAX_ENTITIES];
 static uint32_t thorns_recipient_buff[MAX_ENTITIES];
+static uint32_t trueshot_recipient_buff[MAX_ENTITIES];
 static uint32_t regen_value_next_update[MAX_ENTITIES];
 static uint32_t regen_visual_next_update[MAX_ENTITIES];
 static void const *regen_value_ability_data[MAX_ENTITIES];
@@ -178,6 +181,7 @@ static void aura_cache_update_time(void) {
         memset(endurance_recipient_buff, 0, sizeof(endurance_recipient_buff));
         memset(vampiric_recipient_buff, 0, sizeof(vampiric_recipient_buff));
         memset(thorns_recipient_buff, 0, sizeof(thorns_recipient_buff));
+        memset(trueshot_recipient_buff, 0, sizeof(trueshot_recipient_buff));
         memset(spiked_barricades_fx, 0, sizeof(spiked_barricades_fx));
     }
     aura_cache_last_time = level.time;
@@ -507,18 +511,21 @@ void G_ResetHeroPassiveCaches(void) {
     memset(endurance_overlays, 0, sizeof(endurance_overlays));
     memset(vampiric_overlays, 0, sizeof(vampiric_overlays));
     memset(thorns_overlays, 0, sizeof(thorns_overlays));
+    memset(trueshot_overlays, 0, sizeof(trueshot_overlays));
     memset(brilliance_source_fx, 0, sizeof(brilliance_source_fx));
     memset(devotion_source_fx, 0, sizeof(devotion_source_fx));
     memset(unholy_source_fx, 0, sizeof(unholy_source_fx));
     memset(endurance_source_fx, 0, sizeof(endurance_source_fx));
     memset(vampiric_source_fx, 0, sizeof(vampiric_source_fx));
     memset(thorns_source_fx, 0, sizeof(thorns_source_fx));
+    memset(trueshot_source_fx, 0, sizeof(trueshot_source_fx));
     memset(devotion_recipient_buff, 0, sizeof(devotion_recipient_buff));
     memset(unholy_recipient_buff, 0, sizeof(unholy_recipient_buff));
     memset(brilliance_recipient_buff, 0, sizeof(brilliance_recipient_buff));
     memset(endurance_recipient_buff, 0, sizeof(endurance_recipient_buff));
     memset(vampiric_recipient_buff, 0, sizeof(vampiric_recipient_buff));
     memset(thorns_recipient_buff, 0, sizeof(thorns_recipient_buff));
+    memset(trueshot_recipient_buff, 0, sizeof(trueshot_recipient_buff));
     memset(regen_value_cache, 0, sizeof(regen_value_cache));
     memset(regen_value_next_update, 0, sizeof(regen_value_next_update));
     memset(regen_visual_next_update, 0, sizeof(regen_visual_next_update));
@@ -551,7 +558,8 @@ static heroAuraCompatBuff_t const hero_aura_compat_buffs[] = {
     { ID_UNHOLY_AURA, MAKEFOURCC('B', 'U', 'a', 'u') },
     { ID_ENDURANCE_AURA, MAKEFOURCC('B', 'O', 'a', 'e') },
     { ID_VAMPIRIC_AURA, MAKEFOURCC('B', 'U', 'a', 'v') },
-    { ID_THORNS_AURA, MAKEFOURCC('B', 'E', 'a', 'h') }
+    { ID_THORNS_AURA, MAKEFOURCC('B', 'E', 'a', 'h') },
+    { ID_TRUESHOT_AURA, MAKEFOURCC('B', 'E', 'a', 'r') }
 };
 #endif
 
@@ -624,7 +632,8 @@ static void regen_aura_cache_update(void) {
             effect->goalentity != effect->owner) continue;
         if (effect->summon_ability == ID_BRILLIANCE || effect->summon_ability == ID_DEVOTION_AURA ||
             effect->summon_ability == ID_UNHOLY_AURA || effect->summon_ability == ID_ENDURANCE_AURA ||
-            effect->summon_ability == ID_VAMPIRIC_AURA || effect->summon_ability == ID_THORNS_AURA) {
+            effect->summon_ability == ID_VAMPIRIC_AURA || effect->summon_ability == ID_THORNS_AURA ||
+            effect->summon_ability == ID_TRUESHOT_AURA) {
             edict_t * *slots;
             /* The current alias/art can change or disappear. Bind by the saved
              * role so a custom caster rune cannot become an orphaned recipient. */
@@ -634,6 +643,7 @@ static void regen_aura_cache_update(void) {
                 else if (effect->summon_ability == ID_UNHOLY_AURA) slots = unholy_source_fx;
                 else if (effect->summon_ability == ID_VAMPIRIC_AURA) slots = vampiric_source_fx;
                 else if (effect->summon_ability == ID_THORNS_AURA) slots = thorns_source_fx;
+                else if (effect->summon_ability == ID_TRUESHOT_AURA) slots = trueshot_source_fx;
                 else slots = endurance_source_fx;
             } else if (effect->aura_effect_role == AURA_EFFECT_RECIPIENT) {
                 if (effect->summon_ability == ID_BRILLIANCE) slots = brilliance_overlays;
@@ -641,6 +651,7 @@ static void regen_aura_cache_update(void) {
                 else if (effect->summon_ability == ID_UNHOLY_AURA) slots = unholy_overlays;
                 else if (effect->summon_ability == ID_VAMPIRIC_AURA) slots = vampiric_overlays;
                 else if (effect->summon_ability == ID_THORNS_AURA) slots = thorns_overlays;
+                else if (effect->summon_ability == ID_TRUESHOT_AURA) slots = trueshot_overlays;
                 else slots = endurance_overlays;
             }
             else continue;
@@ -664,6 +675,7 @@ static auraAbilityRef_t regen_aura_ref(regenAuraSource_t const *entry, uint32_t 
     if (base_code == ID_ENDURANCE_AURA) return entry->endurance;
     if (base_code == ID_VAMPIRIC_AURA) return entry->combat[6];
     if (base_code == ID_THORNS_AURA) return entry->combat[8];
+    if (base_code == ID_TRUESHOT_AURA) return entry->combat[7];
     if (base_code == ID_BRILLIANCE) return entry->combat[0];
     return (auraAbilityRef_t){0};
 }
@@ -1088,8 +1100,8 @@ static void hero_aura_sync_source(edict_t *unit, uint32_t base_code, edict_t * *
 }
 
 void S_UpdateHeroAuraEffects(edict_t *unit) {
-    heroAuraPresentation_t brilliance, devotion, unholy, endurance, vampiric, thorns;
-    uint32_t old_brilliance, old_devotion, old_unholy, old_endurance, old_vampiric, old_thorns;
+    heroAuraPresentation_t brilliance, devotion, unholy, endurance, vampiric, thorns, trueshot;
+    uint32_t old_brilliance, old_devotion, old_unholy, old_endurance, old_vampiric, old_thorns, old_trueshot;
 
     if (!unit || !unit->inuse || unit->s.number >= MAX_ENTITIES) return;
     old_brilliance = brilliance_recipient_buff[unit->s.number];
@@ -1098,6 +1110,7 @@ void S_UpdateHeroAuraEffects(edict_t *unit) {
     old_endurance = endurance_recipient_buff[unit->s.number];
     old_vampiric = vampiric_recipient_buff[unit->s.number];
     old_thorns = thorns_recipient_buff[unit->s.number];
+    old_trueshot = trueshot_recipient_buff[unit->s.number];
     brilliance = hero_aura_presentation(unit, ID_BRILLIANCE);
     brilliance_recipient_buff[unit->s.number] = brilliance.alias ? brilliance.buff : 0;
     hero_aura_sync_overlay(unit, ID_BRILLIANCE, brilliance_overlays, brilliance.alias ? &brilliance : NULL);
@@ -1126,12 +1139,18 @@ void S_UpdateHeroAuraEffects(edict_t *unit) {
     thorns_recipient_buff[unit->s.number] = thorns.alias ? thorns.buff : 0;
     hero_aura_sync_overlay(unit, ID_THORNS_AURA, thorns_overlays, thorns.alias ? &thorns : NULL);
     hero_aura_sync_source(unit, ID_THORNS_AURA, thorns_source_fx, thorns_overlays);
+    trueshot = hero_aura_presentation(unit, ID_TRUESHOT_AURA);
+    trueshot_recipient_buff[unit->s.number] = trueshot.alias ? trueshot.buff : 0;
+    hero_aura_sync_overlay(unit, ID_TRUESHOT_AURA, trueshot_overlays,
+                           trueshot.alias ? &trueshot : NULL);
+    hero_aura_sync_source(unit, ID_TRUESHOT_AURA, trueshot_source_fx, trueshot_overlays);
     if (old_brilliance != brilliance_recipient_buff[unit->s.number] ||
         old_devotion != devotion_recipient_buff[unit->s.number] ||
         old_unholy != unholy_recipient_buff[unit->s.number] ||
         old_endurance != endurance_recipient_buff[unit->s.number] ||
         old_vampiric != vampiric_recipient_buff[unit->s.number] ||
-        old_thorns != thorns_recipient_buff[unit->s.number])
+        old_thorns != thorns_recipient_buff[unit->s.number] ||
+        old_trueshot != trueshot_recipient_buff[unit->s.number])
         G_InvalidateUnitInfoPanel(unit);
 }
 
@@ -1163,6 +1182,11 @@ uint32_t S_VampiricAuraBuff(edict_t *unit) {
 uint32_t S_ThornsAuraBuff(edict_t *unit) {
     if (!unit || unit->s.number >= MAX_ENTITIES) return 0;
     return thorns_recipient_buff[unit->s.number];
+}
+
+uint32_t S_TrueshotAuraBuff(edict_t *unit) {
+    if (!unit || unit->s.number >= MAX_ENTITIES) return 0;
+    return trueshot_recipient_buff[unit->s.number];
 }
 
 float S_BrillianceManaRegen(edict_t *unit) { return hero_aura_bonus(unit, ID_BRILLIANCE, 1); }

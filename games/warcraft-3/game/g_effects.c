@@ -384,6 +384,10 @@ cstring_t G_AbilityBuffArt(uint32_t buff_id) {
     /* AbilityBuffData names this row Buhf, while Auhf's TFT BuffID is BUhf. */
     if (buff_id == MAKEFOURCC('B','U','h','f') || buff_id == MAKEFOURCC('B','u','h','f'))
         return "ReplaceableTextures\\CommandButtons\\BTNUnholyFrenzy.blp";
+    /* RoC omits the Trueshot Aura buff row; keep its virtual recipient status
+     * icon available when the passive aura uses its compatibility BuffID. */
+    if (buff_id == MAKEFOURCC('B','E','a','r'))
+        return "ReplaceableTextures\\CommandButtons\\BTNTrueshotAura.blp";
     return NULL;
 }
 
