@@ -528,6 +528,7 @@ typedef struct {
 static heroAuraCompatBuff_t const hero_aura_compat_buffs[] = {
     { ID_BRILLIANCE, MAKEFOURCC('B', 'H', 'a', 'b') },
     { ID_DEVOTION_AURA, MAKEFOURCC('B', 'H', 'a', 'd') },
+    { ID_UNHOLY_AURA, MAKEFOURCC('B', 'U', 'a', 'u') },
     { ID_ENDURANCE_AURA, MAKEFOURCC('B', 'O', 'a', 'e') }
 };
 #endif
