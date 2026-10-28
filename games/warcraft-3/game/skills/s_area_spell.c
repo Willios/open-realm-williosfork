@@ -322,9 +322,6 @@ BZ_SIMPLE_SPELL_PROC(AbilityRainOfFire) {
 /* Death and Decay deals the authored percentage of each enemy's maximum life
  * on every pulse; unlike Rain of Fire, DataA is not a fixed damage amount. */
 #define DEATH_AND_DECAY_AREA_EFFECT_COUNT 10
-/* The authored one-shot Stand sequence is about 1.867 seconds. Starting each
- * new scatter halfway through it keeps both groups visible for half a cycle. */
-#define DEATH_AND_DECAY_AREA_EFFECT_INTERVAL_MS 933u
 
 static umove_t death_and_decay_area_effect_move = { "stand", NULL, G_FreeEdict, NULL };
 
@@ -385,12 +382,9 @@ void death_and_decay_think(edict_t *ent) {
         S_SpellEndChannel(ent);
         return;
     }
-    if (ent->resources && now >= ent->resources) {
-        death_and_decay_spawn_area_effects(ent, ent->class_id, S_SpellLevel(caster, ent->class_id),
-                                          &ent->s.origin2, ent->collision);
-        ent->resources = now + DEATH_AND_DECAY_AREA_EFFECT_INTERVAL_MS;
-    }
     if (ent->freetime && now < ent->freetime) return;
+    death_and_decay_spawn_area_effects(ent, ent->class_id, S_SpellLevel(caster, ent->class_id),
+                                      &ent->s.origin2, ent->collision);
     FILTER_EDICTS(target, target->inuse && S_SpellIsAliveTarget(target) &&
                   S_SpellIsEnemy(caster, target) &&
                   Vector2_distance(&target->s.origin2, &ent->s.origin2) <= ent->collision) {
@@ -407,7 +401,6 @@ void death_and_decay_think(edict_t *ent) {
 BZ_SIMPLE_SPELL_PROC(AbilityDeathAndDecay) {
     uint32_t level = S_SpellLevel(caster, spell->code);
     edict_t *thinker = S_SpellChannelThinker(caster, spell->code);
-    float radius = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
     thinker->s.origin2 = st.point;
     thinker->s.origin.x = st.point.x;
     thinker->s.origin.y = st.point.y;
@@ -415,7 +408,6 @@ BZ_SIMPLE_SPELL_PROC(AbilityDeathAndDecay) {
     thinker->wait = S_SpellData(spell->code, level, 1);
     thinker->velocity = MAX(0.1f, S_SpellData(spell->code, level, 2));
     thinker->spawn_time = G_Time() + (uint32_t)(MAX(0.1f, S_SpellDuration(spell->code, level, true)) * 1000.0f);
-    thinker->resources = G_Time() + DEATH_AND_DECAY_AREA_EFFECT_INTERVAL_MS;
     thinker->think = death_and_decay_think;
     {
         uint32_t effect_code = G_AbilityEffectCode(spell->code, level);
@@ -428,7 +420,6 @@ BZ_SIMPLE_SPELL_PROC(AbilityDeathAndDecay) {
             loop_sound = G_AbilityEffectSoundIndex(effect_code, true);
         if (loop_sound) thinker->s.sound = (uint16_t)loop_sound;
     }
-    death_and_decay_spawn_area_effects(thinker, spell->code, level, &st.point, radius);
     death_and_decay_think(thinker);
 }
 

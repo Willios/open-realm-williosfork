@@ -4403,30 +4403,22 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	}
 	T_EQ(area_effect_count, 10);
 	T_ASSERT(Vector2_distance(&area_effects[0]->s.origin2, &area_effects[1]->s.origin2) > 0.001f);
-	/* Stand is a 1867 ms one-shot. The next ten scatter effects arrive halfway
-	 * through it, so the groups overlap for the remaining half-cycle. */
-	level.time = 932;
+	/* Effects are emitted only with damage pulses, once per authored second. */
+	level.time = 999;
 	death_and_decay_think(thinker);
 	T_FEQ(tree->health.value, 480.0f, 0.01f);
-	area_effect_count = 0;
-	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
-	T_EQ(area_effect_count, 10);
-	level.time = 933;
-	death_and_decay_think(thinker);
-	area_effect_count = 0;
-	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) {
-		T_ASSERT(area_effect_count < 20);
-		area_effects[area_effect_count++] = effect;
-	}
-	T_EQ(area_effect_count, 20);
-	/* Finish the first batch during the overlap. */
-	FOR_LOOP(i, 10) area_effects[i]->currentmove->endfunc(area_effects[i]);
 	area_effect_count = 0;
 	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
 	T_EQ(area_effect_count, 10);
 	level.time = 1000;
 	death_and_decay_think(thinker);
 	T_FEQ(tree->health.value, 460.0f, 0.01f);
+	area_effect_count = 0;
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) {
+		T_ASSERT(area_effect_count < 20);
+		area_effects[area_effect_count++] = effect;
+	}
+	T_EQ(area_effect_count, 20);
 	level.time = thinker->spawn_time;
 	thinker->think(thinker);
 	T_ASSERT(!thinker->inuse);
