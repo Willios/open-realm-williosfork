@@ -109,6 +109,30 @@ TEST(wc3_spell, possession_apos_takes_over_and_consumes_caster) {
     pos_done(fix);
 }
 
+TEST(wc3_spell, possession_footman_command_card_target_click) {
+    static UnitAbilities_t const abilities = { .abilList = "Apos" };
+    posFix_t fix; pos_setup(&fix, POS_APOS_SLK, BZ_APOS);
+    edict_t *clent = &g_edicts[0];
+    gameClient_t *client = &game.clients[0];
+    cstring_t button[] = { "button", "Apos" };
+    char target_number[16];
+    cstring_t select[] = { "select", target_number };
+
+    fix.caster->data.UnitAbilities = &abilities;
+    clent->client = client;
+    client->ps.number = 0;
+    G_SetClientConnected(clent, true);
+    G_SelectEntity(client, fix.caster);
+    G_ClientCommand(clent, 2, button);
+    T_NOT_NULL(client->menu.on_entity_selected);
+    snprintf(target_number, sizeof(target_number), "%u", (unsigned)fix.enemy->s.number);
+    G_ClientCommand(clent, 2, select);
+
+    T_EQ(fix.enemy->s.player, 0);
+    T_ASSERT(M_IsDead(fix.caster));
+    pos_done(fix);
+}
+
 /* ACps shares CAbilityPossession and reads its own AbilityData row. */
 TEST(wc3_spell, possession_acps_alias_takes_over) {
     posFix_t fix; pos_setup(&fix, POS_APOS_SLK, BZ_ACPS);

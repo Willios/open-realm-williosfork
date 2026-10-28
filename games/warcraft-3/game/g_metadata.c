@@ -1501,7 +1501,7 @@ static void AddMapUnitProfileOverride(unitData_t const *unit, uint32_t target_id
     UnitProfile_t const *base = FindMapUnitProfileOverride(base_id);
     mapUnitProfileOverride_t *override;
 
-    if (!base) base = FS_SLKLookup(&profile_idx, base_id);
+    if (!base) base = G_UnitProfile(base_id);
     override = map_unit_profile_overrides + map_unit_profile_override_count++;
     memset(&override->row, 0, sizeof(override->row));
     if (base) override->row = *base;
@@ -2099,10 +2099,41 @@ UnitBalance_t const *G_UnitBalance(uint32_t id) {
 UpgradeData_t const *G_UpgradeData(uint32_t id) { static UpgradeData_t zero; UpgradeData_t *row = FS_SLKLookup(&upgrade_idx, id); return row ? row : &zero; }
 UnitProfile_t const *G_UnitProfile(uint32_t id) {
     static UnitProfile_t zero;
+    static UnitProfile_t temple_profile;
+    static char temple_researches[256];
     UnitProfile_t const *override = FindMapUnitProfileOverride(id);
     UnitProfile_t *row;
     if (override) return override;
     row = FS_SLKLookup(&profile_idx, ResolveUnitID(id));
+    if (row && id == MAKEFOURCC('u','t','o','d')) {
+        /* UndeadUnitFunc.txt authors Researches twice for the Temple of the
+         * Damned. The INI cache keeps the later Rusl/Rusm value, dropping the
+         * RoC/TFT caster training researches Rune/Ruba. Retain both pairs. */
+        cstring_t const authored = row->researches ? row->researches : "";
+        bool has_rune = false, has_ruba = false;
+        size_t used;
+        cstring_t cursor = authored;
+        while (*cursor) {
+            size_t length = strcspn(cursor, ",");
+            if (length == 4 && !strncmp(cursor, "Rune", 4)) has_rune = true;
+            if (length == 4 && !strncmp(cursor, "Ruba", 4)) has_ruba = true;
+            cursor += length;
+            if (*cursor == ',') cursor++;
+        }
+        snprintf(temple_researches, sizeof(temple_researches), "%s", authored);
+        used = strlen(temple_researches);
+        if (!has_rune && used < sizeof(temple_researches)) {
+            used += (size_t)snprintf(temple_researches + used, sizeof(temple_researches) - used,
+                                     "%sRune", used ? "," : "");
+        }
+        if (!has_ruba && used < sizeof(temple_researches)) {
+            snprintf(temple_researches + used, sizeof(temple_researches) - used,
+                     "%sRuba", used ? "," : "");
+        }
+        temple_profile = *row;
+        temple_profile.researches = temple_researches;
+        return &temple_profile;
+    }
     return row ? row : &zero;
 }
 UnitData_t const *G_UnitData(uint32_t id) {

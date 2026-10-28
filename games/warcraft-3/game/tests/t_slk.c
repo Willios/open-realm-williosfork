@@ -856,6 +856,30 @@ TEST(wc3_slk, profile_ddx_and_fourcc_metadata_share_typed_row) {
     G_SetProfileRows(old);
 }
 
+TEST(wc3_slk, temple_profile_retains_duplicate_caster_training_researches) {
+    uint32_t const temple_id = MAKEFOURCC('u','t','o','d');
+    uint32_t const custom_id = MAKEFOURCC('u','A','0','1');
+    slkTestData_t *rows = parse_slk_string(
+        "C;Y1;X1;K\"id\"\nC;Y1;X2;K\"Researches\"\n"
+        "C;Y2;X1;K\"utod\"\nC;Y2;X2;K\"Rusl,Rusm\"\nE\n");
+    slkTestData_t *old_rows = G_SetProfileRows(rows);
+    unitData_t custom = { .originalUnitID = temple_id, .newUnitID = custom_id };
+    mapInfo_t mapinfo = { .num_userCreatedUnits = 1, .userCreatedUnits = &custom };
+    mapInfo_t const *saved_mapinfo;
+
+    setup_test_world();
+    saved_mapinfo = level.mapinfo;
+    T_STREQ(G_UnitProfile(temple_id)->researches, "Rusl,Rusm,Rune,Ruba");
+
+    level.mapinfo = &mapinfo;
+    G_SetMapUnitOverrides(&mapinfo);
+    T_STREQ(G_UnitProfile(custom_id)->researches, "Rusl,Rusm,Rune,Ruba");
+
+    G_SetMapUnitOverrides(NULL);
+    level.mapinfo = saved_mapinfo;
+    G_SetProfileRows(old_rows);
+}
+
 /* Retail profiles list one missile element per weapon (hgyr: two arts, speeds 2000,900);
  * a single value covers both attacks, as WarSmash's indexed field lookup does. */
 TEST(wc3_slk, profile_missile_fields_select_element_per_attack) {
