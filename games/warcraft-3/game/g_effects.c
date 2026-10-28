@@ -177,6 +177,10 @@ uint32_t G_AbilityLightningId(uint32_t ability_id, uint32_t index) {
             }
             return index ? MAKEFOURCC('C','L','S','B') : MAKEFOURCC('C','L','P','B');
         }
+        /* RoC 1.0 omits AEmb's LightningEffect field, while both data sets
+         * include the authored green Mana Burn ribbon row. */
+        if (G_AbilityCode(ability_id) == MAKEFOURCC('A','E','m','b'))
+            return index ? 0 : MAKEFOURCC('M','B','U','R');
 #endif
         return 0;
     }

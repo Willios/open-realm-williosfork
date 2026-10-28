@@ -154,6 +154,11 @@ BZ_SIMPLE_SPELL_PROC(AbilityManaBurn) {
     uint32_t level = S_SpellLevel(caster, spell->code);
     float amount = MIN(target->mana.value, S_SpellData(spell->code, level, 1));
 
+    G_SpawnAbilityLightning(&(abilityLightningParams_t){
+        .ability_id = spell->code, .index = 0, .source = caster, .target = target,
+        .duration_ms = 300,
+    });
+    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, target, NULL, true);
     target->mana.value -= amount;
     if (amount > 0.0f) S_SpellDamage(target, caster, (int)amount);
 }

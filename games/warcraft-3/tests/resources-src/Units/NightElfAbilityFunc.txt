@@ -25,6 +25,10 @@ Unbuttonpos=1,2
 Order=immolation
 Unorder=unimmolation
 
+[AEmb]
+Targetart=TestUI\Models\anim_pulse.mdx
+LightningEffect=MBUR
+
 [BEer]
 Buffart=ReplaceableTextures\CommandButtons\BTNEntanglingRoots.blp
 Targetart=Abilities\Spells\NightElf\EntanglingRoots\EntanglingRootsTarget.mdl

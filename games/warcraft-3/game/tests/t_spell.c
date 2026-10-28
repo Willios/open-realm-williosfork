@@ -163,6 +163,13 @@ TEST(wc3_spell, mana_burn_drains_mana_and_deals_equal_health_damage_at_each_rank
         target->health.value = target->health.max_value = 500.0f;
         target->mana.value = target->mana.max_value = 300.0f;
         T_ASSERT(test_execute_code(caster, "AEmb", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target)));
+        if (rank == 1) {
+            T_EQ(G_AbilityLightningId(MAKEFOURCC('A','E','m','b'), 0), MAKEFOURCC('M','B','U','R'));
+            T_STREQ(G_AbilityEffectArt(MAKEFOURCC('A','E','m','b'), WC3_EFFECT_TARGET, 0), "TestUI\\Models\\anim_pulse.mdx");
+            T_ASSERT(level.lightning_effects[0].inuse);
+            T_EQ(level.lightning_effects[0].state.effect_id, MAKEFOURCC('M','B','U','R'));
+            T_EQ(level.lightning_effects[0].state.end_time, 300);
+        }
         T_FEQ(target->mana.value, 300.0f - amounts[rank - 1], 0.001f);
         T_FEQ(target->health.value, 500.0f - amounts[rank - 1], 0.001f);
     }
