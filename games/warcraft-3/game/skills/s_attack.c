@@ -38,9 +38,27 @@ static umove_t attack_move_melee_cooldown;
 static umove_t attack_move_ranged_cooldown;
 
 #define ID_MEAT_WAGON MAKEFOURCC('u','m','t','w')
+#define ID_MEAT_WAGON_IMPACT MAKEFOURCC('u','m','t','i')
 #define ID_PLAGUE_TOSS MAKEFOURCC('A','p','t','s')
 #define ID_DISEASE_CLOUD_RESEARCH MAKEFOURCC('R','u','p','c')
 #define MEAT_WAGON_PLAGUE_CLOUD_MS 10000u
+
+static void artillery_spawn_meat_wagon_impact(edict_t *attacker, vec2_t const *impact) {
+    UnitProfile_t const *profile;
+    edict_t *effect;
+    animation_t const *death;
+    if (!attacker || attacker->class_id != ID_MEAT_WAGON) return;
+    profile = attacker->data.UnitProfile ? attacker->data.UnitProfile : G_UnitProfile(attacker->class_id);
+    if (!profile || !profile->attack[0].art || !*profile->attack[0].art) return;
+    effect = G_SpawnModelEffect(profile->attack[0].art, impact, NULL, NULL, true);
+    if (!effect) return;
+    effect->summon_ability = ID_MEAT_WAGON_IMPACT;
+    death = G_GetAnimation(effect->s.model, "Death");
+    if (death && death->interval[1] > death->interval[0]) {
+        effect->animation = death;
+        effect->s.frame = death->interval[0];
+    }
+}
 
 static void artillery_spawn_meat_wagon_plague_cloud(edict_t *attacker, vec2_t const *impact) {
     gameClient_t *owner;
@@ -561,6 +579,7 @@ void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t cons
 
     if (!attacker || !impact || raw_damage <= 0) return;
     if (!profile) return;
+    artillery_spawn_meat_wagon_impact(attacker, impact);
     artillery_spawn_meat_wagon_plague_cloud(attacker, impact);
     max_radius = MAX(profile->area_full, MAX(profile->area_medium, profile->area_small));
     if (max_radius < 0.0f) return;
