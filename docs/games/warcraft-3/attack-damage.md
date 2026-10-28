@@ -40,6 +40,14 @@ consumes the missile rather than reflecting it into the structure. The flag and
 projectile target/owner references cross save/load, so a return flight remains
 semantically the same after loading.
 
+Basic projectiles snapshot `missile->owner_spawn_time` at launch. Validate the
+owner's incarnation before dispatching `S_UnitProjectileHit` or resolving an
+artillery blast: Defend can apply partial damage inside its reaction, before
+the ordinary hit calculation. A check after that callback permits damage and
+reflection from a recycled attacker. The regression
+`wc3_spell.defend_rejects_recycled_projectile_owner_before_reaction` uses a
+guaranteed deflection and nonzero DataG, asserting teardown with no HP loss.
+
 ## Runtime Attack Fields
 
 `edict_t.unit_state->attack1` and `attack2` are mutable copies of `UnitWeapons.slk` data. Target validation checks both authored target masks without changing either profile. Attack timing, projectile setup, and damage select the compatible profile from the current target, leaving both authored runtime copies in their original slots. Candidate scans and repeated target validation are read-only, so their traversal order cannot change the active weapon.

@@ -53,6 +53,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 | WC3 optional SC2API Raw agent transport, observations, actions and stepping | [docs/games/warcraft-3/sc2api-agent-interface.md](docs/games/warcraft-3/sc2api-agent-interface.md) |
 | WC3 critter wandering (`Awan`): idle scheduling, Move ownership events, flee, building clearance, save fields, scheduler-path tests | [docs/games/warcraft-3/critter-ai.md](docs/games/warcraft-3/critter-ai.md) |
 | WC3 attack damage math, runtime modifiers, armor/type multipliers, projectile impact timing | [docs/games/warcraft-3/attack-damage.md](docs/games/warcraft-3/attack-damage.md) |
+| WC3 Pillage research, primary-hit salvage, per-player fractional rewards and persistence | [docs/games/warcraft-3/pillage.md](docs/games/warcraft-3/pillage.md) |
 | WC3 group Attack, target chase, collision range, and remaining combat-movement gaps | [docs/games/warcraft-3/group-attack-chase-gaps.md](docs/games/warcraft-3/group-attack-chase-gaps.md) |
 | WC3 naval movement, FLOAT/AMPH water pathing, collision domains, bridge semantics | [docs/games/warcraft-3/naval-movement.md](docs/games/warcraft-3/naval-movement.md) |
 | WC3 alarm/captain AI natives and full-screen model cinematic compatibility | [docs/games/warcraft-3/campaign-ai-model-cinematic.md](docs/games/warcraft-3/campaign-ai-model-cinematic.md) |

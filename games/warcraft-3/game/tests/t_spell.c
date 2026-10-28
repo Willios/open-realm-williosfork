@@ -3403,6 +3403,12 @@ TEST(wc3_spell, human_support_spells_use_authored_status_and_heal_values) {
 	T_FEQ(ally->health.value, 85.0f, 0.001f);
 	test_execute_code(caster, "Ainf", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = ally));
 	T_ASSERT(S_UnitHasStatus(ally, MAKEFOURCC('B','i','n','f'))); T_FEQ(G_UnitArmorValue(ally), 7.0f, 0.001f);
+	enemy->health.value = enemy->health.max_value = 500;
+	S_ResolveAttackHit(ally, enemy, 100);
+	T_FEQ(enemy->health.value, 390.0f, 0.001f);
+	unit_removestatus(ally, unit_findstatus(ally, MAKEFOURCC('B','i','n','f')), STATUS_REMOVE_DISPEL);
+	S_ResolveAttackHit(ally, enemy, 100);
+	T_FEQ(enemy->health.value, 290.0f, 0.001f);
 	enemy->unit_state->attack1.cooldown = 1.0f;
 	enemy->unit_state->attack1.damagePoint = 0.3f;
 	enemy->unitinfo.MoveSpeed = 270.0f;
@@ -3418,6 +3424,52 @@ TEST(wc3_spell, human_support_spells_use_authored_status_and_heal_values) {
 	T_FEQ(enemy->wait, 0.4f, 0.001f);
 
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
+/* Stock BuffIDs may be shared by custom abilities; both data schemas must
+ * retain the casting alias through modifier installation and removal. */
+TEST(wc3_spell, human_support_aliases_preserve_authored_modifiers) {
+    FOR_LOOP(edition, 2) {
+        char slk[4096];
+        snprintf(slk, sizeof(slk),
+            "ID;PWXL;N;EBB;Y5;X9\n"
+            "C;Y1;X1;K\"alias\"\nC;X2;K\"code\"\nC;X3;K\"targs\"\nC;X4;K\"Rng1\"\n"
+            "C;X5;K\"Dur1\"\nC;X6;K\"HeroDur1\"\nC;X7;K\"%s\"\nC;X8;K\"%s\"\nC;X9;K\"BuffID1\"\n"
+            "C;Y2;X1;K\"Ainf\"\nC;X2;K\"Ainf\"\nC;X7;K0.1\nC;X8;K2\n"
+            "C;Y3;X1;K\"Aslo\"\nC;X2;K\"Aslo\"\nC;X7;K0.2\nC;X8;K0.25\n"
+            "C;Y4;X1;K\"C001\"\nC;X2;K\"Ainf\"\nC;X3;K\"ground,friend\"\n"
+            "C;X4;K700\nC;X5;K30\nC;X6;K30\nC;X7;K0.35\nC;X8;K9\nC;X9;K\"Binf\"\n"
+            "C;Y5;X1;K\"C002\"\nC;X2;K\"Aslo\"\nC;X3;K\"ground,enemy\"\n"
+            "C;X4;K700\nC;X5;K30\nC;X6;K30\nC;X7;K0.6\nC;X8;K0.45\nC;X9;K\"Bslo\"\nE\n",
+            edition ? "DataA1" : "Data11", edition ? "DataB1" : "Data12");
+        reset_entities(); setup_test_world();
+        slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+        edict_t *caster = make_hero(MAKEFOURCC('h','p','r','i'), 300, 300, 0, 0);
+        edict_t *ally = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 50, 0);
+        edict_t *enemy = alloc_test_unit(MAKEFOURCC('o','g','r','u'), 100, 0);
+        caster->s.player = ally->s.player = 0; enemy->s.player = 1;
+        ally->svflags |= SVF_MONSTER; enemy->svflags |= SVF_MONSTER;
+        ally->unit_state->armor_value = 2;
+        enemy->health.value = enemy->health.max_value = 500;
+        T_ASSERT(test_execute_code(caster, "C001", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = ally)));
+        T_FEQ(G_UnitArmorValue(ally), 11.0f, 0.001f);
+        T_FEQ(unit_status_modifier_total(ally, WC3_STATUS_MOD_ATTACK_DAMAGE_PERCENT), 0.35f, 0.001f);
+        S_ResolveAttackHit(ally, enemy, 100);
+        T_FEQ(enemy->health.value, 365.0f, 0.001f);
+        unit_removestatus(ally, unit_findstatus(ally, MAKEFOURCC('B','i','n','f')), STATUS_REMOVE_DISPEL);
+        T_FEQ(G_UnitArmorValue(ally), 2.0f, 0.001f);
+        S_ResolveAttackHit(ally, enemy, 100);
+        T_FEQ(enemy->health.value, 265.0f, 0.001f);
+        enemy->unit_state->attack1.cooldown = 1.0f;
+        enemy->unit_state->attack1.damagePoint = 0.3f;
+        T_ASSERT(test_execute_code(caster, "C002", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = enemy)));
+        attack_melee(enemy);
+        T_FEQ(enemy->wait, 0.3f / 0.55f, 0.001f);
+        unit_removestatus(enemy, unit_findstatus(enemy, MAKEFOURCC('B','s','l','o')), STATUS_REMOVE_DISPEL);
+        attack_melee(enemy);
+        T_FEQ(enemy->wait, 0.3f, 0.001f);
+        G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+    }
 }
 
 TEST(wc3_spell, human_attack_passives_and_defend_change_damage) {
@@ -3709,6 +3761,35 @@ TEST(wc3_spell, defend_projectile_retargets_to_unit_source_and_cannot_reflect_tw
 
 	game.constants.combatConstantsLoaded = old_loaded; game.constants.defendDeflection = old_deflect;
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
+TEST(wc3_spell, defend_rejects_recycled_projectile_owner_before_reaction) {
+    char const slk[] =
+        "ID;PWXL;N;EBB;Y2;X6\n"
+        "C;Y1;X1;K\"alias\"\nC;X2;K\"code\"\nC;X3;K\"DataA1\"\nC;X4;K\"DataF1\"\n"
+        "C;X5;K\"DataG1\"\nC;X6;K\"DataH1\"\n"
+        "C;Y2;X1;K\"Adef\"\nC;X2;K\"Adef\"\nC;X3;K0.5\nC;X4;K100\nC;X5;K0.25\nC;X6;K1\nE\n";
+    reset_entities(); setup_test_world();
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    bool const old_loaded = game.constants.combatConstantsLoaded, old_deflect = game.constants.defendDeflection;
+    edict_t *attacker = make_hero(MAKEFOURCC('h','b','r','e'), 300, 0, 0, 0);
+    edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+    edict_t *missile = G_Spawn();
+    float const hp = target->health.value;
+    game.constants.combatConstantsLoaded = true; game.constants.defendDeflection = true;
+    attacker->spawn_time = 200;
+    attacker->unit_state->attack1.type = ATK_PIERCE;
+    unit_addstatus(target, "Adef", 1);
+    missile->owner = attacker; missile->goalentity = target; missile->movetype = MOVETYPE_FLYMISSILE;
+    G_InitMissile(missile);
+    missile->missile->attack_type = ATK_PIERCE;
+    missile->missile->owner_spawn_time = 100;
+    missile->velocity = 100000.0f; missile->damage = 100; missile->s.origin = target->s.origin;
+    SV_Physics_Toss(missile);
+    T_ASSERT(!missile->inuse);
+    T_FEQ(target->health.value, hp, 0.001f);
+    game.constants.combatConstantsLoaded = old_loaded; game.constants.defendDeflection = old_deflect;
+    G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
 TEST(wc3_spell, defend_attack2_projectile_uses_launch_type_after_target_morph) {

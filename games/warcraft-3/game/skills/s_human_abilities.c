@@ -827,8 +827,8 @@ static bool defend_projectile_reaction(edict_t *projectile) {
 
 int S_HumanAttackDamage(edict_t *attacker, edict_t *target, int damage) {
     uint32_t level;
-    if ((level = G_UnitStatusLevel(attacker, MAKEFOURCC('B','i','n','f'))))
-        damage = (int)(damage * (1.0f + S_SpellData(MAKEFOURCC('A','i','n','f'), level, 1)));
+    /* Inner Fire is already included by the hit resolver's status ledger;
+     * multiplying it here again squared its authored attack bonus. */
     damage = S_FeedbackDamage(attacker, target, damage);
     if ((level = G_UnitAbilityLevel(attacker, MAKEFOURCC('A','f','s','h'))) && target->unit_state->defense_type <= 2)
         damage += (int)S_SpellData(MAKEFOURCC('A','f','s','h'), level, 3 + target->unit_state->defense_type);

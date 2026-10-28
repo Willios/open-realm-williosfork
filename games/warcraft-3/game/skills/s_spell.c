@@ -1594,7 +1594,8 @@ static void status_apply_authored_modifiers(heroabilitystatus_t *slot, uint32_t 
         status_authored_modifier(slot, WC3_STATUS_MOD_MOVE_SPEED_PERCENT, S_SpellData(ability, rank, 2));
         break;
     case MAKEFOURCC('B','s','l','o'):
-        ability = MAKEFOURCC('A','s','l','o');
+        /* A shared stock BuffID does not replace the casting alias's data. */
+        if (!ability) ability = MAKEFOURCC('A','s','l','o');
         status_authored_modifier(slot, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT, -S_SpellData(ability, rank, 2));
         break;
     case MAKEFOURCC('B','f','z','y'):
@@ -1613,7 +1614,7 @@ static void status_apply_authored_modifiers(heroabilitystatus_t *slot, uint32_t 
         status_authored_modifier(slot, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT, -S_SpellData(ability, rank, 3));
         break;
     case MAKEFOURCC('B','i','n','f'):
-        ability = MAKEFOURCC('A','i','n','f');
+        if (!ability) ability = MAKEFOURCC('A','i','n','f');
         status_authored_modifier(slot, WC3_STATUS_MOD_ARMOR_FLAT, S_SpellData(ability, rank, 2));
         status_authored_modifier(slot, WC3_STATUS_MOD_ATTACK_DAMAGE_PERCENT, S_SpellData(ability, rank, 1));
         break;

@@ -121,6 +121,14 @@ void SV_Physics_Toss(edict_t *ent) {
         if (ent->currentmove && ent->currentmove->endfunc) {
             ent->currentmove->endfunc(ent);
         } else {
+            /* Reject recycled attackers before Defend can reflect the shot or
+             * apply partial damage, and before artillery resolves its blast. */
+            edict_t *attacker = ent->owner;
+            if (!attacker || !attacker->inuse || !attacker->unit_state ||
+                !ent->missile || attacker->spawn_time != ent->missile->owner_spawn_time) {
+                G_FreeEdict(ent);
+                return;
+            }
             /* Abilities own projectile-impact reactions before the normal hit path. */
             if (!fixed_target && S_UnitProjectileHit(ent)) return;
             /* Basic attack missiles carry the launch-time raw roll. Resolve
@@ -132,17 +140,8 @@ void SV_Physics_Toss(edict_t *ent) {
                 edict_t *primary = ent->goalentity;
                 if (fixed_target && primary &&
                     (!primary->inuse || primary->spawn_time != cast->target_spawn_time)) primary = NULL;
-                S_ResolveArtilleryPointHit(ent->owner, primary, &impact, ent->damage, G_GetArtillery(ent));
+                S_ResolveArtilleryPointHit(attacker, primary, &impact, ent->damage, G_GetArtillery(ent));
             } else {
-                /* The attacker may have been removed while its missile was in
-                 * flight. Edict slots are cleared and reused, so validate the
-                 * launch identity before dereferencing owner during hit math. */
-                edict_t *attacker = ent->owner;
-                if (!attacker || !attacker->inuse || !attacker->unit_state ||
-                    !ent->missile || attacker->spawn_time != ent->missile->owner_spawn_time) {
-                    G_FreeEdict(ent);
-                    return;
-                }
                 int const damage = G_AttackDamageWithType(attacker, ent->goalentity, ent->damage,
                                                           ent->missile->attack_type);
                 S_ResolveAttackHit(attacker, ent->goalentity, damage);

@@ -9,6 +9,12 @@ The aggregate target runs the suites concurrently through recursive Make. `TEST_
 The `test-jass-build` shell recipe is marked recursive with `+` because its script invokes Make. This preserves
 GNU Make jobserver descriptors during parallel suite execution and avoids the Linux `jobserver unavailable` warning.
 
+Separate `BIN_DIR`/`LIB_DIR` configurations still share `build/tests` fixture
+outputs, including `tests.mpq`. Finish `test-assets` before running engines
+from multiple configurations; do not regenerate that archive while another
+configuration is reading it. Run already-built test binaries directly when
+comparing compatibility modes against the same prepared fixtures.
+
 ## Benchmark
 
 ### macOS SDL event test dependency
