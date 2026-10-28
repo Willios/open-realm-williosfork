@@ -3384,6 +3384,54 @@ TEST(wc3_spell, first_new_ability_handlers_are_real_spells) {
 	T_EQ((int)thunder_clap_item.code, (int)MAKEFOURCC('A', 'H', 't', 'c'));
 }
 
+TEST(wc3_spell, carrion_swarm_damages_each_unit_for_its_rank_damage) {
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X13\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+		"C;Y1;X4;K\"Area1\"\nC;Y1;X5;K\"Area2\"\nC;Y1;X6;K\"Area3\"\n"
+		"C;Y1;X7;K\"DataA1\"\nC;Y1;X8;K\"DataA2\"\nC;Y1;X9;K\"DataA3\"\n"
+		"C;Y1;X10;K\"DataB1\"\nC;Y1;X11;K\"DataB2\"\nC;Y1;X12;K\"DataB3\"\n"
+		"C;Y1;X13;K\"levels\"\n"
+		"C;Y2;X1;K\"AUcs\"\nC;Y2;X2;K\"AUcs\"\nC;Y2;X3;K\"ground,air\"\n"
+		"C;Y2;X4;K300\nC;Y2;X5;K300\nC;Y2;X6;K300\n"
+		"C;Y2;X7;K75\nC;Y2;X8;K125\nC;Y2;X9;K200\n"
+		"C;Y2;X10;K400\nC;Y2;X11;K700\nC;Y2;X12;K1200\nC;Y2;X13;K3\nE\n";
+	slkTestData_t *rows, *old;
+	edict_t *caster, *first, *second;
+	static int const rank_damage[] = { 75, 125, 200 };
+	uint32_t rank;
+
+	reset_entities();
+	setup_test_world();
+	rows = parse_slk_string(slk);
+	old = G_SetSLKRows("AbilityData", rows);
+	caster = make_hero(MAKEFOURCC('U','d','r','e'), 500, 200, 0, 0);
+	first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 480, 0);
+	second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 520, 10);
+	caster->s.player = 0;
+	first->s.player = second->s.player = 1;
+	first->targtype = second->targtype = TARG_GROUND;
+	first->svflags |= SVF_MONSTER;
+	second->svflags |= SVF_MONSTER;
+	first->health.value = first->health.max_value = 1000;
+	second->health.value = second->health.max_value = 1000;
+	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+	((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+
+	for (rank = 1; rank <= 3; rank++) {
+		caster->unit_state->ranks[0] = MAKE(heroability_t,
+			.code = MAKEFOURCC('A','U','c','s'), .level = rank);
+		first->health.value = second->health.value = 1000;
+		test_execute_code(caster, "AUcs", MAKE(spellTarget_t, .type = SPELL_TARGET_POINT,
+			.point = MAKE(vec2_t, 500, 0)));
+		T_FEQ(first->health.value, 1000 - rank_damage[rank - 1], 0.001f);
+		T_FEQ(second->health.value, 1000 - rank_damage[rank - 1], 0.001f);
+	}
+
+	G_SetSLKRows("AbilityData", old);
+	free_slk_rows(rows);
+}
+
 TEST(wc3_spell, bladestorm_deals_110_damage_to_nearby_enemy_ground_units) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X4\n"
