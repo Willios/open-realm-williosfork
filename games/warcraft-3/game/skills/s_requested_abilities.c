@@ -821,7 +821,6 @@ static void death_pact_execute(edict_t *caster, spellTarget_t st, abilityitem_t 
     bool leave_target_alive = S_SpellData(spell->code, level, 5) != 0.0f;
     float target_life_loss = 0.0f;
 
-    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, caster, NULL, true);
     if (life_value != 0.0f) {
         if (life_as_value) {
             target_life_loss += life_value;
@@ -838,6 +837,9 @@ static void death_pact_execute(edict_t *caster, spellTarget_t st, abilityitem_t 
             caster->mana.value = MIN(caster->mana.max_value, caster->mana.value + mana_value * target_life);
         }
     }
+    /* AUdp's CasterArt is the receive-health presentation. Play it after the
+     * Death Knight's life/mana restoration, as Dark Ritual does for its caster. */
+    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, caster, NULL, true);
 
     /* A non-leave-target-alive Death Pact is a sacrifice even when a fixed
      * DataC/DataD drain happens to reduce the victim to zero first. Mark the
