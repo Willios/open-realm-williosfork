@@ -176,11 +176,11 @@ BZ_SIMPLE_SPELL_PROC(AbilityRoar) {
     if (!buff) return;
     FILTER_EDICTS(target, S_SpellIsAliveTarget(target) && S_SpellIsFriend(caster, target) &&
                   Vector2_distance(&target->s.origin2, &caster->s.origin2) <= area) {
-        heroabilitystatus_t *status = S_SpellApplyTimedStatus(target, buff, level, duration);
+        heroabilitystatus_t *status = S_SpellApplyTimedTargetStatus(target, spell->code, level, buff, duration);
         if (status && status->code == MAKEFOURCC('B','r','o','a'))
             status->buff_flags |= WC3_STATUS_BUFF_POSITIVE | WC3_STATUS_BUFF_MAGICAL;
     }
-    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, caster, NULL, true);
+    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, caster, NULL, true);
 }
 
 /* DataA owns the attack-rate bonus as a fraction (0.4 = +40%); DataB owns move speed. */

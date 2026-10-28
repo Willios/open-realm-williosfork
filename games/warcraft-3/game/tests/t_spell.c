@@ -6204,6 +6204,7 @@ TEST(wc3_spell, roar_skips_full_ally_and_buffs_other_targets) {
     edict_t *caster = make_hero(MAKEFOURCC('h','p','r','i'), 300, 300, 0, 0);
     edict_t *full = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 60, 0);
     edict_t *free_ally = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 120, 0);
+    edict_t *roar_effect = NULL, *caster_effect = NULL;
     caster->s.player = full->s.player = free_ally->s.player = 0;
     full->svflags |= SVF_MONSTER;
     free_ally->svflags |= SVF_MONSTER;
@@ -6218,6 +6219,17 @@ TEST(wc3_spell, roar_skips_full_ally_and_buffs_other_targets) {
     T_EQ(G_UnitStatusLevel(free_ally, MAKEFOURCC('B','r','o','a')), 1);
     T_FEQ(S_RoarDamageBonus(free_ally), 0.37f, 0.001f);
     T_EQ(G_UnitStatusLevel(caster, MAKEFOURCC('B','r','o','a')), 1);
+    T_STREQ(G_AbilityEffectArt(MAKEFOURCC('B','r','o','a'), WC3_EFFECT_TARGET, 0), "TestUI\\Models\\anim_pulse.mdx");
+    FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','r','o','a') && effect->goalentity == free_ally) {
+        roar_effect = effect;
+        break;
+    }
+    FILTER_EDICTS(effect, effect->goalentity == caster && effect->s.model == G_RegisterModel("TestUI\\Models\\anim_oneshot.mdx")) {
+        caster_effect = effect;
+        break;
+    }
+    T_NOT_NULL(roar_effect);
+    T_NOT_NULL(caster_effect);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 

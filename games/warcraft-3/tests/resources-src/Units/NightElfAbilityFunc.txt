@@ -29,6 +29,13 @@ Unorder=unimmolation
 Targetart=TestUI\Models\anim_pulse.mdx
 LightningEffect=MBUR
 
+[Aroa]
+Casterart=TestUI\Models\anim_oneshot.mdx
+
+[Broa]
+Targetart=TestUI\Models\anim_pulse.mdx
+Targetattach=overhead
+
 [BEer]
 Buffart=ReplaceableTextures\CommandButtons\BTNEntanglingRoots.blp
 Targetart=Abilities\Spells\NightElf\EntanglingRoots\EntanglingRootsTarget.mdl
