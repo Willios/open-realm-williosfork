@@ -6291,6 +6291,15 @@ TEST(wc3_spell, roar_damage_bonus_is_shown_as_green_flat_damage_in_status_panel)
 }
 
 TEST(wc3_spell, bear_form_hides_normal_form_spells_and_uses_reverse_button_art) {
+    static cstring_t const unit_ui_slk =
+        "ID;PWXL;N;EBB;Y3;X4\n"
+        "C;Y1;X1;K\"unitUIID\"\nC;Y1;X2;K\"file\"\n"
+        "C;Y1;X3;K\"modelScale\"\nC;Y1;X4;K\"scale\"\n"
+        "C;Y2;X1;K\"edoc\"\nC;Y2;X2;K\"Units\\Creeps\\Medivh\\Medivh.mdx\"\n"
+        "C;Y2;X3;K1\nC;Y2;X4;K1\n"
+        "C;Y3;X1;K\"edcm\"\nC;Y3;X2;K\"Units\\Creeps\\Medivh\\Medivh.mdx\"\n"
+        "C;Y3;X3;K1\nC;Y3;X4;K1\nE\n";
+    slkTestData_t *ui_rows, *old_ui;
     static UnitAbilities_t const bear_abilities = { .abilList = "Abrf,Ara2,Arej,Aroa" };
     static UnitBalance_t const bear_balance = { .speed = 270.0f };
     edict_t *bear;
@@ -6304,6 +6313,8 @@ TEST(wc3_spell, bear_form_hides_normal_form_spells_and_uses_reverse_button_art) 
     spellTarget_t ally_target;
 
     setup_test_world();
+    ui_rows = parse_slk_string(unit_ui_slk);
+    old_ui = G_SetSLKRows("UnitUI", ui_rows);
     bear = alloc_test_unit(MAKEFOURCC('e','d','c','m'), 0, 0);
     bear->data.UnitAbilities = &bear_abilities;
     bear->data.UnitBalance = &bear_balance;
@@ -6340,6 +6351,15 @@ TEST(wc3_spell, bear_form_hides_normal_form_spells_and_uses_reverse_button_art) 
         }
     }
     T_ASSERT(bear_form_button);
+
+    test_execute_code(bear, "Abrf", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+    T_EQ(bear->class_id, MAKEFOURCC('e','d','c','m'));
+    T_STREQ(bear->animation_request, "morph");
+    test_execute_code(bear, "Abrf", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+    T_EQ(bear->class_id, MAKEFOURCC('e','d','o','c'));
+    T_STREQ(bear->animation_request, "morph alternate");
+    G_SetSLKRows("UnitUI", old_ui);
+    free_slk_rows(ui_rows);
 }
 
 TEST(wc3_spell, melee_spells_use_authored_status_and_bonus_values) {

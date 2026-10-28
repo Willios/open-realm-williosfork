@@ -883,12 +883,20 @@ BZ_ABILITY_PROC(CAbilityDeathPact) {
 #define ID_BEAR_FORM_ABILITY MAKEFOURCC('A','b','r','f')
 #define ID_BEAR_FORM_NIGHT_ELF MAKEFOURCC('e','d','o','c')
 #define ID_BEAR_FORM_BEAR MAKEFOURCC('e','d','c','m')
+static void bear_form_morph_end(edict_t *unit) { unit_stand(unit); }
+static umove_t bear_form_morph = { "morph", NULL, bear_form_morph_end, CAbilityMetamorphosis };
+static umove_t bear_form_morph_alternate = { "morph alternate", NULL, bear_form_morph_end, CAbilityMetamorphosis };
+
 static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
     (void)st;
     if (spell->code == ID_BEAR_FORM_ABILITY) {
-        uint32_t const target_form = caster->class_id == ID_BEAR_FORM_BEAR ?
-            ID_BEAR_FORM_NIGHT_ELF : ID_BEAR_FORM_BEAR;
-        G_TransformUnitType(caster, target_form);
+        bool const entering_bear_form = caster->class_id != ID_BEAR_FORM_BEAR;
+        uint32_t const target_form = entering_bear_form ? ID_BEAR_FORM_BEAR : ID_BEAR_FORM_NIGHT_ELF;
+        if (!G_TransformUnitType(caster, target_form)) return;
+        /* Both authored unit forms share the Morph/Morph Alternate sequences.
+         * Rebind first so the transition runs on the newly selected form. */
+        unit_stand(caster);
+        unit_setmove(caster, entering_bear_form ? &bear_form_morph : &bear_form_morph_alternate);
         return;
     }
     uint32_t level = S_SpellLevel(caster, spell->code), form = S_SpellUnitId(spell->code, level), original = caster->class_id;
