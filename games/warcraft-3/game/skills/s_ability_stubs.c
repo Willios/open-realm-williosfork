@@ -101,7 +101,7 @@ BZ_ABILITY_PROC(CAbilityDarkRitual) {
         edict_t *clent = call ? call->entity : NULL;
         edict_t *caster = clent && clent->client ? G_GetMainSelectedUnit(clent->client) : ent;
         if (caster && caster->mana.max_value > 0.0f && caster->mana.value >= caster->mana.max_value) {
-            G_ShowCommandErrorKey(clent, "Manamaxed", "Already at full mana.");
+            G_ShowCommandErrorKey(clent, "Manamaxed", NULL);
             return true;
         }
     } else if (msg == A_EXECUTE) {
