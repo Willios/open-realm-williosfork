@@ -16,6 +16,46 @@ typedef struct {
     float length, width;
 } shockwaveContext_t;
 
+typedef struct {
+    edict_t *caster;
+    vec2_t direction;
+    float length, width;
+} carrionSwarmContext_t;
+
+static bool carrion_swarm_hits(edict_t *target, carrionSwarmContext_t const *ctx) {
+    vec2_t offset;
+    float along, across;
+    if (!target->inuse || target == ctx->caster || !S_SpellIsAliveTarget(target) ||
+        !S_SpellIsEnemy(ctx->caster, target) ||
+        (G_UnitTargetType(target) != TARG_GROUND && G_UnitTargetType(target) != TARG_AIR)) return false;
+    offset = Vector2_sub(&target->s.origin2, &ctx->caster->s.origin2);
+    along = Vector2_dot(&offset, &ctx->direction);
+    across = offset.x * ctx->direction.y - offset.y * ctx->direction.x;
+    /* Area1 is the cone's maximum half-width at its endpoint. The wave opens
+     * linearly from the caster and stops at the selected target point. */
+    return along >= 0.0f && along <= ctx->length &&
+           fabsf(across) <= ctx->width * (along / ctx->length);
+}
+
+static void carrion_swarm_damage(edict_t *caster, vec2_t const *point, float width,
+                                 uint32_t base_damage, float max_total) {
+    vec2_t offset = Vector2_sub(point, &caster->s.origin2);
+    float length = Vector2_len(&offset);
+    carrionSwarmContext_t ctx;
+    float damage = (float)base_damage;
+    uint32_t count = 0;
+    if (length <= 0.0f) return;
+    ctx = (carrionSwarmContext_t){ .caster = caster,
+        .direction = Vector2_scale(&offset, 1.0f / length), .length = length, .width = width };
+    if (max_total > 0.0f) {
+        FILTER_EDICTS(target, carrion_swarm_hits(target, &ctx)) count++;
+        if (count && damage * (float)count > max_total)
+            damage = MAX(1.0f, max_total / (float)count);
+    }
+    FILTER_EDICTS(target, carrion_swarm_hits(target, &ctx))
+        S_SpellDamage(target, caster, (uint32_t)damage);
+}
+
 /* Deal ent->damage to every enemy within ent->collision of ent.  maxtotal > 0
  * caps the combined damage of this burst (WC3 "Max Damage" / "Maximum Damage per
  * Wave"): when damage*targets would exceed it, the per-target damage is scaled
@@ -298,20 +338,17 @@ BZ_SIMPLE_SPELL_PROC(AbilityBlizzard) {
 /* Name=Carrion Swarm
  * Ubertip="Sends a wave of bats that damages enemy units in a line."
  */
-/* Carrion Swarm: instant point-target AoE blast. */
+/* Carrion Swarm damages enemy units in a widening cone from the caster to the
+ * selected point. */
 BZ_SIMPLE_SPELL_PROC(AbilityCarrionSwarm) {
     uint32_t level = S_SpellLevel(caster, spell->code);
-    edict_t *blast;
 
     carrion_swarm_spawn_missile(caster, spell->code, &st.point);
     G_SpawnAbilityEffectAtPoint(spell->code, WC3_EFFECT_SPECIAL, 0, &st.point, true);
-    blast = G_Spawn();
-    blast->owner = caster;
-    blast->s.origin2 = st.point;
-    blast->collision = MAX(96.0f, S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level));
-    blast->damage = (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1));
-    area_spell_damage(blast, S_SpellData(spell->code, level, 2)); /* DataB = Max Damage */
-    G_FreeEdict(blast);
+    carrion_swarm_damage(caster, &st.point,
+        MAX(0.0f, S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level)),
+        (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1)),
+        S_SpellData(spell->code, level, 2)); /* DataB = Max Damage */
 }
 
 /* Name=Shockwave

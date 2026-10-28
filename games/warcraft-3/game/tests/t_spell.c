@@ -3397,7 +3397,7 @@ TEST(wc3_spell, carrion_swarm_damages_each_unit_for_its_rank_damage) {
 		"C;Y2;X7;K75\nC;Y2;X8;K125\nC;Y2;X9;K200\n"
 		"C;Y2;X10;K400\nC;Y2;X11;K700\nC;Y2;X12;K1200\nC;Y2;X13;K3\nE\n";
 	slkTestData_t *rows, *old;
-	edict_t *caster, *first, *second;
+	edict_t *caster, *first, *second, *along_path, *cone_flank, *outside_cone;
 	static int const rank_damage[] = { 75, 125, 200 };
 	uint32_t rank;
 
@@ -3408,24 +3408,37 @@ TEST(wc3_spell, carrion_swarm_damages_each_unit_for_its_rank_damage) {
 	caster = make_hero(MAKEFOURCC('U','d','r','e'), 500, 200, 0, 0);
 	first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 480, 0);
 	second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 520, 10);
+	along_path = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 200, 0);
+	cone_flank = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 500, 100);
+	outside_cone = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 500, 250);
 	caster->s.player = 0;
-	first->s.player = second->s.player = 1;
-	first->targtype = second->targtype = TARG_GROUND;
+	first->s.player = second->s.player = along_path->s.player = cone_flank->s.player = outside_cone->s.player = 1;
+	first->targtype = second->targtype = along_path->targtype = cone_flank->targtype = outside_cone->targtype = TARG_GROUND;
 	first->svflags |= SVF_MONSTER;
 	second->svflags |= SVF_MONSTER;
+	along_path->svflags |= SVF_MONSTER;
+	cone_flank->svflags |= SVF_MONSTER;
+	outside_cone->svflags |= SVF_MONSTER;
 	first->health.value = first->health.max_value = 1000;
 	second->health.value = second->health.max_value = 1000;
+	along_path->health.value = along_path->health.max_value = 1000;
+	cone_flank->health.value = cone_flank->health.max_value = 1000;
+	outside_cone->health.value = outside_cone->health.max_value = 1000;
 	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
 	((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
 
 	for (rank = 1; rank <= 3; rank++) {
 		caster->unit_state->ranks[0] = MAKE(heroability_t,
 			.code = MAKEFOURCC('A','U','c','s'), .level = rank);
-		first->health.value = second->health.value = 1000;
+		first->health.value = second->health.value = along_path->health.value = cone_flank->health.value =
+			outside_cone->health.value = 1000;
 		test_execute_code(caster, "AUcs", MAKE(spellTarget_t, .type = SPELL_TARGET_POINT,
-			.point = MAKE(vec2_t, 500, 0)));
+			.point = MAKE(vec2_t, 700, 0)));
 		T_FEQ(first->health.value, 1000 - rank_damage[rank - 1], 0.001f);
 		T_FEQ(second->health.value, 1000 - rank_damage[rank - 1], 0.001f);
+		T_FEQ(along_path->health.value, 1000 - rank_damage[rank - 1], 0.001f);
+		T_FEQ(cone_flank->health.value, 1000 - rank_damage[rank - 1], 0.001f);
+		T_FEQ(outside_cone->health.value, 1000.0f, 0.001f);
 	}
 
 	G_SetSLKRows("AbilityData", old);
