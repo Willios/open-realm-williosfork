@@ -21,6 +21,10 @@ void setup_test_world(void);
 slkTestData_t *parse_slk_string(char const *text);
 void free_slk_rows(slkTestData_t *rows);
 
+static int ams_test_model_index(cstring_t path) {
+    return path && strstr(path, "anim_pulse.mdx") ? 91 : 0;
+}
+
 typedef struct { slkTestData_t *rows, *old; edict_t *caster, *ally, *enemy; } amsFix_t;
 
 static amsFix_t ams_setup(cstring_t slk, uint32_t code) {
@@ -99,6 +103,41 @@ TEST(wc3_spell, anti_magic_shell_bams_blocks_spells_until_expiry) {
     fix.ally->health.value = 0;
     T_ASSERT(!S_CastUnitTargetSpell(fix.caster, BZ_AMS, fix.ally));
     ams_done(fix);
+}
+
+TEST(wc3_spell, anti_magic_shell_spawns_authored_buff_target_effect) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X10\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Cost1\"\nC;Y1;X6;K\"Cool1\"\n"
+        "C;Y1;X7;K\"Rng1\"\nC;Y1;X8;K\"Dur1\"\nC;Y1;X9;K\"HeroDur1\"\nC;Y1;X10;K\"BuffID1\"\n"
+        "C;Y2;X1;K\"Aams\"\nC;Y2;X2;K\"Aams\"\nC;Y2;X3;K\"1\"\n"
+        "C;Y2;X4;K\"air,ground\"\nC;Y2;X5;K\"0\"\nC;Y2;X6;K\"0\"\n"
+        "C;Y2;X7;K\"500\"\nC;Y2;X8;K\"90\"\nC;Y2;X9;K\"90\"\nC;Y2;X10;K\"Bams,Bam2\"\nE\n";
+    const char buff_slk[] =
+        "ID;PWXL;N;EBB;Y2;X3\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"TargetArt\"\n"
+        "C;Y2;X1;K\"Bams\"\nC;Y2;X2;K\"Bams\"\n"
+        "C;Y2;X3;K\"TestUI\\\\Models\\\\anim_pulse.mdx\"\nE\n";
+    slkTestData_t *buff_rows = parse_slk_string(buff_slk), *old_buff = G_SetSLKRows("AbilityBuffData", buff_rows);
+    amsFix_t fix = ams_setup(slk, BZ_AMS);
+    int (*old_model_index)(cstring_t) = gi.ModelIndex;
+    int model;
+    bool found = false;
+    gi.ModelIndex = ams_test_model_index;
+    model = G_RegisterModel(G_AbilityEffectArt(BZ_BAMS, WC3_EFFECT_TARGET, 0));
+
+    T_ASSERT(model > 0);
+    T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_AMS, fix.ally));
+    FILTER_EDICTS(effect, effect->inuse && effect->goalentity == fix.ally &&
+                  effect->damage == fix.ally->spawn_time && effect->s.model == model)
+        found = true;
+    T_ASSERT(found);
+
+    gi.ModelIndex = old_model_index;
+    ams_done(fix);
+    G_SetSLKRows("AbilityBuffData", old_buff);
+    free_slk_rows(buff_rows);
 }
 
 TEST(wc3_spell, anti_magic_shell_dispels_spell_buffs_but_preserves_unholy_aura) {

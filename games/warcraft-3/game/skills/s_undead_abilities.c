@@ -47,7 +47,12 @@ static void anti_magic_shell_execute(edict_t *caster, spellTarget_t st, abilityi
     G_InvalidateUnitInfoPanel(st.entity);
     slot = S_SpellApplyTimedTargetStatus(st.entity, spell->code, level, buff,
                                          S_SpellResistantDuration(spell->code, level, st.entity));
-    if (absorb > 0.0f && slot) slot->data = (uint32_t)absorb;
+    if (slot) {
+        if (absorb > 0.0f) slot->data = (uint32_t)absorb;
+        /* The model and overhead attachment are authored on Bams/Bam2,
+         * not on the ability's TargetArt. Let the status own its lifetime. */
+        unit_status_enabletargetart(st.entity, slot, "overhead");
+    }
 }
 
 /* Name=Anti-magic Shell
