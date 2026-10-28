@@ -313,7 +313,7 @@ static const char building_dependency_ability_slk[] =
  * archive. Install rows so the research gate tests exercise parsed game data. */
 static const char building_caster_ability_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X4;Y14;D0\n"
+    "B;X4;Y15;D0\n"
     "C;X1;Y1;K\"alias\"\n"
     "C;X2;K\"code\"\n"
     "C;X3;K\"checkDep\"\n"
@@ -331,6 +331,7 @@ static const char building_caster_ability_slk[] =
     "C;X1;Y12;K\"Ablo\"\nC;X2;K\"Ablo\"\nC;X3;K1\nC;X4;K\"Bloodlust\"\n"
     "C;X1;Y13;K\"Asta\"\nC;X2;K\"Asta\"\nC;X3;K1\nC;X4;K\"Stasis Trap\"\n"
     "C;X1;Y14;K\"Ahwd\"\nC;X2;K\"Ahwd\"\nC;X3;K1\nC;X4;K\"Healing Ward\"\n"
+    "C;X1;Y15;K\"Alsh\"\nC;X2;K\"Alsh\"\nC;X3;K1\nC;X4;K\"Lightning Shield\"\n"
     "E\n";
 
 static const char building_caster_upgrade_slk[] =
@@ -1813,16 +1814,16 @@ TEST(wc3_building, orc_caster_training_gates_shaman_and_witch_doctor_spells) {
     witch_doctor->data.UnitBalance = &witch_doctor_balance;
     witch_doctor->data.UnitAbilities = &witch_doctor_abilities;
 
-    T_ASSERT(G_UnitAbilityResearchVisible(shaman, MAKEFOURCC('A','b','l','o')));
-    T_ASSERT(!G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
-    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','l','s','h')));
+    T_ASSERT(G_UnitAbilityResearchVisible(shaman, MAKEFOURCC('A','l','s','h')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','l','s','h')));
+    T_ASSERT(!G_UnitAbilityResearchVisible(shaman, MAKEFOURCC('A','b','l','o')));
     T_ASSERT(G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','s','t','a')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','s','t','a')));
     T_ASSERT(!G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','h','w','d')));
 
     G_SetPlayerTechResearched(client, shaman_training, 1);
     G_SetPlayerTechResearched(client, witch_doctor_training, 1);
-    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','l','s','h')));
     T_ASSERT(G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','s','t','a')));
     T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
                                    &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
@@ -1830,11 +1831,19 @@ TEST(wc3_building, orc_caster_training_gates_shaman_and_witch_doctor_spells) {
     T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
                                    &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
     T_EQ(next_level, 2);
+    G_SetPlayerTechMaxAllowed(client, shaman_training, 2);
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, shaman_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 2);
+    T_ASSERT(G_UnitAbilityResearchVisible(shaman, MAKEFOURCC('A','b','l','o')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
 
     T_ASSERT(G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','h','w','d')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','h','w','d')));
     G_SetPlayerTechResearched(client, witch_doctor_training, 2);
     T_ASSERT(G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','h','w','d')));
+    G_SetPlayerTechResearched(client, shaman_training, 2);
+    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
     T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
                                    &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
 
