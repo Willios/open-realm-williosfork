@@ -28,6 +28,7 @@ static pfWriteType_t terrain_deform_capture_types[32];
 static int32_t terrain_deform_capture_values[32];
 static float terrain_deform_capture_floats[16];
 static uint32_t terrain_deform_capture_count, terrain_deform_capture_float_count;
+void UI_TestFormatAttackDamageWithStatus(char *, size_t, edict_t const *, int32_t, int32_t, float, float);
 
 static bool spell_cursor_clear_seen;
 static bool spell_cursor_splat_seen;
@@ -6258,6 +6259,32 @@ TEST(wc3_spell, roar_increases_attack_damage_by_authored_bonus) {
     T_FEQ(S_RoarDamageBonus(caster), 0.25f, 0.001f);
     S_ResolveAttackHit(caster, enemy, 100);
     T_FEQ(enemy->health.value, 775.0f, 0.001f);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
+TEST(wc3_spell, roar_damage_bonus_is_shown_as_green_flat_damage_in_status_panel) {
+    char const slk[] =
+        "ID;PWXL;N;EBB;Y2;X5\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"DataA1\"\nC;Y1;X5;K\"BuffID1\"\n"
+        "C;Y2;X1;K\"Aroa\"\nC;Y2;X2;K\"Aroa\"\nC;Y2;X3;K\"1\"\n"
+        "C;Y2;X4;K\"0.25\"\nC;Y2;X5;K\"Broa\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *unit;
+    char display[128];
+
+    setup_test_world();
+    unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    unit->svflags |= SVF_MONSTER;
+    unit->s.player = 0;
+    unit->unit_state->attack1.damageBase = 24;
+    unit->unit_state->attack1.numberOfDice = 1;
+    unit->unit_state->attack1.sidesPerDie = 1;
+    T_ASSERT(unit_addtimedstatus(unit, "Broa", 1, 30.0f));
+    UI_TestFormatAttackDamageWithStatus(display, sizeof(display), unit, 25, 25, 0.0f, 24.0f);
+    T_STREQ(display, "25 - 25 |cff00ff00+6|r");
 
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);

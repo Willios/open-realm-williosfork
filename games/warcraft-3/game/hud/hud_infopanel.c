@@ -222,8 +222,18 @@ static void FormatAttackDamageValue(char *buffer, size_t buffer_size,
 
 static void FormatAttackDamageWithStatus(char *buffer, size_t buffer_size,
                                          edict_t const *ent, int32_t min_damage,
-                                         int32_t max_damage, float temporary_bonus) {
+                                         int32_t max_damage, float temporary_bonus,
+                                         float damage_base) {
+    float const roar_bonus = S_RoarDamageBonus(ent);
     float const percent = unit_status_modifier_total(ent, WC3_STATUS_MOD_ATTACK_DAMAGE_PERCENT);
+    if (roar_bonus != 0.0f) {
+        int32_t const bonus = (int32_t)(damage_base * roar_bonus + 0.5f);
+        if (bonus > 0) {
+            snprintf(buffer, buffer_size, "%ld - %ld |cff00ff00+%ld|r",
+                     (long)min_damage, (long)max_damage, (long)bonus);
+            return;
+        }
+    }
     if (percent != 0.0f) {
         snprintf(buffer, buffer_size, "%ld - %ld |cff00ff00+%d%%|r",
                  (long)min_damage, (long)max_damage, (int)(percent * 100.0f + 0.5f));
@@ -231,6 +241,16 @@ static void FormatAttackDamageWithStatus(char *buffer, size_t buffer_size,
     }
     FormatAttackDamageValue(buffer, buffer_size, min_damage, max_damage, temporary_bonus);
 }
+
+#ifdef BZ_TESTS
+void UI_TestFormatAttackDamageWithStatus(char *buffer, size_t buffer_size,
+                                         edict_t const *ent, int32_t min_damage,
+                                         int32_t max_damage, float temporary_bonus,
+                                         float damage_base) {
+    FormatAttackDamageWithStatus(buffer, buffer_size, ent, min_damage, max_damage,
+                                 temporary_bonus, damage_base);
+}
+#endif
 
 static void FormatArmorValue(char *buffer, size_t buffer_size, edict_t const *ent) {
     float const temporary_bonus = ent->unit_state ? ent->unit_state->temporary_armor_bonus : 0.0f;
@@ -255,11 +275,13 @@ static void WriteLegacyUnitStats(edict_t *ent, UnitWeapons_t const *weapons,
 
     UI_SetText(hud.unit.AttackLabel1, "Damage:");
     FormatAttackDamageWithStatus(buffer, sizeof(buffer), ent, min_damage, max_damage,
-                            ent->unit_state->attack1.temporaryDamageBonus);
+                            ent->unit_state->attack1.temporaryDamageBonus,
+                            ent->unit_state->attack1.damageBase);
     UI_SetText(hud.unit.AttackValue1, "%s", buffer);
     UI_SetText(hud.unit.AttackLabel2, "Damage:");
     FormatAttackDamageWithStatus(buffer, sizeof(buffer), ent, min_damage2, max_damage2,
-                            ent->unit_state->attack2.temporaryDamageBonus);
+                            ent->unit_state->attack2.temporaryDamageBonus,
+                            ent->unit_state->attack2.damageBase);
     UI_SetText(hud.unit.AttackValue2, "%s", buffer);
     UI_SetHidden(hud.unit.AttackLabel2, !has_attack2);
     UI_SetHidden(hud.unit.AttackValue2, !has_attack2);
@@ -627,7 +649,8 @@ static void WriteSelectedUnitStatusFrames(edict_t *ent, UnitWeapons_t const *wea
         SetTypedInfoPanelIcon(hud.simple.InfoPanelIconBackdrop, "Damage", weapons->attack1.attackType,
                               weapon_upgrade != 0);
         FormatAttackDamageWithStatus(value, sizeof(value), ent, min_damage, max_damage,
-                                ent->unit_state->attack1.temporaryDamageBonus);
+                                ent->unit_state->attack1.temporaryDamageBonus,
+                                ent->unit_state->attack1.damageBase);
         UI_SetText(hud.simple.InfoPanelIconValue, "%s", value);
         SetUpgradeLevel(hud.simple.InfoPanelIconLevel, weapon_upgrade, ent);
         UI_WriteFrame(&hud.attack1);
@@ -637,7 +660,8 @@ static void WriteSelectedUnitStatusFrames(edict_t *ent, UnitWeapons_t const *wea
         SetTypedInfoPanelIcon(hud.attack2_icon_backdrop, "Damage", weapons->attack2.attackType,
                               weapon_upgrade != 0);
         FormatAttackDamageWithStatus(value, sizeof(value), ent, min_damage2, max_damage2,
-                                ent->unit_state->attack2.temporaryDamageBonus);
+                                ent->unit_state->attack2.temporaryDamageBonus,
+                                ent->unit_state->attack2.damageBase);
         UI_SetText(hud.attack2_icon_value, "%s", value);
         SetUpgradeLevel(hud.attack2_icon_level, weapon_upgrade, ent);
         UI_WriteFrame(&hud.attack2);
