@@ -4366,6 +4366,7 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	uint32_t area_effect_model = G_RegisterModel(G_AbilityEffectArt(MAKEFOURCC('X','U','d','d'), WC3_EFFECT_EFFECT, 0));
 	edict_t *caster = make_hero(MAKEFOURCC('h','p','e','a'), 250, 100, 0, 0);
 	edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
+	edict_t *tree = alloc_test_unit(MAKEFOURCC('L','T','l','t'), 33, 0);
 	edict_t *thinker, *area_effects[20] = { NULL };
 	uint32_t thinker_slot = globals.num_edicts;
 	uint32_t area_effect_count = 0;
@@ -4375,6 +4376,9 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	enemy->s.player = 1;
 	enemy->svflags |= SVF_MONSTER;
 	enemy->health.value = enemy->health.max_value = 100;
+	G_AddDestructable(tree);
+	tree->svflags &= ~SVF_MONSTER; tree->targtype = TARG_TREE;
+	tree->health.value = tree->health.max_value = 500;
 	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
 	((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
 	memset(level.alliances, 0, sizeof(level.alliances));
@@ -4383,6 +4387,7 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
     T_ASSERT(S_CastPointTargetSpell(caster, FS_SLKKey("AUdd"), &st.point));
 	thinker = &globals.edicts[thinker_slot];
 	T_FEQ(enemy->health.value, 96.0f, 0.01f);
+	T_FEQ(tree->health.value, 480.0f, 0.01f);
 	T_FEQ(caster->health.value, 250.0f, 0.01f);
 	T_ASSERT(thinker->inuse);
 	T_EQ(thinker->spawn_time, G_Time() + 35000);
@@ -4402,6 +4407,7 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	 * through it, so the groups overlap for the remaining half-cycle. */
 	level.time = 932;
 	death_and_decay_think(thinker);
+	T_FEQ(tree->health.value, 480.0f, 0.01f);
 	area_effect_count = 0;
 	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
 	T_EQ(area_effect_count, 10);
@@ -4418,6 +4424,9 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	area_effect_count = 0;
 	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
 	T_EQ(area_effect_count, 10);
+	level.time = 1000;
+	death_and_decay_think(thinker);
+	T_FEQ(tree->health.value, 460.0f, 0.01f);
 	level.time = thinker->spawn_time;
 	thinker->think(thinker);
 	T_ASSERT(!thinker->inuse);

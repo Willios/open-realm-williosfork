@@ -328,6 +328,12 @@ BZ_SIMPLE_SPELL_PROC(AbilityRainOfFire) {
 
 static umove_t death_and_decay_area_effect_move = { "stand", NULL, G_FreeEdict, NULL };
 
+static bool death_and_decay_hits_tree(edict_t const *target, vec2_t const *origin, float radius) {
+    return target && target->inuse && target->targtype == TARG_TREE && G_IsDestructable(target) &&
+           !G_GetDestructable(target)->dead && !G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) &&
+           Vector2_distance(&target->s.origin2, origin) <= radius;
+}
+
 static uint32_t death_and_decay_random(uint32_t *state) {
     *state = *state * 1664525u + 1013904223u;
     return *state;
@@ -390,6 +396,8 @@ void death_and_decay_think(edict_t *ent) {
                   Vector2_distance(&target->s.origin2, &ent->s.origin2) <= ent->collision) {
         S_SpellDamage(target, caster, (uint32_t)MAX(1.0f, target->health.max_value * ent->wait));
     }
+    FILTER_EDICTS(target, death_and_decay_hits_tree(target, &ent->s.origin2, ent->collision))
+        G_DestructableApplyDamage(target, caster, MAX(1.0f, target->health.max_value * ent->wait));
     ent->freetime = now + (uint32_t)(MAX(0.1f, ent->velocity) * 1000.0f);
 }
 
