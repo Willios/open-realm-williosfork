@@ -489,6 +489,43 @@ static void G_AddPillageIndicator(edict_t *ent, gameCommandButton_t *buttons,
     if (*count > index) buttons[index].disabled = 1;
 }
 
+static void G_AddPassiveEffectIndicator(edict_t *ent, gameCommandButton_t *buttons,
+                                        uint8_t max_buttons, uint8_t *count,
+                                        uint32_t owned_ability, uint32_t button_ability) {
+    char code[5] = {0};
+    uint8_t index;
+
+    if (!ent || !buttons || !count || *count >= max_buttons ||
+        !G_UnitAbilityLevel(ent, owned_ability) || G_HasCommandRawcode(buttons, *count, button_ability)) return;
+    memcpy(code, &button_ability, 4);
+    index = *count;
+    G_AddCommandButton(ent, buttons, max_buttons, count, code, false, 0);
+    if (*count > index) buttons[index].disabled = 1;
+}
+
+static void G_AddPassiveEffectIndicators(edict_t *ent, gameCommandButton_t *buttons,
+                                         uint8_t max_buttons, uint8_t *count) {
+    static uint32_t const true_sight[] = {
+        MAKEFOURCC('A','g','y','v'), /* Flying Machine True Sight */
+        MAKEFOURCC('A','t','r','u')  /* Shade True Sight */
+    };
+    static uint32_t const spell_immunity[] = {
+        MAKEFOURCC('A','m','i','m'), /* Spell Immunity */
+        MAKEFOURCC('A','C','m','i'), /* Creep Magic Immunity */
+        MAKEFOURCC('A','C','m','2'), /* Archimonde Magic Immunity */
+        MAKEFOURCC('A','C','m','3')  /* Dragon Magic Immunity */
+    };
+
+    FOR_LOOP(i, sizeof(true_sight) / sizeof(true_sight[0]))
+        G_AddPassiveEffectIndicator(ent, buttons, max_buttons, count, true_sight[i], true_sight[i]);
+    /* Adtg aliases Atru but has no authored button art of its own. Show the
+     * True Sight icon from Atru for Owl Scouts and other general detectors. */
+    G_AddPassiveEffectIndicator(ent, buttons, max_buttons, count,
+        MAKEFOURCC('A','d','t','g'), MAKEFOURCC('A','t','r','u'));
+    FOR_LOOP(i, sizeof(spell_immunity) / sizeof(spell_immunity[0]))
+        G_AddPassiveEffectIndicator(ent, buttons, max_buttons, count, spell_immunity[i], spell_immunity[i]);
+}
+
 static void G_AddAbilityCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t max_buttons,
                                        uint8_t *count, cstring_t code) {
     ability_t const *ability = FindAbilityForCommand(code);
@@ -717,6 +754,7 @@ uint8_t G_GetCommandButtons(edict_t *ent, gameCommandButton_t *buttons, uint8_t 
     }
     G_AddMagicSentryIndicator(ent, buttons, max_buttons, &count);
     G_AddPillageIndicator(ent, buttons, max_buttons, &count);
+    G_AddPassiveEffectIndicators(ent, buttons, max_buttons, &count);
     FOR_LOOP(i, ent->unit_state ? MAX_HERO_ABILITIES : 0) {
         heroability_t const *ha = ent->unit_state->ranks + i;
         if (ha->level > 0 && G_IsUnitAbilityAvailable(ent, ha->code) &&

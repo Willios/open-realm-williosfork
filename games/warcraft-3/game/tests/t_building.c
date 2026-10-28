@@ -7,6 +7,7 @@
 
 edict_t *alloc_test_unit(uint32_t class_id, float x, float y);
 void setup_test_world(void);
+void reset_entities(void);
 void setup_test_pathmap(uint32_t width, uint32_t height, uint8_t const *cells);
 void repair_build_primary(edict_t *ent, edict_t *building);
 void repair_build_legacy(edict_t *ent, edict_t *building);
@@ -1413,6 +1414,45 @@ TEST(wc3_building, unresearched_unit_ability_remains_visible_but_disabled) {
     T_ASSERT(found);
 
     building_restore_upgrade_data(old, rows);
+}
+
+TEST(wc3_building, passive_true_sight_and_spell_immunity_show_disabled_indicators) {
+    static UnitAbilities_t const effect_abilities = {
+        .abilList = "Agyv,Atru,Adtg,Amim,ACmi,ACm2,ACm3"
+    };
+    static UnitAbilities_t const owl_abilities = { .abilList = "Adtg" };
+    static cstring_t const expected[] = { "Agyv", "Atru", "Amim", "ACmi", "ACm2", "ACm3" };
+    gameCommandButton_t buttons[16];
+    edict_t *unit, *owl;
+    uint8_t count, found_count = 0;
+
+    reset_entities();
+    setup_test_world();
+    unit = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    unit->data.UnitAbilities = (UnitAbilities_t *)&effect_abilities;
+    count = G_GetCommandButtons(unit, buttons, sizeof(buttons) / sizeof(buttons[0]));
+    FOR_LOOP(i, sizeof(expected) / sizeof(expected[0])) {
+        bool found = false;
+        FOR_LOOP(j, count) if (!strcmp(buttons[j].command, expected[i])) {
+            found = true;
+            T_ASSERT(buttons[j].disabled);
+        }
+        T_ASSERT(found);
+        found_count += found;
+    }
+    T_EQ(found_count, sizeof(expected) / sizeof(expected[0]));
+
+    owl = alloc_test_unit(MAKEFOURCC('n','o','w','l'), 64, 0);
+    owl->data.UnitAbilities = (UnitAbilities_t *)&owl_abilities;
+    count = G_GetCommandButtons(owl, buttons, sizeof(buttons) / sizeof(buttons[0]));
+    {
+        bool found_true_sight = false;
+        FOR_LOOP(i, count) if (!strcmp(buttons[i].command, "Atru")) {
+            found_true_sight = true;
+            T_ASSERT(buttons[i].disabled);
+        }
+        T_ASSERT(found_true_sight);
+    }
 }
 
 TEST(wc3_building, naga_production_buttons_have_distinct_command_card_cells) {

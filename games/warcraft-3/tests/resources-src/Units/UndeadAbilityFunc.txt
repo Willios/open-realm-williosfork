@@ -1,6 +1,14 @@
 [Abgm]
 EffectArt=TestUI\Models\anim_pulse.mdx
 
+[Atru]
+Art=ReplaceableTextures\PassiveButtons\PASBTNShadeTrueSight.blp
+Buttonpos=0,2
+
+[Amim]
+Art=ReplaceableTextures\PassiveButtons\PASBTNMagicImmunity.blp
+Buttonpos=2,2
+
 [Buns]
 Targetart=TestUI\Models\anim_pulse.mdx
 
