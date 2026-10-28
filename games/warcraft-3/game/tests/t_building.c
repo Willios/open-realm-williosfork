@@ -313,7 +313,7 @@ static const char building_dependency_ability_slk[] =
  * archive. Install rows so the research gate tests exercise parsed game data. */
 static const char building_caster_ability_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X4;Y9;D0\n"
+    "B;X4;Y11;D0\n"
     "C;X1;Y1;K\"alias\"\n"
     "C;X2;K\"code\"\n"
     "C;X3;K\"checkDep\"\n"
@@ -326,6 +326,8 @@ static const char building_caster_ability_slk[] =
     "C;X1;Y7;K\"Acri\"\nC;X2;K\"Acri\"\nC;X3;K1\nC;X4;K\"Cripple\"\n"
     "C;X1;Y8;K\"Aam2\"\nC;X2;K\"Aam2\"\nC;X3;K1\nC;X4;K\"Anti-Magic Shell\"\n"
     "C;X1;Y9;K\"Aps2\"\nC;X2;K\"Aps2\"\nC;X3;K1\nC;X4;K\"Possession\"\n"
+    "C;X1;Y10;K\"Aams\"\nC;X2;K\"Aams\"\nC;X3;K1\nC;X4;K\"Anti-magic Shield\"\n"
+    "C;X1;Y11;K\"Apos\"\nC;X2;K\"Apos\"\nC;X3;K1\nC;X4;K\"Possession\"\n"
     "E\n";
 
 static const char building_caster_upgrade_slk[] =
@@ -1700,7 +1702,7 @@ TEST(wc3_building, undead_caster_training_gates_banshee_and_necromancer_tiers) {
     edict_t *banshee, *necromancer;
     UnitBalance_t banshee_balance = { .upgrades = "Ruba" };
     UnitBalance_t necromancer_balance = { .upgrades = "Rune" };
-    UnitAbilities_t banshee_abilities = { .abilList = "Aam2,Aps2" };
+    UnitAbilities_t banshee_abilities = { .abilList = "Aam2,Aps2,Aams,Apos" };
     UnitAbilities_t necromancer_abilities = { .abilList = "Auhf,Acri" };
     uint32_t const banshee_training = MAKEFOURCC('R','u','b','a');
     uint32_t const necromancer_training = MAKEFOURCC('R','u','n','e');
@@ -1724,7 +1726,10 @@ TEST(wc3_building, undead_caster_training_gates_banshee_and_necromancer_tiers) {
 
     T_ASSERT(G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','a','m','2')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','a','m','2')));
+    T_ASSERT(G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','a','m','s')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','a','m','s')));
     T_ASSERT(!G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','p','s','2')));
+    T_ASSERT(!G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','p','o','s')));
     T_ASSERT(G_UnitAbilityResearchVisible(necromancer, MAKEFOURCC('A','u','h','f')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(necromancer, MAKEFOURCC('A','u','h','f')));
     T_ASSERT(!G_UnitAbilityResearchVisible(necromancer, MAKEFOURCC('A','c','r','i')));
@@ -1732,17 +1737,21 @@ TEST(wc3_building, undead_caster_training_gates_banshee_and_necromancer_tiers) {
     G_SetPlayerTechResearched(client, banshee_training, 1);
     G_SetPlayerTechResearched(client, necromancer_training, 1);
     T_ASSERT(G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','a','m','2')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','a','m','s')));
     T_ASSERT(G_UnitAbilityResearchAvailable(necromancer, MAKEFOURCC('A','u','h','f')));
 
     G_SetPlayerTechMaxAllowed(client, banshee_training, 2);
     G_SetPlayerTechMaxAllowed(client, necromancer_training, 2);
     T_ASSERT(G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','p','s','2')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','p','s','2')));
+    T_ASSERT(G_UnitAbilityResearchVisible(banshee, MAKEFOURCC('A','p','o','s')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','p','o','s')));
     T_ASSERT(G_UnitAbilityResearchVisible(necromancer, MAKEFOURCC('A','c','r','i')));
     T_ASSERT(!G_UnitAbilityResearchAvailable(necromancer, MAKEFOURCC('A','c','r','i')));
     G_SetPlayerTechResearched(client, banshee_training, 2);
     G_SetPlayerTechResearched(client, necromancer_training, 2);
     T_ASSERT(G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','p','s','2')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(banshee, MAKEFOURCC('A','p','o','s')));
     T_ASSERT(G_UnitAbilityResearchAvailable(necromancer, MAKEFOURCC('A','c','r','i')));
 
     G_SetPlayerTechResearched(client, banshee_training, 0);

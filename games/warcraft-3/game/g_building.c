@@ -274,8 +274,8 @@ typedef struct {
     int32_t required_level;
 } stockAbilityUpgradeRequirement_t;
 
-/* HACK: retail SLKs omit these stock spell-to-training links and tiers. Keep
- * the compatibility facts explicit; do not infer them from comments. */
+/* HACK: RoC/TFT SLKs omit these stock spell-to-training links and tiers.
+ * Keep the compatibility facts and version-specific spell aliases explicit. */
 static stockAbilityUpgradeRequirement_t const stock_ability_requirements[] = {
     { MAKEFOURCC('R', 'h', 's', 't'), MAKEFOURCC('A', 'i', 'v', 's'), 1 },
     { MAKEFOURCC('R', 'h', 's', 't'), MAKEFOURCC('A', 'p', 'l', 'y'), 2 },
@@ -285,7 +285,9 @@ static stockAbilityUpgradeRequirement_t const stock_ability_requirements[] = {
     { MAKEFOURCC('R', 'o', 'p', 'g'), MAKEFOURCC('A', 's', 'a', 'l'), 1 },
     { MAKEFOURCC('R', 'u', 'n', 'e'), MAKEFOURCC('A', 'u', 'h', 'f'), 1 },
     { MAKEFOURCC('R', 'u', 'n', 'e'), MAKEFOURCC('A', 'c', 'r', 'i'), 2 },
+    { MAKEFOURCC('R', 'u', 'b', 'a'), MAKEFOURCC('A', 'a', 'm', 's'), 1 },
     { MAKEFOURCC('R', 'u', 'b', 'a'), MAKEFOURCC('A', 'a', 'm', '2'), 1 },
+    { MAKEFOURCC('R', 'u', 'b', 'a'), MAKEFOURCC('A', 'p', 'o', 's'), 2 },
     { MAKEFOURCC('R', 'u', 'b', 'a'), MAKEFOURCC('A', 'p', 's', '2'), 2 },
 };
 
