@@ -235,7 +235,15 @@ BZ_ABILITY_PROC(CAbilityGhost) {
  * separate until that retail behavior is pinned down. */
 BZ_ABILITY_PROC(CAbilityGhostVisible) { return CAbilityPassive(ent, msg, call); }
 BZ_ABILITY_PROC(CAbilityEthereal) { return CAbilityPassive(ent, msg, call); }
-BZ_ABILITY_PROC(CAbilityScout) { return CAbilityPassive(ent, msg, call); }
+BZ_ABILITY_PROC(CAbilityScout) {
+    if (msg == A_EXECUTE) {
+        spellTarget_t const target = call && call->target ? *call->target :
+            MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+        S_SummonAbilityUnits(ent, MAKEFOURCC('A', 'E', 's', 't'), &target);
+        return true;
+    }
+    return CAbilitySimpleSpell(ent, msg, call);
+}
 BZ_ABILITY_PROC(CAbilityBallsOfFire) { return CAbilityPassive(ent, msg, call); }
 /* Pillage (Asal): the passive handler itself never polls; actual primary-hit
  * damage calls here from T_DamageInternal after mitigation and Spirit Link.

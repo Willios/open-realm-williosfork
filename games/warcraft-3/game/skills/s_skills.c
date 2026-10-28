@@ -484,7 +484,7 @@ static ability_t abilitylist[] = {
     { "Acoh", CAbilityCoupleHippogryph, AB_SPELL, SPELL_TARGET_UNIT },  /* Pick up Archer */
     { "Adec", CAbilityDecouple, AB_SPELL, SPELL_TARGET_NONE },  /* Dismount */
     { "Acor", CAbilityCorrosiveBreath, AB_PASSIVE },  /* Corrosive Breath */
-    { "AEst", CAbilityScout, AB_PASSIVE },  /* Scout */
+    { "AEst", CAbilityScout, AB_SPELL, SPELL_TARGET_POINT },  /* Scout */
     { "Acyc", CAbilityCyclone, AB_SPELL, SPELL_TARGET_UNIT },  /* Cyclone */
     { "ACcy", CAbilityCyclone, AB_SPELL, SPELL_TARGET_UNIT },  /* Cyclone (creep) */
     { "SCc1", CAbilityCyclone, AB_SPELL, SPELL_TARGET_UNIT },  /* Cyclone (Cenarius) */

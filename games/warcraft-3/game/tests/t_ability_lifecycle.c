@@ -542,6 +542,68 @@ TEST(wc3_ability_lifecycle, water_elemental_recovers_roc_dataa_unit_id) {
 
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
+
+TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
+    static UnitAbilities_t scout_abilities = { .abilList = "AEst" };
+    static char const ability_slk[] =
+        "ID;PWXL;N;EBB;Y2;X8\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+        "C;Y1;X4;K\"Cost1\"\nC;Y1;X5;K\"Rng1\"\nC;Y1;X6;K\"Dur1\"\n"
+        "C;Y1;X7;K\"DataA1\"\nC;Y1;X8;K\"UnitID1\"\n"
+        "C;Y2;X1;K\"AEst\"\nC;Y2;X2;K\"AEst\"\nC;Y2;X3;K\"_\"\n"
+        "C;Y2;X4;K50\nC;Y2;X5;K200\nC;Y2;X6;K60\n"
+        "C;Y2;X7;K1\nC;Y2;X8;K\"nowl\"\nE\n";
+    static char const unit_ui_slk[] =
+        "ID;PWXL;N;EBB;Y2;X4\n"
+        "C;Y1;X1;K\"unitUIID\"\nC;Y1;X2;K\"file\"\n"
+        "C;Y1;X3;K\"modelScale\"\nC;Y1;X4;K\"scale\"\n"
+        "C;Y2;X1;K\"nowl\"\nC;Y2;X2;K\"TestUI\\\\Models\\\\anim_pulse.mdx\"\n"
+        "C;Y2;X3;K1\nC;Y2;X4;K1\nE\n";
+    static char const unit_data_slk[] =
+        "ID;PWXL;N;EBB;Y2;X5\n"
+        "C;Y1;X1;K\"unitID\"\nC;Y1;X2;K\"targType\"\nC;Y1;X3;K\"movetp\"\n"
+        "C;Y1;X4;K\"collision\"\nC;Y1;X5;K\"propWin\"\n"
+        "C;Y2;X1;K\"nowl\"\nC;Y2;X2;K\"air\"\nC;Y2;X3;K\"fly\"\n"
+        "C;Y2;X4;K16\nC;Y2;X5;K60\nE\n";
+    static char const unit_balance_slk[] =
+        "ID;PWXL;N;EBB;Y2;X2\n"
+        "C;Y1;X1;K\"unitBalanceID\"\nC;Y1;X2;K\"realHP\"\n"
+        "C;Y2;X1;K\"nowl\"\nC;Y2;X2;K150\nE\n";
+    slkTestData_t *ability_rows, *old_ability, *ui_rows, *old_ui;
+    slkTestData_t *data_rows, *old_data, *balance_rows, *old_balance;
+    edict_t *caster;
+    vec2_t const target = {100, 100};
+    uint32_t owl_count = 0;
+
+    reset_entities();
+    setup_test_world();
+    level.time = 1000;
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ability_rows = parse_slk_string(ability_slk); old_ability = G_SetSLKRows("AbilityData", ability_rows);
+    ui_rows = parse_slk_string(unit_ui_slk); old_ui = G_SetSLKRows("UnitUI", ui_rows);
+    data_rows = parse_slk_string(unit_data_slk); old_data = G_SetSLKRows("UnitData", data_rows);
+    balance_rows = parse_slk_string(unit_balance_slk); old_balance = G_SetSLKRows("UnitBalance", balance_rows);
+    caster = review_unit(0, 0);
+    caster->data.UnitAbilities = &scout_abilities;
+
+    T_ASSERT(S_CastPointTargetSpell(caster, FS_SLKKey("AEst"), &target));
+    FILTER_EDICTS(unit, unit->inuse && unit->owner == caster &&
+                  unit->summon_ability == FS_SLKKey("AEst") &&
+                  unit->class_id == MAKEFOURCC('n','o','w','l')) {
+        T_EQ(unit->s.player, caster->s.player);
+        T_EQ(G_UnitStatusLevel(unit, MAKEFOURCC('B','T','L','F')), 1);
+        T_FEQ(unit->s.origin2.x, target.x, 0.001f);
+        T_FEQ(unit->s.origin2.y, target.y, 0.001f);
+        owl_count++;
+    }
+    T_EQ(owl_count, 1);
+
+    reset_entities();
+    G_SetSLKRows("UnitBalance", old_balance); free_slk_rows(balance_rows);
+    G_SetSLKRows("UnitData", old_data); free_slk_rows(data_rows);
+    G_SetSLKRows("UnitUI", old_ui); free_slk_rows(ui_rows);
+    G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+}
 #endif
 
 /* Mass Teleport is a real channel: DataB delays the relocation, the caster
