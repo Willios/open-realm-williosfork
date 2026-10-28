@@ -280,12 +280,29 @@ void rain_of_fire_think(edict_t *ent) {
  * channel lifetime in Dur. */
 void starfall_think(edict_t *ent) {
     uint32_t now = G_Time();
+    edict_t *caster = ent->owner;
+    uint32_t level = S_SpellLevel(caster, ent->class_id);
+    cstring_t target_art_code = S_SpellBuffId(ent->class_id, level);
 
-    if (!S_SpellChannelActive(ent)) { S_SpellEndChannel(ent); return; }
+    if (!S_SpellChannelActive(ent)) {
+        S_SpellEndAreaPresentation(ent);
+        S_SpellEndChannel(ent);
+        return;
+    }
     if (ent->freetime && now < ent->freetime)
         return;
-    area_spell_damage(ent, 0.0f);
+    FILTER_EDICTS(target, target->inuse && target != caster && S_SpellIsAliveTarget(target) &&
+                  S_SpellIsEnemy(caster, target) &&
+                  (G_UnitTargetType(target) == TARG_GROUND || G_UnitTargetType(target) == TARG_AIR ||
+                   G_UnitIsStructure(target)) &&
+                  Vector2_distance(&target->s.origin2, &ent->s.origin2) <= ent->collision) {
+        S_SpellDamage(target, caster, ent->damage);
+        if (target_art_code && strlen(target_art_code) >= 4)
+            G_SpawnAbilityEffectTarget(FS_SLKKey(target_art_code), WC3_EFFECT_TARGET, 0,
+                                       target, "origin", true);
+    }
     if (ent->spawn_time && now >= ent->spawn_time) {
+        S_SpellEndAreaPresentation(ent);
         S_SpellEndChannel(ent);
         return;
     }
@@ -615,6 +632,7 @@ BZ_SIMPLE_SPELL_PROC(AbilityStarfall) {
     thinker->damage = (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1));
     thinker->velocity = MAX(1.0f, S_SpellData(spell->code, level, 2));
     thinker->spawn_time = G_Time() + (uint32_t)(MAX(1.0f, S_SpellDuration(spell->code, level, true)) * 1000.0f);
+    S_SpellBeginAreaPresentation(thinker, spell->code, level, &thinker->s.origin2);
     thinker->think = starfall_think;
     starfall_think(thinker);
 }
