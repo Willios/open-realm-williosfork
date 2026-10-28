@@ -167,6 +167,36 @@ TEST(wc3_spell, dark_ritual_full_mana_command_shows_error_without_targeting) {
     gi.unicast = old_unicast;
 }
 
+TEST(wc3_spell, dark_ritual_requests_caster_spell_animation) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X3\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"DataA1\"\n"
+        "C;Y2;X1;K\"AUdr\"\nC;Y2;X2;K\"AUdr\"\nC;Y2;X3;K\"0.\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *caster, *target;
+    abilityitem_t spell;
+    spellTarget_t target_arg;
+
+    reset_entities();
+    setup_test_world();
+    caster = make_hero(MAKEFOURCC('U','l','i','c'), 500, 0, 0, 0);
+    target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+    caster->s.player = target->s.player = 0;
+    target->health.value = target->health.max_value = 100.0f;
+    target->die = unit_die;
+    spell = S_AbilityItem(FS_SLKKey("AUdr"));
+    target_arg = MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target);
+
+    T_ASSERT(CAbilityDarkRitual(caster, A_EXECUTE, &(abilityCall_t){ .item = &spell, .target = &target_arg }));
+    T_STREQ(caster->animation_request, "spell");
+    T_NOT_NULL(caster->currentmove->endfunc);
+    caster->currentmove->endfunc(caster);
+    T_ASSERT(strcmp(caster->animation_request, "spell") != 0);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 static const char slk_spell_data[] =
 	"ID;PWXL;N;EBB;Y2;X11\n"
 	"C;Y1;X1;K\"alias\"\n"

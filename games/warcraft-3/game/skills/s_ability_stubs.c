@@ -77,12 +77,21 @@ BZ_SIMPLE_SPELL_PROC(AbilityManaBurn) {
  * Ubertip="Sacrifices a friendly non-Hero unit, converting a percentage of its hit points into mana for the caster."
  * Dark Ritual converts the authored fraction of an allied non-hero's maximum
  * life into caster mana, then uses the normal damage/death path to sacrifice it. */
+static void dark_ritual_cast_done(edict_t *caster) {
+    if (caster && caster->stand) caster->stand(caster);
+}
+
+static umove_t dark_ritual_cast_move = { "spell", ai_idle, dark_ritual_cast_done, CAbilityDarkRitual };
+
 static void AbilityDarkRitual_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
     edict_t *target = st.entity;
     uint32_t level = S_SpellLevel(caster, spell->code);
     float mana = target->health.max_value * S_SpellData(spell->code, level, 1);
 
+    unit_setmove(caster, &dark_ritual_cast_move);
+    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, target, NULL, true);
     caster->mana.value = MIN(caster->mana.max_value, caster->mana.value + mana);
+    G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_CASTER, 0, caster, NULL, true);
     T_Damage(target, caster, (uint32_t)MAX(1.0f, target->health.value));
 }
 
