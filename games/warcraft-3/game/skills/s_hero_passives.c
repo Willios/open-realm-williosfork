@@ -491,6 +491,20 @@ static bool aura_unit_has_melee_attack(edict_t const *unit) {
            S_AttackProfileIsMelee(&unit->unit_state->attack2);
 }
 
+static bool aura_attack_is_ranged(unitAttack_t const *attack) {
+    if (!attack || attack->type == ATK_NONE) return false;
+    if (attack->weapon == WPN_INSTANT) return attack->range > 128.0f;
+    return attack->weapon == WPN_ARTILLERY || attack->weapon == WPN_ALINE ||
+           attack->weapon == WPN_MISSILE || attack->weapon == WPN_MSPLASH ||
+           attack->weapon == WPN_MBOUNCE || attack->weapon == WPN_MLINE;
+}
+
+static bool aura_unit_has_ranged_attack(edict_t const *unit) {
+    return unit && unit->unit_state &&
+           (aura_attack_is_ranged(&unit->unit_state->attack1) ||
+            aura_attack_is_ranged(&unit->unit_state->attack2));
+}
+
 typedef struct {
     float amount;
     uint32_t alias;
@@ -1005,6 +1019,7 @@ static heroAuraPresentation_t hero_aura_presentation(edict_t *unit, uint32_t bas
 
     if (base_code == ID_BRILLIANCE && (!unit || unit->mana.max_value <= 0.0f)) return result;
     if (base_code == ID_VAMPIRIC_AURA && !aura_unit_has_melee_attack(unit)) return result;
+    if (base_code == ID_TRUESHOT_AURA && !aura_unit_has_ranged_attack(unit)) return result;
     regen_aura_cache_update();
     FOR_LOOP(i, regen_source_count) {
         edict_t *source = regen_sources[i].source;
@@ -1211,7 +1226,7 @@ float S_CommandAuraAttackBonus(edict_t *unit) {
 float S_WarDrumsAttackBonus(edict_t *unit) { return hero_aura_bonus(unit, ID_WAR_DRUMS, 1); }
 
 float S_TrueshotAttackBonus(edict_t *unit) {
-    return unit && unit->unit_state && unit->unit_state->attack1.type == ATK_PIERCE ?
+    return aura_unit_has_ranged_attack(unit) ?
         hero_aura_bonus(unit, ID_TRUESHOT_AURA, 1) : 0.0f;
 }
 

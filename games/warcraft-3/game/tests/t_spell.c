@@ -2410,22 +2410,31 @@ TEST(wc3_spell, trueshot_aura_shows_recipient_status_art_and_ranged_bonus) {
 	slkTestData_t *buff_rows = parse_slk_string(buff_slk), *old_buff = G_SetSLKRows("AbilityBuffData", buff_rows);
 	edict_t *source = make_hero(MAKEFOURCC('E','d','r','u'), 500, 200, 0, 0);
 	edict_t *target = alloc_test_unit(MAKEFOURCC('h','r','i','f'), 100, 0);
+	edict_t *melee = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 100);
 	edict_t *victim = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 200, 0);
 	uint32_t const base = MAKEFOURCC('A','E','a','r');
 	uint32_t const buff = MAKEFOURCC('B','E','a','r');
 	int const glow = G_RegisterModel(G_AbilityEffectArt(buff, WC3_EFFECT_TARGET, 0));
 
 	T_ASSERT(glow > 0);
-	source->s.player = target->s.player = 0;
+	source->s.player = target->s.player = melee->s.player = 0;
 	victim->s.player = 1;
-	source->targtype = target->targtype = victim->targtype = TARG_GROUND;
+	source->targtype = target->targtype = melee->targtype = victim->targtype = TARG_GROUND;
 	source->unit_state->ranks[0] = MAKE(heroability_t, .code = base, .level = 1);
 	target->unit_state->attack1.type = ATK_PIERCE;
+	target->unit_state->attack1.weapon = WPN_INSTANT;
+	target->unit_state->attack1.range = 400.0f;
+	melee->unit_state->attack1.type = ATK_NORMAL;
+	melee->unit_state->attack1.weapon = WPN_NORMAL;
+	melee->unit_state->attack1.range = 90.0f;
 	level.time = level.framenum = 0;
 	S_UpdateHeroAuraEffects(target);
+	S_UpdateHeroAuraEffects(melee);
 	T_EQ(S_TrueshotAuraBuff(target), buff);
 	T_FEQ(S_TrueshotAttackBonus(target), 0.1f, 0.001f);
 	T_EQ(hero_aura_art_count(target, base, glow), 1);
+	T_EQ(S_TrueshotAuraBuff(melee), 0u);
+	T_FEQ(S_TrueshotAttackBonus(melee), 0.0f, 0.001f);
 	/* Exercise the landed-hit damage path: a 100 damage ranged hit gains 10%.
 	 * The victim has no armor, so its health delta is the resolved damage. */
 	victim->unit_state->armor_value = 0.0f;
@@ -2436,7 +2445,16 @@ TEST(wc3_spell, trueshot_aura_shows_recipient_status_art_and_ranged_bonus) {
 	}
 
 	target->unit_state->attack1.type = ATK_NORMAL;
+	target->unit_state->attack1.weapon = WPN_NORMAL;
+	target->unit_state->attack1.range = 90.0f;
 	T_FEQ(S_TrueshotAttackBonus(target), 0.0f, 0.001f);
+	S_UpdateHeroAuraEffects(target);
+	T_EQ(S_TrueshotAuraBuff(target), 0u);
+	{
+		float const health_before = victim->health.value;
+		S_ResolveAttackHit(target, victim, 100);
+		T_FEQ(health_before - victim->health.value, 100.0f, 0.001f);
+	}
 	target->s.origin2.x = 901.0f;
 	level.time = AURA_UPDATE_MS;
 	S_UpdateHeroAuraEffects(target);
