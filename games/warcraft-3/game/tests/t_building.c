@@ -313,7 +313,7 @@ static const char building_dependency_ability_slk[] =
  * archive. Install rows so the research gate tests exercise parsed game data. */
 static const char building_caster_ability_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X4;Y11;D0\n"
+    "B;X4;Y14;D0\n"
     "C;X1;Y1;K\"alias\"\n"
     "C;X2;K\"code\"\n"
     "C;X3;K\"checkDep\"\n"
@@ -328,16 +328,21 @@ static const char building_caster_ability_slk[] =
     "C;X1;Y9;K\"Aps2\"\nC;X2;K\"Aps2\"\nC;X3;K1\nC;X4;K\"Possession\"\n"
     "C;X1;Y10;K\"Aams\"\nC;X2;K\"Aams\"\nC;X3;K1\nC;X4;K\"Anti-magic Shield\"\n"
     "C;X1;Y11;K\"Apos\"\nC;X2;K\"Apos\"\nC;X3;K1\nC;X4;K\"Possession\"\n"
+    "C;X1;Y12;K\"Ablo\"\nC;X2;K\"Ablo\"\nC;X3;K1\nC;X4;K\"Bloodlust\"\n"
+    "C;X1;Y13;K\"Asta\"\nC;X2;K\"Asta\"\nC;X3;K1\nC;X4;K\"Stasis Trap\"\n"
+    "C;X1;Y14;K\"Ahwd\"\nC;X2;K\"Ahwd\"\nC;X3;K1\nC;X4;K\"Healing Ward\"\n"
     "E\n";
 
 static const char building_caster_upgrade_slk[] =
     "ID;PWXL;N;E\n"
-    "B;X3;Y5;D0\n"
+    "B;X3;Y7;D0\n"
     "C;X1;Y1;K\"upgradeid\"\nC;X3;K\"maxlevel\"\n"
     "C;X1;Y2;K\"Rhst\"\nC;X3;K2\n"
     "C;X1;Y3;K\"Rhpt\"\nC;X3;K2\n"
     "C;X1;Y4;K\"Rune\"\nC;X3;K2\n"
     "C;X1;Y5;K\"Ruba\"\nC;X3;K2\n"
+    "C;X1;Y6;K\"Rowd\"\nC;X3;K2\n"
+    "C;X1;Y7;K\"Rost\"\nC;X3;K2\n"
     "E\n";
 
 typedef struct {
@@ -1758,6 +1763,85 @@ TEST(wc3_building, undead_caster_training_gates_banshee_and_necromancer_tiers) {
     G_SetPlayerTechResearched(client, necromancer_training, 0);
     G_SetPlayerTechMaxAllowed(client, banshee_training, -1);
     G_SetPlayerTechMaxAllowed(client, necromancer_training, -1);
+    building_restore_caster_data(caster_rows);
+}
+
+TEST(wc3_building, orc_caster_training_gates_shaman_and_witch_doctor_spells) {
+    buildingCasterRows_t caster_rows;
+    gameClient_t *client;
+    edict_t *shaman, *witch_doctor, *spirit_lodge;
+    UnitBalance_t shaman_balance = { .upgrades = "Rost" };
+    UnitBalance_t witch_doctor_balance = { .upgrades = "Rowd" };
+    UnitAbilities_t shaman_abilities = { .abilList = "Ablo,Alsh,Apg2,Aion" };
+    UnitAbilities_t witch_doctor_abilities = { .abilList = "Aeye,Ahwd,Asta,Aion" };
+    UnitProfile_t spirit_lodge_profile = { .researches = "Rowd,Rost" };
+    uint32_t const shaman_training = MAKEFOURCC('R','o','s','t');
+    uint32_t const witch_doctor_training = MAKEFOURCC('R','o','w','d');
+    int32_t next_level;
+    char reason[128];
+
+    setup_test_world();
+    caster_rows = building_install_caster_data();
+    client = &game.clients[0];
+    client->ps.number = 0;
+    memset(client->tech, 0, sizeof(client->tech));
+    G_SetPlayerTechMaxAllowed(client, shaman_training, 1);
+    G_SetPlayerTechMaxAllowed(client, witch_doctor_training, 1);
+    client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 1000;
+    client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 1000;
+
+    spirit_lodge = alloc_test_unit(MAKEFOURCC('o','s','l','d'), 0, 0);
+    spirit_lodge->s.player = client->ps.number;
+    spirit_lodge->s.flags |= EF_BUILDING;
+    spirit_lodge->runtime.flags |= UNIT_BALANCE_BUILDING;
+    spirit_lodge->data.UnitProfile = &spirit_lodge_profile;
+    T_ASSERT(G_ProducerCanResearch(spirit_lodge, witch_doctor_training));
+    T_ASSERT(G_ProducerCanResearch(spirit_lodge, shaman_training));
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 1);
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, shaman_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 1);
+
+    shaman = alloc_test_unit(MAKEFOURCC('o','s','h','m'), 64, 0);
+    shaman->s.player = client->ps.number;
+    shaman->data.UnitBalance = &shaman_balance;
+    shaman->data.UnitAbilities = &shaman_abilities;
+    witch_doctor = alloc_test_unit(MAKEFOURCC('o','d','o','c'), 128, 0);
+    witch_doctor->s.player = client->ps.number;
+    witch_doctor->data.UnitBalance = &witch_doctor_balance;
+    witch_doctor->data.UnitAbilities = &witch_doctor_abilities;
+
+    T_ASSERT(G_UnitAbilityResearchVisible(shaman, MAKEFOURCC('A','b','l','o')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','l','s','h')));
+    T_ASSERT(G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','s','t','a')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','s','t','a')));
+    T_ASSERT(!G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','h','w','d')));
+
+    G_SetPlayerTechResearched(client, shaman_training, 1);
+    G_SetPlayerTechResearched(client, witch_doctor_training, 1);
+    T_ASSERT(G_UnitAbilityResearchAvailable(shaman, MAKEFOURCC('A','b','l','o')));
+    T_ASSERT(G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','s','t','a')));
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
+    G_SetPlayerTechMaxAllowed(client, witch_doctor_training, 2);
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_AVAILABLE);
+    T_EQ(next_level, 2);
+
+    T_ASSERT(G_UnitAbilityResearchVisible(witch_doctor, MAKEFOURCC('A','h','w','d')));
+    T_ASSERT(!G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','h','w','d')));
+    G_SetPlayerTechResearched(client, witch_doctor_training, 2);
+    T_ASSERT(G_UnitAbilityResearchAvailable(witch_doctor, MAKEFOURCC('A','h','w','d')));
+    T_EQ(G_GetResearchCommandState(client, spirit_lodge, witch_doctor_training,
+                                   &next_level, reason, sizeof(reason)), BUILD_COMMAND_HIDDEN);
+
+    G_SetPlayerTechResearched(client, shaman_training, 0);
+    G_SetPlayerTechResearched(client, witch_doctor_training, 0);
+    G_SetPlayerTechMaxAllowed(client, shaman_training, -1);
+    G_SetPlayerTechMaxAllowed(client, witch_doctor_training, -1);
     building_restore_caster_data(caster_rows);
 }
 
