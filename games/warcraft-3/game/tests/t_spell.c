@@ -3683,6 +3683,7 @@ TEST(wc3_spell, creep_disease_cloud_alias_ticks_authored_area_damage) {
     edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 20, 0);
     UnitAbilities_t abilities = { .abilList = "Aap1" };
     source->data.UnitAbilities = &abilities; source->s.player = 0;
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','p','c'), 1);
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE; target->svflags |= SVF_MONSTER;
     target->targtype = TARG_GROUND; target->health.value = target->health.max_value = 100;
     S_RunAbilityUpdates(source);
@@ -3695,6 +3696,48 @@ TEST(wc3_spell, creep_disease_cloud_alias_ticks_authored_area_damage) {
     }
     level.time += 1000; unit_updatestatuses(target);
     T_FEQ(target->health.value, 87, 0.001f);
+    G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
+TEST(wc3_spell, abomination_disease_cloud_waits_for_research_and_shows_emitter) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X6\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"Area1\"\n"
+        "C;Y1;X4;K\"DataA1\"\nC;Y1;X5;K\"targs\"\nC;Y1;X6;K\"DataB1\"\n"
+        "C;Y2;X1;K\"Aap1\"\nC;Y2;X2;K\"Aapl\"\nC;Y2;X3;K\"100\"\n"
+        "C;Y2;X4;K\"5\"\nC;Y2;X5;K\"ground,enemy,organic\"\nC;Y2;X6;K\"13\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    UnitAbilities_t abilities = { .abilList = "Aap1" };
+    edict_t *abomination = alloc_test_unit(MAKEFOURCC('u','a','b','o'), 0, 0);
+    edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 20, 0);
+    uint32_t emitter_count = 0;
+
+    abomination->data.UnitAbilities = &abilities;
+    abomination->s.player = 0;
+    enemy->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
+    enemy->svflags |= SVF_MONSTER; enemy->targtype = TARG_GROUND;
+    enemy->health.value = enemy->health.max_value = 100;
+    S_RunAbilityUpdates(abomination);
+    T_NULL(unit_findstatus(enemy, MAKEFOURCC('B','a','p','l')));
+    FILTER_EDICTS(effect, effect->owner == abomination && effect->summon_ability == MAKEFOURCC('A','a','p','1'))
+        emitter_count++;
+    T_EQ(emitter_count, 0);
+
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','p','c'), 1);
+    S_RunAbilityUpdates(abomination);
+    T_NOT_NULL(unit_findstatus(enemy, MAKEFOURCC('B','a','p','l')));
+    emitter_count = 0;
+    FILTER_EDICTS(effect, effect->owner == abomination &&
+                         effect->summon_ability == MAKEFOURCC('A','a','p','1') &&
+                         effect->goalentity == abomination && effect->s.model)
+        emitter_count++;
+    T_EQ(emitter_count, 1);
+    S_RunAbilityUpdates(abomination);
+    emitter_count = 0;
+    FILTER_EDICTS(effect, effect->owner == abomination && effect->summon_ability == MAKEFOURCC('A','a','p','1'))
+        emitter_count++;
+    T_EQ(emitter_count, 1);
+
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
@@ -3725,6 +3768,7 @@ TEST(wc3_spell, disease_cloud_rejects_distant_edicts_before_spell_eligibility) {
     };
     source->data.UnitAbilities = &abilities;
     source->s.player = 0;
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','p','c'), 1);
     FOR_LOOP(i, sizeof(targets) / sizeof(targets[0])) {
         targets[i]->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
         targets[i]->svflags |= SVF_MONSTER;
@@ -3781,6 +3825,7 @@ TEST(wc3_spell, disease_cloud_independent_sources_and_refresh) {
     unit_stand(second);
     first->data.UnitAbilities = second->data.UnitAbilities = &abilities;
     first->s.player = second->s.player = 0;
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','p','c'), 1);
     target->s.player = PLAYER_NEUTRAL_AGGRESSIVE;
     target->svflags |= SVF_MONSTER;
     target->targtype = TARG_GROUND;

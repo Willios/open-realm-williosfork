@@ -1,7 +1,35 @@
 #include "s_skills.h"
 
 #define ID_DISEASE_CLOUD MAKEFOURCC('A','a','p','l')
+#define ID_ABOMINATION_DISEASE_CLOUD MAKEFOURCC('A','a','p','1')
+#define ID_DISEASE_CLOUD_RESEARCH MAKEFOURCC('R','u','p','c')
 #define DISEASE_TICK_MS 1000 // milliseconds; DataB is damage per second; infection pulse interval
+
+static bool disease_cloud_researched(edict_t const *source, uint32_t ability) {
+    gameClient_t *owner;
+    if (ability != ID_ABOMINATION_DISEASE_CLOUD) return true;
+    owner = G_GetPlayerClientByNumber(source ? source->s.player : MAX_PLAYERS);
+    return owner && G_GetPlayerTechResearchedLevel(owner, ID_DISEASE_CLOUD_RESEARCH) > 0;
+}
+
+static void disease_cloud_update_abomination_art(edict_t *source, uint32_t ability) {
+    edict_t *effect = NULL;
+    if (!source || ability != ID_ABOMINATION_DISEASE_CLOUD) return;
+    FILTER_EDICTS(existing, existing->inuse && existing->owner == source &&
+                  existing->summon_ability == ability && existing->goalentity == source) {
+        effect = existing;
+        break;
+    }
+    if (!disease_cloud_researched(source, ability)) {
+        if (effect) G_FreeEdict(effect);
+        return;
+    }
+    if (effect) return;
+    effect = G_SpawnAbilityEffectTarget(ability, WC3_EFFECT_TARGET, 0, source, NULL, false);
+    if (!effect) return;
+    effect->owner = source;
+    effect->summon_ability = ability;
+}
 
 /* The map edict list is much larger than an individual cloud. Reject distant
  * entries before spell targeting (immunity/status/ability lookups). Keep the
@@ -54,11 +82,15 @@ BZ_ABILITY_PROC(CAbilityDiseaseCloud) {
     if (msg != A_UPDATE || !S_AuraUnitActive(ent)) return CAbilityPassive(ent, msg, call);
     ability = S_ResolveAbilityAlias(ent, ID_DISEASE_CLOUD);
     if (!ability.alias) return true;
+    if (ability.alias == ID_ABOMINATION_DISEASE_CLOUD) {
+        disease_cloud_update_abomination_art(ent, ability.alias);
+        if (!disease_cloud_researched(ent, ability.alias)) return true;
+    }
     row = G_AbilityLevel(ability.alias, ability.level);
     if (row->area <= 0.0f || row->data[0].number <= 0.0f || row->data[1].number <= 0.0f) return true;
     /* ROC omits BuffID; the authored TFT infection token is Bapl (Bplg is cloud art). */
     buff = row->buffID && strlen(row->buffID) >= 4 ? row->buffID : "Bapl";
-    FILTER_EDICTS(target, target != ent &&
+    FILTER_EDICTS(target, target != ent && S_SpellIsAliveTarget(target) &&
                   disease_cloud_in_range(&ent->s.origin2, &target->s.origin2, row->area) &&
                   disease_cloud_allows_target(ability.alias, ent, target)) {
         /* Each infector owns its own infection: another source's Bapl must
