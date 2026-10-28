@@ -19,3 +19,16 @@ TargetArt=TestUI\Models\anim_pulse.mdx
 
 [XUfx]
 TargetArt=TestUI\Models\ui_panel.mdx
+
+[Apos]
+MissileArt=TestUI\Models\anim_pulse.mdx
+Missilespeed=1500
+MissileHoming=1
+
+[Bpoc]
+TargetArt=TestUI\Models\anim_oneshot.mdx
+Targetattach=overhead
+
+[Bpos]
+TargetArt=TestUI\Models\anim_pulse.mdx
+Targetattach=overhead

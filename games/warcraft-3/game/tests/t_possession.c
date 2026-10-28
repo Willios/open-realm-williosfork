@@ -13,6 +13,7 @@ void reset_entities(void);
 void setup_test_world(void);
 slkTestData_t *parse_slk_string(char const *text);
 void free_slk_rows(slkTestData_t *rows);
+void SV_Physics_Toss(edict_t *ent);
 
 /* Non-stock Cost/DataA so tests cannot pass on retail 250/5. */
 #define POS_APOS_SLK \
@@ -50,6 +51,26 @@ typedef struct {
 static edict_t *pos_thinker(edict_t *caster) {
     FILTER_EDICTS(ent, ent->owner == caster && ent->think) return ent;
     return NULL;
+}
+
+static bool pos_has_attached_effect(edict_t *target, uint32_t model) {
+    FILTER_EDICTS(effect, effect->inuse && effect->goalentity == target && effect->s.model == model)
+        return true;
+    return false;
+}
+
+static edict_t *pos_missile(edict_t *caster, uint32_t code) {
+    FILTER_EDICTS(missile, missile->inuse && missile->owner == caster &&
+                  missile->class_id == code && missile->movetype == MOVETYPE_FLYMISSILE)
+        return missile;
+    return NULL;
+}
+
+static void pos_advance_missile(edict_t *caster, uint32_t code) {
+    edict_t *missile = pos_missile(caster, code);
+    uint32_t frame;
+    for (frame = 0; missile && missile->inuse && frame < 32; frame++)
+        SV_Physics_Toss(missile);
 }
 
 /* Fill the caller's POSFIX. Returning a copy would dangle UnitBalance pointers
@@ -98,14 +119,35 @@ TEST(wc3_spell, possession_aliases_share_procedures) {
     T_ASSERT(!(S_AbilityItem(BZ_APOS).ability->flags & AB_CHANNEL));
 }
 
-/* Instant Apos transfers ownership and kills the caster; mana is spent. */
+/* Apos spends mana at launch, then transfers ownership and consumes the caster on impact. */
 TEST(wc3_spell, possession_apos_takes_over_and_consumes_caster) {
     posFix_t fix; pos_setup(&fix, POS_APOS_SLK, BZ_APOS);
+    edict_t *clent = &g_edicts[0];
+    gameClient_t *client = &game.clients[0];
+    uint32_t const caster_effect = G_RegisterModel("TestUI\\Models\\anim_oneshot.mdx");
+    uint32_t const target_effect = G_RegisterModel("TestUI\\Models\\anim_pulse.mdx");
+    edict_t *missile;
+
+    clent->client = client;
+    client->ps.number = 0;
+    G_SetClientConnected(clent, true);
+    G_SelectEntity(client, fix.caster);
     T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_APOS, fix.enemy));
     T_FEQ(fix.caster->mana.value, 60, 0.001f);
+    missile = pos_missile(fix.caster, BZ_APOS);
+    T_NOT_NULL(missile);
+    T_EQ(missile->s.model, G_RegisterModel("TestUI\\Models\\anim_pulse.mdx"));
+    T_FEQ(missile->velocity, 1.5f, 0.001f);
+    T_ASSERT(!M_IsDead(fix.caster));
+    T_EQ(fix.enemy->s.player, 1);
+    pos_advance_missile(fix.caster, BZ_APOS);
     T_EQ(fix.enemy->s.player, 0);
     T_ASSERT(M_IsDead(fix.caster));
     T_ASSERT(!M_IsDead(fix.enemy));
+    T_ASSERT(pos_has_attached_effect(fix.caster, caster_effect));
+    T_ASSERT(pos_has_attached_effect(fix.enemy, target_effect));
+    T_ASSERT(G_IsEntitySelected(client, fix.enemy));
+    T_ASSERT(!G_IsEntitySelected(client, fix.caster));
     pos_done(fix);
 }
 
@@ -128,6 +170,7 @@ TEST(wc3_spell, possession_footman_command_card_target_click) {
     snprintf(target_number, sizeof(target_number), "%u", (unsigned)fix.enemy->s.number);
     G_ClientCommand(clent, 2, select);
 
+    pos_advance_missile(fix.caster, BZ_APOS);
     T_EQ(fix.enemy->s.player, 0);
     T_ASSERT(M_IsDead(fix.caster));
     pos_done(fix);
@@ -137,6 +180,7 @@ TEST(wc3_spell, possession_footman_command_card_target_click) {
 TEST(wc3_spell, possession_acps_alias_takes_over) {
     posFix_t fix; pos_setup(&fix, POS_APOS_SLK, BZ_ACPS);
     T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_ACPS, fix.enemy));
+    pos_advance_missile(fix.caster, BZ_ACPS);
     T_EQ(fix.enemy->s.player, 0);
     T_ASSERT(M_IsDead(fix.caster));
     pos_done(fix);
@@ -183,6 +227,8 @@ TEST(wc3_spell, possession_apos_invalid_after_caster_consumed) {
     other->s.player = 1; other->svflags |= SVF_MONSTER; other->targtype = TARG_GROUND;
     other->data.UnitBalance = &bal; other->health.value = other->health.max_value = 500;
     T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_APOS, fix.enemy));
+    T_ASSERT(!M_IsDead(fix.caster));
+    pos_advance_missile(fix.caster, BZ_APOS);
     T_ASSERT(M_IsDead(fix.caster));
     T_ASSERT(!S_CastUnitTargetSpell(fix.caster, BZ_APOS, other));
     pos_done(fix);

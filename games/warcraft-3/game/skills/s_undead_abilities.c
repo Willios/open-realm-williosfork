@@ -608,6 +608,19 @@ BZ_ABILITY_PROC(CAbilityRaiseDead) {
 #define BZ_BPOC MAKEFOURCC('B', 'p', 'o', 'c') // rawcode; caster Possession damage amp
 #define BZ_POS_MAGIC_IMMUNE 1u // Bpos.data bit; authored DataD > 0 during channel
 
+static void possession_select_target(edict_t *target) {
+    gameClient_t *client;
+    uint32_t const player = target ? target->s.player : MAX_PLAYERS;
+    uint32_t const bit = player < MAX_PLAYERS ? 1u << player : 0;
+    if (!bit || !(client = G_GetPlayerClientByNumber(player)) ||
+        !client->connected || client->ps.number != player) return;
+    FILTER_EDICTS(selected, selected->inuse && (selected->selected & bit))
+        G_DeselectEntity(client, selected);
+    G_SelectEntity(client, target);
+    G_FocusSelectedUnit(client, target);
+    G_SyncClientSelection(client);
+}
+
 static bool possession_is_neutral(edict_t const *target) {
     return target && target->s.player < MAX_PLAYERS && level.mapinfo &&
         level.mapinfo->players[target->s.player].playerType == kPlayerTypeNeutral;
@@ -624,6 +637,15 @@ static bool possession_validate(edict_t *caster, spellTarget_t st, abilityitem_t
     return true;
 }
 
+static float possession_missile_speed(uint32_t code) {
+    cstring_t value = S_SpellString(code, "Missilespeed", 0);
+    float speed;
+    if (!value && G_AbilityCode(code) != code)
+        value = S_SpellString(G_AbilityCode(code), "Missilespeed", 0);
+    speed = value ? (float)atof(value) : 0.0f;
+    return speed > 0.0f ? speed : 1500.0f;
+}
+
 static void possession_clear_status(edict_t *ent, uint32_t code) {
     if (!ent) return;
     FOR_LOOP(i, ent->unit_state ? MAX_UNIT_STATUSES : 0)
@@ -632,6 +654,9 @@ static void possession_clear_status(edict_t *ent, uint32_t code) {
 }
 
 static void possession_takeover(edict_t *caster, edict_t *target) {
+    /* Apos/ACps do not apply the Bpos/Bpoc channel statuses. Retail still
+     * plays their authored one-shot models at both endpoints on completion. */
+    G_SpawnAbilityEffectTarget(BZ_BPOC, WC3_EFFECT_TARGET, 0, caster, "overhead", true);
     G_SetUnitPlayer(target, caster->s.player);
     target->owner = NULL;
     target->combatentity = NULL;
@@ -639,12 +664,30 @@ static void possession_takeover(edict_t *caster, edict_t *target) {
     G_SetHealth(caster, 0);
     if (caster->die) caster->die(caster, caster);
     else unit_die(caster, caster);
+    /* Spawn after the ownership and caster-death transitions so neither can
+     * replace the target's presentation state before this one-shot is queued. */
+    G_SpawnAbilityEffectTarget(BZ_BPOS, WC3_EFFECT_TARGET, 0, target, "overhead", true);
+    possession_select_target(target);
 }
 
+static void possession_projectile_hit(edict_t *missile) {
+    edict_t *caster = S_SpellProjectileOwner(missile);
+    edict_t *target = S_SpellProjectileTarget(missile);
+    abilityitem_t spell = S_AbilityItem(missile->class_id);
+    if (caster && !M_IsDead(caster) && target &&
+        possession_validate(caster, (spellTarget_t){ .type = SPELL_TARGET_UNIT, .entity = target }, &spell))
+        possession_takeover(caster, target);
+    G_FreeEdict(missile);
+}
+
+static umove_t possession_projectile_move = { "stand", NULL, possession_projectile_hit, CAbilityPossession };
+
 static void possession_execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
-    (void)spell;
     if (!st.entity) return;
-    possession_takeover(caster, st.entity);
+    if (!S_SpawnUnitTargetSpellMissile(caster, spell->code, st.entity,
+                                      possession_missile_speed(spell->code),
+                                      &possession_projectile_move))
+        possession_takeover(caster, st.entity);
 }
 
 static void possession_strip_channel(edict_t *thinker) {
