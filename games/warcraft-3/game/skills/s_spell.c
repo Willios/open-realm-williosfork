@@ -1666,8 +1666,18 @@ heroabilitystatus_t *S_SpellApplyTimedStatusFromAbility(edict_t *target, uint32_
  * shared timed-status lifecycle. */
 heroabilitystatus_t *S_SpellApplyTimedTargetStatus(edict_t *target, uint32_t code, uint32_t level, cstring_t buff, float duration) {
     heroabilitystatus_t *status = S_SpellApplyTimedStatusFromAbility(target, code, level, buff, duration);
+    uint32_t buff_code;
+    edict_t *effect;
     if (!status) return NULL;
-    G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
+    effect = G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
+    /* Some spells author the persistent target model on the applied buff
+     * instead of the ability (Sleep's AUsl/BUsl is one example). In that case
+     * let the status own the effect so refresh, dispel, and expiry clean it up. */
+    if (!effect && buff && strlen(buff) >= 4) {
+        memcpy(&buff_code, buff, sizeof(buff_code));
+        if (G_AbilityEffectArt(buff_code, WC3_EFFECT_TARGET, 0))
+            unit_status_enabletargetart(target, status, NULL);
+    }
     return status;
 }
 
