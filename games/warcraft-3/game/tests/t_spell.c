@@ -898,7 +898,7 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
 
     /* Cost1 is a distinct upfront charge; insufficient mana must leave the
-     * toggle off. A successful activation then drains DataB each second. */
+     * toggle off. The 7 mana/sec drain is delivered one point at a time. */
     G_ClientCommand(clent, 2, button);
     T_NULL(unit_findstatus(caster, buff));
     T_FEQ(caster->mana.value, 24.0f, 0.001f);
@@ -918,6 +918,15 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     }
     T_NOT_NULL(caster_effect);
     T_FEQ(caster->mana.value, 14.0f, 0.001f);
+    level.time = 142;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(caster->mana.value, 14.0f, 0.001f);
+    level.time = 143;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(caster->mana.value, 13.0f, 0.001f);
+    level.time = 500;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(caster->mana.value, 11.0f, 0.001f);
     level.time = 1000;
     S_RunAbilityUpdates(caster);
     T_FEQ(enemy_land->health.value, 85.0f, 0.001f);

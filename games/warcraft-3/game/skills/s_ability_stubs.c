@@ -7,9 +7,10 @@
  */
 
 /* Immolation's DataA is damage per second, DataB is mana drain per second,
- * and Area is its self-centered radius. The buff is persistent while toggled
- * on, but its damage and mana drain run on one-second pulses. */
+ * and Area is its self-centered radius. Mana is spent in one-point steps
+ * distributed evenly through each second; damage remains a one-second pulse. */
 #define IMMOLATION_TICK_MS 1000
+#define IMMOLATION_MANA_RATE 7
 #define ID_IMMOLATION_STATUS MAKEFOURCC('B','E','i','m')
 BZ_ABILITY_PROC(CAbilityImmolation) {
     heroabilitystatus_t *status;
@@ -20,7 +21,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
         if (!ent || !ent->unit_state) return true;
         status = unit_findstatus(ent, ID_IMMOLATION_STATUS);
         if (!status || !status->level || !status->data) return true;
-        if (!status->next_tick) status->next_tick = G_Time() + IMMOLATION_TICK_MS;
+        if (!status->next_tick) status->next_tick = G_Time() + (IMMOLATION_TICK_MS + IMMOLATION_MANA_RATE - 1) / IMMOLATION_MANA_RATE;
         while (status->level && status->next_tick && G_Time() >= status->next_tick) {
             abilityLevel_t const *row;
             float damage, mana_drain, area;
@@ -31,8 +32,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
             damage = row->data[0].number;
             mana_drain = row->data[1].number;
             area = row->area;
-            status->next_tick += IMMOLATION_TICK_MS;
-            if (damage > 0.0f && area > 0.0f) {
+            if (damage > 0.0f && area > 0.0f && (status->duration_ms + 1) % IMMOLATION_MANA_RATE == 0) {
                 FILTER_EDICTS(target, target != ent && S_SpellIsAliveTarget(target) &&
                               S_SpellIsEnemy(ent, target) && G_UnitTargetType(target) == TARG_GROUND &&
                               Vector2_distance(&target->s.origin2, &ent->s.origin2) <= area) {
@@ -40,14 +40,21 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
                 }
             }
             if (mana_drain > 0.0f) {
-                ent->mana.value = MAX(0.0f, ent->mana.value - mana_drain);
+                uint32_t const steps_per_second = MAX(1u, (uint32_t)ceilf(mana_drain));
+                uint32_t const step = status->duration_ms + 1;
+                uint32_t const elapsed_ms = (uint32_t)(((uint64_t)step * IMMOLATION_TICK_MS + steps_per_second - 1) / steps_per_second);
+                uint32_t const next_elapsed_ms = (uint32_t)(((uint64_t)(step + 1) * IMMOLATION_TICK_MS + steps_per_second - 1) / steps_per_second);
+                uint32_t const activation_time = status->next_tick - elapsed_ms;
+                status->duration_ms = step;
+                status->next_tick = activation_time + next_elapsed_ms;
+                ent->mana.value = MAX(0.0f, ent->mana.value - 1.0f);
                 G_InvalidateUnitInfoPanel(ent);
                 if (ent->mana.value <= 0.0f) {
                     unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
                     G_InvalidateUnitInfoPanel(ent);
                     return true;
                 }
-            }
+            } else status->next_tick += IMMOLATION_TICK_MS;
         }
         return true;
     }
@@ -85,7 +92,8 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
             status->source = ent;
             status->source_spawn_time = ent->spawn_time;
             status->rank = level;
-            status->next_tick = G_Time() + IMMOLATION_TICK_MS;
+            status->duration_ms = 0;
+            status->next_tick = G_Time() + (IMMOLATION_TICK_MS + IMMOLATION_MANA_RATE - 1) / IMMOLATION_MANA_RATE;
         }
         G_InvalidateUnitInfoPanel(ent);
     }
