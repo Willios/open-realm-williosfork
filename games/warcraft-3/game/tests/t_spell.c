@@ -4167,6 +4167,27 @@ TEST(wc3_spell, frost_nova_spawns_target_effect_on_primary_victim) {
     G_SetSLKRows("AbilityBuffData", old_buff); free_slk_rows(buff_rows);
 }
 
+TEST(wc3_spell, frost_armor_enables_buff_target_art) {
+    static char const ability_slk[] =
+        "ID;PWXL;N;EBB;Y2;X5\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"BuffID1\"\n"
+        "C;Y1;X4;K\"DataA1\"\nC;Y1;X5;K\"DataB1\"\n"
+        "C;Y2;X1;K\"AUfa\"\nC;Y2;X2;K\"AUfa\"\nC;Y2;X3;K\"BUfa\"\n"
+        "C;Y2;X4;K\"45\"\nC;Y2;X5;K\"3\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(ability_slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *caster = make_hero(MAKEFOURCC('U','n','e','c'), 500, 200, 0, 0);
+    edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+    heroabilitystatus_t *status;
+
+    caster->s.player = 0; target->s.player = 0;
+    T_ASSERT(test_execute_code(caster, "AUfa", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target)));
+    status = unit_findstatus(target, MAKEFOURCC('B','U','f','a'));
+    T_NOT_NULL(status);
+    if (status) T_ASSERT(status->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+
+    G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
 TEST(wc3_spell, entangling_roots_visual_resolves_from_buff_target_art) {
 	cstring_t art = G_AbilityEffectArt(MAKEFOURCC('B', 'E', 'e', 'r'), WC3_EFFECT_TARGET, 0);
 

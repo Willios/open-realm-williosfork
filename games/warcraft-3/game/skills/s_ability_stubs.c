@@ -126,8 +126,12 @@ BZ_SIMPLE_SPELL_PROC(AbilityFrostArmor) {
         fprintf(stderr, "WC3: %.4s has no authored BuffID\n", (cstring_t)&spell->code);
         return;
     }
-    S_SpellApplyTimedTargetStatus(target, spell->code, level, buff,
-                                  S_SpellData(spell->code, level, 1));
+    {
+        heroabilitystatus_t *status = S_SpellApplyTimedStatusFromAbility(
+            target, spell->code, level, buff, S_SpellData(spell->code, level, 1));
+        /* Frost Armor's TargetArt is authored on its BUfa buff, not AUfa/AUfu. */
+        if (status) unit_status_enabletargetart(target, status, "chest");
+    }
 }
 
 void divine_shield_think(edict_t *ent) {
