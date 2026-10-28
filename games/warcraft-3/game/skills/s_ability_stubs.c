@@ -14,6 +14,8 @@
 BZ_ABILITY_PROC(CAbilityImmolation) {
     heroabilitystatus_t *status;
     uint32_t code;
+    if (msg == A_TOGGLE_ON)
+        return ent && unit_findstatus(ent, ID_IMMOLATION_STATUS) != NULL;
     if (msg == A_UPDATE) {
         if (!ent || !ent->unit_state) return true;
         status = unit_findstatus(ent, ID_IMMOLATION_STATUS);

@@ -860,6 +860,7 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     edict_t *clent;
     gameClient_t *client;
     cstring_t button[] = { "button", "AEim" };
+    gameCommandButton_t command_button;
     uint32_t const buff = MAKEFOURCC('B','E','i','m');
     heroabilitystatus_t *immolation_status;
     edict_t *caster_effect;
@@ -893,6 +894,8 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_EQ(G_UnitTargetType(enemy_land), TARG_GROUND);
     T_FEQ(G_AbilityLevel(MAKEFOURCC('A','E','i','m'), 1)->area, 160.0f, 0.001f);
     G_SelectEntity(client, caster);
+    T_ASSERT(G_BuildCommandButton(caster, "AEim", false, 0, &command_button));
+    T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
 
     /* Cost1 is a distinct upfront charge; insufficient mana must leave the
      * toggle off. A successful activation then drains DataB each second. */
@@ -903,6 +906,8 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     G_ClientCommand(clent, 2, button);
     immolation_status = unit_findstatus(caster, buff);
     T_NOT_NULL(immolation_status);
+    T_ASSERT(G_BuildCommandButton(caster, "AEim", false, 0, &command_button));
+    T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOff.blp");
     T_EQ(G_UnitStatusBuffCode(immolation_status), buff);
     T_STREQ(G_AbilityBuffArt(buff), "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
     T_STREQ(G_AbilityEffectArt(buff, WC3_EFFECT_TARGET, 0), "TestUI\\Models\\anim_pulse.mdx");
@@ -924,6 +929,8 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
     T_FEQ(caster->mana.value, 0.0f, 0.001f);
     T_NULL(unit_findstatus(caster, buff));
+    T_ASSERT(G_BuildCommandButton(caster, "AEim", false, 0, &command_button));
+    T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
     caster_effect = NULL;
     FILTER_EDICTS(effect, effect->status_effect_code == buff && effect->goalentity == caster) {
         caster_effect = effect;
@@ -945,6 +952,8 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(caster->mana.value, 7.0f, 0.001f);
     G_ClientCommand(clent, 2, button);
     T_NULL(unit_findstatus(caster, buff));
+    T_ASSERT(G_BuildCommandButton(caster, "AEim", false, 0, &command_button));
+    T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
     caster_effect = NULL;
     FILTER_EDICTS(effect, effect->status_effect_code == buff && effect->goalentity == caster) {
         caster_effect = effect;
