@@ -37,6 +37,14 @@ static void anti_magic_shell_execute(edict_t *caster, spellTarget_t st, abilityi
     cstring_t buff = anti_magic_shell_buff(spell, level);
     heroabilitystatus_t *slot;
     if (!st.entity) return;
+    /* Anti-Magic Shell removes existing dispellable spell effects before
+     * installing its barrier. Aura presentation is virtual source state, not
+     * a timed magic status, so it remains active on the recipient. */
+    FOR_LOOP(i, st.entity->unit_state ? MAX_UNIT_STATUSES : 0)
+        if (unit_status_can_magic_dispel(st.entity->unit_state->statuses + i))
+            unit_removestatus_deferred(st.entity, st.entity->unit_state->statuses + i, STATUS_REMOVE_DISPEL);
+    unit_refreshstatusflags(st.entity);
+    G_InvalidateUnitInfoPanel(st.entity);
     slot = S_SpellApplyTimedTargetStatus(st.entity, spell->code, level, buff,
                                          S_SpellResistantDuration(spell->code, level, st.entity));
     if (absorb > 0.0f && slot) slot->data = (uint32_t)absorb;

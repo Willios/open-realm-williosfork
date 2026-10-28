@@ -10,6 +10,10 @@
 #define BZ_BAMS MAKEFOURCC('B', 'a', 'm', 's') // rawcode; targeting/spell-immunity buff
 #define BZ_BAM2 MAKEFOURCC('B', 'a', 'm', '2') // rawcode; spell-damage absorption buff
 #define BZ_AHTB MAKEFOURCC('A', 'H', 't', 'b') // rawcode; Storm Bolt, used as a hostile spell probe
+#define BZ_AUFA MAKEFOURCC('A', 'U', 'f', 'a') // rawcode; Lich Frost Armor
+#define BZ_BUFA MAKEFOURCC('B', 'U', 'f', 'a') // rawcode; Frost Armor status
+#define BZ_AUAU MAKEFOURCC('A', 'U', 'a', 'u') // rawcode; Unholy Aura
+#define BZ_BUAU MAKEFOURCC('B', 'U', 'a', 'u') // rawcode; Unholy Aura presentation status
 
 edict_t *alloc_test_unit(uint32_t class_id, float x, float y);
 void reset_entities(void);
@@ -94,6 +98,47 @@ TEST(wc3_spell, anti_magic_shell_bams_blocks_spells_until_expiry) {
     T_ASSERT(S_UnitSpellImmune(fix.ally));
     fix.ally->health.value = 0;
     T_ASSERT(!S_CastUnitTargetSpell(fix.caster, BZ_AMS, fix.ally));
+    ams_done(fix);
+}
+
+TEST(wc3_spell, anti_magic_shell_dispels_spell_buffs_but_preserves_unholy_aura) {
+    static char const slk[] =
+        "ID;PWXL;N;EBB;Y4;X12\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Cost1\"\nC;Y1;X6;K\"Cool1\"\n"
+        "C;Y1;X7;K\"Rng1\"\nC;Y1;X8;K\"Dur1\"\nC;Y1;X9;K\"HeroDur1\"\n"
+        "C;Y1;X10;K\"BuffID1\"\nC;Y1;X11;K\"DataA1\"\nC;Y1;X12;K\"Area1\"\n"
+        "C;Y2;X1;K\"Aams\"\nC;Y2;X2;K\"Aams\"\nC;Y2;X3;K1\n"
+        "C;Y2;X4;K\"air,ground\"\nC;Y2;X5;K0\nC;Y2;X6;K0\nC;Y2;X7;K500\n"
+        "C;Y2;X8;K90\nC;Y2;X9;K90\nC;Y2;X10;K\"Bams,Bam2\"\n"
+        "C;Y3;X1;K\"AUfa\"\nC;Y3;X2;K\"AUfa\"\nC;Y3;X3;K1\n"
+        "C;Y3;X4;K\"ground,friend,organic\"\nC;Y3;X5;K0\nC;Y3;X6;K0\nC;Y3;X7;K500\n"
+        "C;Y3;X8;K45\nC;Y3;X9;K45\nC;Y3;X10;K\"BUfa\"\nC;Y3;X11;K45\n"
+        "C;Y4;X1;K\"AUau\"\nC;Y4;X2;K\"AUau\"\nC;Y4;X3;K1\n"
+        "C;Y4;X4;K\"ground,friend,organic\"\nC;Y4;X10;K\"BUau\"\n"
+        "C;Y4;X11;K0.1\nC;Y4;X12;K300\nE\n";
+    static UnitAbilities_t const unholy_abilities = { .abilList = "AUau" };
+    amsFix_t fix = ams_setup(slk, BZ_AMS);
+    edict_t *aura_source = alloc_test_unit(MAKEFOURCC('U','d','e','a'), 16, 0);
+
+    fix.caster->unit_state->ranks[1] = MAKE(heroability_t, .code = BZ_AUFA, .level = 1);
+    aura_source->s.player = fix.ally->s.player;
+    aura_source->targtype = TARG_GROUND;
+    aura_source->svflags |= SVF_MONSTER;
+    aura_source->data.UnitAbilities = &unholy_abilities;
+    aura_source->unit_state->ranks[0] = MAKE(heroability_t, .code = BZ_AUAU, .level = 1);
+    fix.ally->mana.max_value = fix.ally->mana.value = 100;
+
+    T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_AUFA, fix.ally));
+    T_NOT_NULL(unit_findstatus(fix.ally, BZ_BUFA));
+    S_UpdateHeroAuraEffects(fix.ally);
+    T_EQ(S_UnholyAuraBuff(fix.ally), BZ_BUAU);
+
+    T_ASSERT(S_CastUnitTargetSpell(fix.caster, BZ_AMS, fix.ally));
+    T_NULL(unit_findstatus(fix.ally, BZ_BUFA));
+    T_EQ(G_UnitStatusLevel(fix.ally, BZ_BAMS), 1);
+    T_EQ(S_UnholyAuraBuff(fix.ally), BZ_BUAU);
+
     ams_done(fix);
 }
 
