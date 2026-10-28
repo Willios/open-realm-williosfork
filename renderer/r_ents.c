@@ -27,7 +27,10 @@ static void R_YawEntityPlacement(mat4_t *out, modelPose_t const *pose) {
     float const half = pose->angles.yaw * 0.5f;
     float const sine = sinf(half), cosine = cosf(half);
     float const doubled_sine = sine + sine;
-    float const diagonal = 1.0f - sine * doubled_sine;
+    /* Round the product before subtraction, as the generic matrix's zz
+     * temporary does; contracting this expression changes culling at edges. */
+    float const squared_sine = sine * doubled_sine;
+    float const diagonal = 1.0f - squared_sine;
     float const off_diagonal = cosine * doubled_sine;
     float const scale = pose->scale;
 

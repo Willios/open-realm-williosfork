@@ -1,3 +1,16 @@
+## Exact yaw placement rounding
+
+`renderer/r_ents.c:R_YawEntityPlacement` must match the generic quaternion
+matrix coefficient for coefficient. Store `sine * doubled_sine` in a separate
+float before subtracting it from 1, matching the generic matrix's `zz`
+temporary. A single `1 - sine * doubled_sine` expression permits fused
+multiply/subtract on macOS arm64 and changes diagonal coefficients near
+frustum edges. Keep the exact assertions in
+`wc3_coordinates.yaw_only_entity_matrix_matches_quaternion_reference`;
+loosening their tolerance hides this difference. Reproduce without a renderer
+window using `build/bin/openwarcraft3-tests -data build/tests +dedicated 1
++test wc3_coordinates.yaw_only_entity_matrix_matches_quaternion_reference`.
+
 ## NightElf07 profiling comparison summary (October 25, 2026)
 
 The comparisons below rank the measured **reduction in sampled CPU-cycle
