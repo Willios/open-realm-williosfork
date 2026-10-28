@@ -5855,6 +5855,41 @@ TEST(wc3_spell, frenzy_unholy_frenzy_curse_use_authored_status_and_bonus_values)
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
+TEST(wc3_spell, banshee_curse_blocks_attack_damage_at_authored_miss_chance) {
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X8\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"Dur1\"\n"
+		"C;Y1;X4;K\"HeroDur1\"\nC;Y1;X5;K\"DataA1\"\nC;Y1;X6;K\"BuffID1\"\n"
+		"C;Y1;X7;K\"targs\"\nC;Y1;X8;K\"levels\"\n"
+		"C;Y2;X1;K\"Acrs\"\nC;Y2;X2;K\"Acrs\"\nC;Y2;X3;K\"60\"\n"
+		"C;Y2;X4;K\"60\"\nC;Y2;X5;K\"1\"\nC;Y2;X6;K\"Bcrs\"\n"
+		"C;Y2;X7;K\"ground,enemy,organic,nonhero\"\nC;Y2;X8;K\"1\"\nE\n";
+	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	edict_t *banshee = make_hero(MAKEFOURCC('u','b','a','n'), 300, 100, 0, 0);
+	edict_t *attacker = alloc_test_unit(MAKEFOURCC('o','g','r','u'), 64, 0);
+	edict_t *victim = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96, 0);
+	banshee->s.player = victim->s.player = 0; attacker->s.player = 1;
+	attacker->svflags |= SVF_MONSTER; victim->svflags |= SVF_MONSTER;
+	attacker->unit_state->attack1.type = ATK_NORMAL;
+	attacker->targtype = victim->targtype = TARG_GROUND;
+	attacker->health.value = attacker->health.max_value = 100;
+	victim->health.value = victim->health.max_value = 100;
+
+	/* Establish that this attacker damages the victim before Curse is applied. */
+	S_ResolveAttackHit(attacker, victim, 25);
+	T_ASSERT(victim->health.value < 100);
+	victim->health.value = victim->health.max_value = 100;
+
+	T_ASSERT(test_execute_code(banshee, "Acrs",
+		MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = attacker)));
+	T_ASSERT(S_UnitHasStatus(attacker, MAKEFOURCC('B','c','r','s')));
+	T_FEQ(S_CurseMissChance(attacker), 1.0f, 0.001f);
+	S_ResolveAttackHit(attacker, victim, 25);
+	T_FEQ(victim->health.value, 100, 0.001f);
+
+	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
 /* ROC omits BuffID; apply the TFT fourcc so Bloodlust/Faerie/Roar/Curse still land. */
 TEST(wc3_spell, melee_status_roc_empty_buffid_applies_default_fourcc) {
 	const char slk[] =
