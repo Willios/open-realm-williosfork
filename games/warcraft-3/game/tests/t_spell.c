@@ -6723,6 +6723,48 @@ TEST(wc3_spell, raise_dead_uses_two_authored_summon_groups_and_marks_summons) {
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
+TEST(wc3_spell, raise_dead_roc_missing_unit_id_spawns_authored_skeleton_count) {
+#if BZ_COMPAT_WORKAROUNDS
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X7\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+		"C;Y1;X4;K\"Dur1\"\nC;Y1;X5;K\"DataA1\"\n"
+		"C;Y1;X6;K\"DataC1\"\nC;Y1;X7;K\"BuffID1\"\n"
+		"C;Y2;X1;K\"Arai\"\nC;Y2;X2;K\"Arai\"\n"
+		"C;Y2;X3;K\"dead\"\nC;Y2;X4;K\"40\"\nC;Y2;X5;K\"2\"\n"
+		"C;Y2;X6;K\"-\"\nC;Y2;X7;K\"-\"\nE\n";
+	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	static UnitData_t corpse_data = { .deathType = 3 };
+	edict_t *caster = make_hero(MAKEFOURCC('U','D','k','i'), 500, 500, 0, 0);
+	edict_t *corpse = alloc_test_unit(MAKEFOURCC('u','d','e','a'), 100, 0);
+	uint32_t skeleton_count = 0;
+	caster->s.player = 0;
+	caster->runtime.acquisition_range = 800.0f;
+	caster->unit_state->ranks[0] = MAKE(heroability_t, .code = FS_SLKKey("Arai"), .level = 1);
+	g_edicts[0].client = &game.clients[0];
+	game.clients[0].connected = true;
+	game.clients[0].ps.number = 0;
+	corpse->data.UnitData = &corpse_data;
+	corpse->health.value = 0; corpse->health.max_value = 100;
+	corpse->svflags |= SVF_MONSTER | SVF_DEADMONSTER;
+
+	test_execute_code(caster, "Arai", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+	T_ASSERT(!corpse->inuse);
+	FILTER_EDICTS(unit, unit->inuse && unit->summon_ability == FS_SLKKey("Arai") &&
+	              unit->class_id == MAKEFOURCC('u','s','k','e')) {
+		heroabilitystatus_t *life = unit_findstatus(unit, MAKEFOURCC('B','T','L','F'));
+		T_NOT_NULL(life);
+		T_EQ(life->duration_ms, 40000u);
+		T_EQ(G_UnitStatusLevel(unit, MAKEFOURCC('B','r','a','i')), 1u);
+		skeleton_count++;
+	}
+	T_EQ(skeleton_count, 2u);
+	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+#else
+	T_ASSERT(true); /* This classic-data fallback is intentionally compatibility-gated. */
+#endif
+}
+
 TEST(wc3_spell, skeletal_longevity_extends_raise_dead_timed_life) {
 	const char ability_slk[] =
 		"ID;PWXL;N;EBB;Y2;X8\n"

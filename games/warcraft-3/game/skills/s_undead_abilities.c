@@ -6,6 +6,16 @@
 #define UNDEAD_AUTOCAST_RADIUS 900.0f // world units; fallback acquisition radius when the spell range is zero
 #define BZ_AMS_SHIELD MAKEFOURCC('B', 'a', 'm', '2') // rawcode; Bam2 DataC spell-damage absorption
 
+static bool raise_dead_missing_rawcode(uint32_t code) {
+    return !code || code == '-' || code == '_' ||
+           code == MAKEFOURCC('-', '-', '-', '-') || code == MAKEFOURCC('_', '_', '_', '_');
+}
+
+static bool raise_dead_missing_buff(cstring_t buff) {
+    return !buff || !strcmp(buff, "-") || !strcmp(buff, "_") ||
+           !strcmp(buff, "----") || !strcmp(buff, "____");
+}
+
 /* The unit target and buff identity are known during cast validation. Reject
  * a full status array before resource commitment, including item/creep aliases.
  * Keep ROC's missing BuffID fallback identical to the execute path. */
@@ -572,6 +582,15 @@ static void raise_dead_execute(edict_t *caster, spellTarget_t st, abilityitem_t 
     duration = S_SpellDuration(spell->code, level, false) +
         G_UnitUpgradeEffectBonus(caster, BZ_UPGRADE_RAISE_DEAD_LIFE);
     buff = S_SpellBuffId(spell->code, level);
+#if BZ_COMPAT_WORKAROUNDS
+    /* RoC 1.0 authors only Arai.DataA=2 and Dur1=40; its summon UnitID,
+     * DataC and BuffID fields are absent. The stock result is two warriors. */
+    if (raise_dead_missing_rawcode(unit_a) && (spell->code == MAKEFOURCC('A','r','a','i') ||
+                                               spell->code == MAKEFOURCC('A','C','r','d'))) {
+        unit_a = MAKEFOURCC('u','s','k','e');
+        if (raise_dead_missing_buff(buff)) buff = "Brai";
+    }
+#endif
 
     raise_dead_spawn_group(caster, spell, corpse, level, unit_a, count_a, duration, buff);
     raise_dead_spawn_group(caster, spell, corpse, level, unit_b, count_b, duration, buff);
