@@ -6221,6 +6221,36 @@ TEST(wc3_spell, roar_skips_full_ally_and_buffs_other_targets) {
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
+TEST(wc3_spell, roar_increases_attack_damage_by_authored_bonus) {
+    char const slk[] =
+        "ID;PWXL;N;EBB;Y2;X7\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"Dur1\"\nC;Y1;X5;K\"DataA1\"\nC;Y1;X6;K\"BuffID1\"\nC;Y1;X7;K\"Area1\"\n"
+        "C;Y2;X1;K\"Aroa\"\nC;Y2;X2;K\"Aroa\"\nC;Y2;X3;K\"1\"\n"
+        "C;Y2;X4;K\"30\"\nC;Y2;X5;K\"0.25\"\nC;Y2;X6;K\"Broa\"\nC;Y2;X7;K\"300\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *caster, *enemy;
+
+    reset_entities();
+    setup_test_world();
+    caster = make_hero(MAKEFOURCC('E','d','e','m'), 500, 200, 0, 0);
+    enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+    caster->s.player = 0;
+    enemy->s.player = 1;
+    caster->unit_state->attack1.type = ATK_CHAOS;
+    enemy->health.value = enemy->health.max_value = 1000.0f;
+
+    S_ResolveAttackHit(caster, enemy, 100);
+    T_FEQ(enemy->health.value, 900.0f, 0.001f);
+    test_execute_code(caster, "Aroa", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+    T_FEQ(S_RoarDamageBonus(caster), 0.25f, 0.001f);
+    S_ResolveAttackHit(caster, enemy, 100);
+    T_FEQ(enemy->health.value, 775.0f, 0.001f);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 TEST(wc3_spell, melee_spells_use_authored_status_and_bonus_values) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y5;X10\n"
