@@ -211,7 +211,9 @@ static void whirlwind_execute(edict_t *caster, spellTarget_t st, abilityitem_t c
 void morph_end(edict_t *thinker) {
     edict_t *owner = S_SpellChannelOwner(thinker);
     if (G_Time() < thinker->spawn_time) return;
-    if (owner) G_TransformUnitType(owner, thinker->resources);
+    if (owner && G_TransformUnitType(owner, thinker->resources) &&
+        thinker->class_id == MAKEFOURCC('A','E','m','e') && thinker->velocity > 0.0f)
+        G_ApplyTemporaryMaxHealthBonus(owner, -thinker->velocity);
     G_FreeEdict(thinker);
 }
 
@@ -901,9 +903,45 @@ static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abil
     }
     uint32_t level = S_SpellLevel(caster, spell->code), form = S_SpellUnitId(spell->code, level), original = caster->class_id;
     float duration = S_SpellDuration(spell->code, level, true);
-    if (!form || !G_TransformUnitType(caster, form) || duration <= 0.0f) return;
+    float bonus_health = 0.0f;
+    heroability_t saved_rank = { .code = spell->code, .level = level };
+    if (!form || duration <= 0.0f) return;
+    if (spell->code == MAKEFOURCC('A','E','m','e')) {
+        G_InitUnitState(caster);
+        FOR_LOOP(i, MAX_HERO_ABILITIES) {
+            if (caster->unit_state->ranks[i].code == spell->code && caster->unit_state->ranks[i].level) {
+                saved_rank = caster->unit_state->ranks[i];
+                level = saved_rank.level;
+                break;
+            }
+        }
+        bonus_health = S_SpellData(spell->code, level, 5);
+    }
+    if (!G_TransformUnitType(caster, form)) return;
+    if (spell->code == MAKEFOURCC('A','E','m','e')) {
+        static uint32_t const metamorphosis_abilities[] = {
+            MAKEFOURCC('A','E','m','b'), MAKEFOURCC('A','E','i','m'), MAKEFOURCC('A','E','e','v')
+        };
+        uint32_t rank_slot = MAX_HERO_ABILITIES;
+        FOR_LOOP(i, MAX_HERO_ABILITIES) {
+            if (caster->unit_state->ranks[i].code == spell->code || !caster->unit_state->ranks[i].level) {
+                rank_slot = i;
+                break;
+            }
+        }
+        if (rank_slot < MAX_HERO_ABILITIES) caster->unit_state->ranks[rank_slot] = saved_rank;
+        FOR_LOOP(i, sizeof(metamorphosis_abilities) / sizeof(metamorphosis_abilities[0])) {
+            if (!G_ActorHasSkill(caster, GetClassName(metamorphosis_abilities[i])))
+                G_ActorAddSkill(caster, metamorphosis_abilities[i]);
+        }
+    }
+    if (bonus_health > 0.0f) G_ApplyTemporaryMaxHealthBonus(caster, bonus_health);
     edict_t *thinker = G_Spawn();
     thinker->owner = caster; thinker->resources = original;
+    if (bonus_health > 0.0f) {
+        thinker->class_id = spell->code;
+        thinker->velocity = bonus_health;
+    }
     G_AddChannel(thinker);
     G_GetChannel(thinker)->owner_spawn_time = caster->spawn_time;
     thinker->spawn_time = G_Time() + (uint32_t)(duration * 1000.0f); thinker->think = morph_end;
