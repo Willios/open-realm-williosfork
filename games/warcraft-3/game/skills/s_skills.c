@@ -237,7 +237,7 @@ static ability_t abilitylist[] = {
     { "Aenc", CAbilityPassive, AB_PASSIVE },  /* Load */
     { "Aroo", CAbilityRoot, AB_COMMAND | AB_UPDATE, SPELL_TARGET_NONE, ancient_root_orders },  /* Root */
     { "AEmb", CAbilityManaBurn, AB_SPELL, SPELL_TARGET_UNIT },  /* Mana Burn */
-    { "AEim", CAbilityImmolation, AB_SPELL | AB_TOGGLE },  /* Immolation */
+    { "AEim", CAbilityImmolation, AB_SPELL | AB_TOGGLE | AB_UPDATE },  /* Immolation */
     { "AEev", CAbilityPassive, AB_PASSIVE },  /* Evasion */
     { "AEme", CAbilityMetamorphosis, AB_SPELL },  /* Metamorphosis */
     { "AEer", CAbilityEntanglingRoots, AB_SPELL, SPELL_TARGET_UNIT },  /* Entangling Roots */

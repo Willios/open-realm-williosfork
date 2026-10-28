@@ -845,17 +845,94 @@ TEST(wc3_spell, channel_run_frame_noop_when_idle) {
 
 /* ---- Toggle bypass ---- */
 
-TEST(wc3_spell, toggle_immolation_no_mana_spend) {
-	edict_t *caster = make_hero(MAKEFOURCC('h','p','e','a'), 250, 200, 0, 0);
-	level.time = 1000;
-	caster->mana.value = 150;
-	abilityitem_t abil_item = S_AbilityItem(FS_SLKKey("AEim"));
-	ability_t const *abil = abil_item.ability;
-	T_NOT_NULL(abil); T_ASSERT(abil->flags & AB_SPELL);
-	spellTarget_t st = { .type = SPELL_TARGET_NONE };
-	test_ability_message(caster, A_EXECUTE, &abil_item, &st);
-	T_FEQ(caster->mana.value, 150, 0.01f);
-	T_EQ((int)caster->unit_state->statuses[0].code, (int)MAKEFOURCC('B','i','m','l'));
+TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or_toggle_off) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X12\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"Cost1\"\nC;Y1;X5;K\"Area1\"\nC;Y1;X6;K\"DataA1\"\nC;Y1;X7;K\"DataB1\"\n"
+        "C;Y1;X8;K\"Cost2\"\nC;Y1;X9;K\"Area2\"\nC;Y1;X10;K\"DataA2\"\nC;Y1;X11;K\"DataB2\"\n"
+        "C;Y2;X1;K\"AEim\"\nC;Y2;X2;K\"AEim\"\nC;Y2;X3;K\"2\"\n"
+        "C;Y2;X4;K\"25\"\nC;Y2;X5;K\"160\"\nC;Y2;X6;K\"10\"\nC;Y2;X7;K\"7\"\n"
+        "C;Y2;X8;K\"25\"\nC;Y2;X9;K\"160\"\nC;Y2;X10;K\"15\"\nC;Y2;X11;K\"7\"\nE\n";
+    static UnitAbilities_t const abilities = { .abilList = "AEim" };
+    slkTestData_t *rows = parse_slk_string(slk), *old;
+    edict_t *caster, *enemy_land, *friend_land, *enemy_air;
+    edict_t *clent;
+    gameClient_t *client;
+    cstring_t button[] = { "button", "AEim" };
+    uint32_t const buff = MAKEFOURCC('B','i','m','l');
+
+    old = G_SetSLKRows("AbilityData", rows);
+    reset_entities();
+    setup_test_world();
+    caster = make_hero(MAKEFOURCC('E','d','e','m'), 1000, 24, 0, 0);
+    enemy_land = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+    friend_land = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 20);
+    enemy_air = alloc_test_unit(MAKEFOURCC('h','g','r','y'), 100, -20);
+    clent = &g_edicts[0];
+    client = &game.clients[0];
+    clent->client = client;
+    client->ps.number = 0;
+    caster->data.UnitAbilities = &abilities;
+    caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','i','m'), .level = 2);
+    caster->s.player = friend_land->s.player = 0;
+    enemy_land->s.player = enemy_air->s.player = 1;
+    enemy_land->svflags |= SVF_MONSTER;
+    enemy_air->svflags |= SVF_MONSTER;
+    enemy_land->targtype = friend_land->targtype = TARG_GROUND;
+    enemy_air->targtype = TARG_AIR;
+    enemy_land->health.value = friend_land->health.value = enemy_air->health.value = 100;
+    enemy_land->health.max_value = friend_land->health.max_value = enemy_air->health.max_value = 100;
+    memset(level.alliances, 0, sizeof(level.alliances));
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+    T_ASSERT(S_SpellIsAliveTarget(enemy_land));
+    T_ASSERT(S_SpellIsEnemy(caster, enemy_land));
+    T_EQ(G_UnitTargetType(enemy_land), TARG_GROUND);
+    T_FEQ(G_AbilityLevel(MAKEFOURCC('A','E','i','m'), 1)->area, 160.0f, 0.001f);
+    G_SelectEntity(client, caster);
+
+    /* Cost1 is a distinct upfront charge; insufficient mana must leave the
+     * toggle off. A successful activation then drains DataB each second. */
+    G_ClientCommand(clent, 2, button);
+    T_NULL(unit_findstatus(caster, buff));
+    T_FEQ(caster->mana.value, 24.0f, 0.001f);
+    caster->mana.value = 39.0f;
+    G_ClientCommand(clent, 2, button);
+    T_NOT_NULL(unit_findstatus(caster, buff));
+    T_FEQ(caster->mana.value, 14.0f, 0.001f);
+    level.time = 1000;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(enemy_land->health.value, 85.0f, 0.001f);
+    T_FEQ(friend_land->health.value, 100.0f, 0.001f);
+    T_FEQ(enemy_air->health.value, 100.0f, 0.001f);
+    T_FEQ(caster->mana.value, 7.0f, 0.001f);
+    level.time = 2000;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
+    T_FEQ(caster->mana.value, 0.0f, 0.001f);
+    T_NULL(unit_findstatus(caster, buff));
+    level.time = 3000;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
+
+    /* It can also be switched off before its mana runs out. */
+    caster->mana.value = 39.0f;
+    G_ClientCommand(clent, 2, button);
+    T_NOT_NULL(unit_findstatus(caster, buff));
+    T_FEQ(caster->mana.value, 14.0f, 0.001f);
+    level.time = 4000;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(enemy_land->health.value, 55.0f, 0.001f);
+    T_FEQ(caster->mana.value, 7.0f, 0.001f);
+    G_ClientCommand(clent, 2, button);
+    T_NULL(unit_findstatus(caster, buff));
+    level.time = 5000;
+    S_RunAbilityUpdates(caster);
+    T_FEQ(enemy_land->health.value, 55.0f, 0.001f);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
 }
 
 /* ---- Spell helpers ---- */

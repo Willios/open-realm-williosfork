@@ -6,17 +6,80 @@
  * Unubertip=""
  */
 
-BZ_SIMPLE_SPELL_PROC(AbilityImmolation) {
-    uint32_t code = spell->code;
-
-    FOR_LOOP(i, caster->unit_state ? MAX_UNIT_STATUSES : 0) {
-        if (caster->unit_state->statuses[i].level && caster->unit_state->statuses[i].code == code) {
-            unit_removestatus(caster, &caster->unit_state->statuses[i], STATUS_REMOVE_SCRIPT);
-            G_InvalidateUnitInfoPanel(caster);
-            return;
+/* Immolation's DataA is damage per second, DataB is mana drain per second,
+ * and Area is its self-centered radius. The buff is persistent while toggled
+ * on, but its damage and mana drain run on one-second pulses. */
+#define IMMOLATION_TICK_MS 1000
+BZ_ABILITY_PROC(CAbilityImmolation) {
+    heroabilitystatus_t *status;
+    uint32_t code;
+    if (msg == A_UPDATE) {
+        if (!ent || !ent->unit_state) return true;
+        status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+        if (!status || !status->level || !status->data) return true;
+        if (!status->next_tick) status->next_tick = G_Time() + IMMOLATION_TICK_MS;
+        while (status->level && status->next_tick && G_Time() >= status->next_tick) {
+            abilityLevel_t const *row;
+            float damage, mana_drain, area;
+            uint32_t level;
+            code = status->data;
+            level = status->rank ? status->rank : MAX(1u, S_SpellLevel(ent, code));
+            row = G_AbilityLevel(code, level);
+            damage = row->data[0].number;
+            mana_drain = row->data[1].number;
+            area = row->area;
+            status->next_tick += IMMOLATION_TICK_MS;
+            if (damage > 0.0f && area > 0.0f) {
+                FILTER_EDICTS(target, target != ent && S_SpellIsAliveTarget(target) &&
+                              S_SpellIsEnemy(ent, target) && G_UnitTargetType(target) == TARG_GROUND &&
+                              Vector2_distance(&target->s.origin2, &ent->s.origin2) <= area) {
+                    S_SpellDamage(target, ent, (int)damage);
+                }
+            }
+            if (mana_drain > 0.0f) {
+                ent->mana.value = MAX(0.0f, ent->mana.value - mana_drain);
+                G_InvalidateUnitInfoPanel(ent);
+                if (ent->mana.value <= 0.0f) {
+                    unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
+                    G_InvalidateUnitInfoPanel(ent);
+                    return true;
+                }
+            }
         }
+        return true;
     }
-    unit_addstatus(caster, "Biml", 1);
+    if (msg != A_EXECUTE) return CAbilitySimpleSpell(ent, msg, call);
+    code = call && call->item ? call->item->code : 0;
+    if (!code || !ent || !ent->unit_state) return true;
+    status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+    if (status) {
+        unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
+        G_InvalidateUnitInfoPanel(ent);
+        return true;
+    }
+    {
+        uint32_t const level = MAX(1u, S_SpellLevel(ent, code));
+        float const cost = S_SpellNumber(code, ABILITY_NUMBER_COST, level);
+        if (ent->mana.value < cost || !unit_addstatus(ent, "Biml", 1)) return true;
+        /* Reserve the status slot before charging. A full status table must
+         * not consume the activation cost without enabling Immolation. */
+        if (!S_SpellSpendMana(ent, code, level)) {
+            status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+            if (status) unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
+            return true;
+        }
+        status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+        if (status) {
+            status->data = code;
+            status->source_ability = code;
+            status->source = ent;
+            status->source_spawn_time = ent->spawn_time;
+            status->rank = level;
+            status->next_tick = G_Time() + IMMOLATION_TICK_MS;
+        }
+        G_InvalidateUnitInfoPanel(ent);
+    }
+    return true;
 }
 
 /* Name=Cold Arrows
