@@ -3216,6 +3216,34 @@ TEST(wc3_combat, blademaster_critical_strike_doubles_full_attack_hit_damage) {
     free_slk_rows(rows);
 }
 
+TEST(wc3_combat, demon_hunter_evasion_prevents_attack_damage_at_authored_100_percent) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X3\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"DataA1\"\n"
+        "C;Y2;X1;K\"AEev\"\nC;Y2;X2;K\"AEev\"\nC;Y2;X3;K\"1.0\"\nE\n";
+    static UnitAbilities_t const evasion = { .abilList = "AEev" };
+    slkTestData_t *rows = parse_slk_string(slk);
+    slkTestData_t *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *attacker, *demon_hunter;
+
+    reset_entities();
+    setup_test_world();
+    attacker = make_combat_unit(MAKEFOURCC('h','f','o','o'), 1000.0f, 0.0f, 0.0f);
+    demon_hunter = make_combat_unit(MAKEFOURCC('E','d','e','m'), 1000.0f, 50.0f, 0.0f);
+    demon_hunter->data.UnitAbilities = &evasion;
+    attacker->s.player = 0;
+    demon_hunter->s.player = 1;
+
+    S_ResolveAttackHit(attacker, demon_hunter, 100);
+
+    T_FEQ(demon_hunter->health.value, 1000.0f, 0.01f);
+    T_NULL(attacker->combatentity);
+    T_NULL(demon_hunter->combatentity);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 /* Normal vs medium = 1.5× (footmen effective vs soldiers). */
 TEST(wc3_combat, attack_damage_normal_vs_medium) {
     edict_t *a = make_attacker(ATK_NORMAL);
