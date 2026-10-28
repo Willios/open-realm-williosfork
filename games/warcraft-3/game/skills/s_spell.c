@@ -348,7 +348,8 @@ static float spell_approach_range(uint32_t code, uint32_t level, ability_t const
     abilityCall_t call;
     if (!spell) return S_SpellRange(code, level);
     abilityitem_t item = MAKE(abilityitem_t, .code = code, .ability = spell);
-    call = MAKE(abilityCall_t, .item = &item, .spell_approach_range = S_SpellRange(code, level));
+    float const authored_range = S_SpellRange(code, level);
+    call = MAKE(abilityCall_t, .item = &item, .spell_approach_range = authored_range);
     spell->proc(NULL, A_SPELL_APPROACH_RANGE, &call);
     return MAX(0.0f, call.spell_approach_range);
 }
@@ -937,7 +938,9 @@ void S_SpellTargetApproachThink(edict_t *thinker) {
         return;
     }
     level = S_SpellLevel(caster, code);
-    range = spell_approach_range(code, level, spell);
+    /* Force of Nature has no custom approach-range override. */
+    range = code == MAKEFOURCC('A','E','f','n') ? S_SpellRange(code, level) :
+            spell_approach_range(code, level, spell);
     if (point_target || entity_point_target) {
         edict_t *clent = G_GetPlayerEntityByNumber(caster->s.player);
         spellPointValidateParams_t val = MAKE(spellPointValidateParams_t,
@@ -1104,23 +1107,45 @@ static bool spell_tiny_cursor_show(edict_t *clent, edict_t *caster, uint32_t cod
 /* Point execution may be reached through an ability-owned entity cursor.
  * Keep that target for Move and validation until the actual cast. */
 static bool spell_point_or_entity_target_selected(edict_t *clent, vec2_t const *point, edict_t *target) {
+    if (!clent || !clent->client || !point) {
+        return false;
+    }
     edict_t *caster = G_GetMainSelectedUnit(clent->client);
     uint32_t code = S_SpellCurrentCode(clent, 0);
-    uint32_t level = S_SpellLevel(caster, code);
-    ability_t const *spell = S_SpellAbilityForCode(code);
-    float range = spell_approach_range(code, level, spell);
-    abilityitem_t item = { .code = code, .ability = spell };
-    edict_t *source_item = clent->client->menu.ability_item;
-    uint32_t source_item_spawn_time = clent->client->menu.ability_item_spawn_time;
-    spellPointValidateParams_t val = MAKE(spellPointValidateParams_t,
-                                          .clent = clent, .caster = caster, .code = code, .level = level,
-                                          .point = point, .range = 0.0f);
+    uint32_t level;
+    ability_t const *spell;
+    float range;
+    abilityitem_t item;
+    edict_t *source_item;
+    uint32_t source_item_spawn_time;
+    spellPointValidateParams_t val;
+    if (!caster) {
+        return false;
+    }
+    level = S_SpellLevel(caster, code);
+    spell = S_SpellAbilityForCode(code);
+    /* Force of Nature has no custom approach-range override. Avoid invoking
+     * its ability callback with a NULL caster from this entity-click path. */
+    range = code == MAKEFOURCC('A','E','f','n') ? S_SpellRange(code, level) :
+            spell_approach_range(code, level, spell);
+    item = MAKE(abilityitem_t, .code = code, .ability = spell);
+    source_item = clent->client->menu.ability_item;
+    source_item_spawn_time = clent->client->menu.ability_item_spawn_time;
+    val = MAKE(spellPointValidateParams_t,
+               .clent = clent, .caster = caster, .code = code, .level = level,
+               .point = point, .range = 0.0f);
 
-    if (!spell || !spell_item_source_valid(caster, source_item, source_item_spawn_time)) return false;
-    if (!spell_validate_point(&val)) return false;
+    if (!spell || !spell_item_source_valid(caster, source_item, source_item_spawn_time)) {
+        return false;
+    }
+    if (!spell_validate_point(&val)) {
+        return false;
+    }
     spellTarget_t st = target ? MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target) :
                                 MAKE(spellTarget_t, .type = SPELL_TARGET_POINT, .point = *point);
-    if (!spell_message(caster, A_VALIDATE, &item, &st)) return false;
+    if (!spell_message(caster, A_VALIDATE, &item, &st)) {
+        return false;
+    }
 
     if (range > 0.0f && Vector2_distance(&caster->s.origin2, point) > range) {
         if (!spell_begin_target_approach(caster, code, target, target ? NULL : point,
@@ -1147,7 +1172,10 @@ static bool spell_point_target_selected(edict_t *clent, vec2_t const *point) {
 }
 
 static bool spell_ability_entity_target_selected(edict_t *clent, edict_t *target) {
-    if (!clent || !clent->client || !target || !target->inuse || !S_SpellEntityTargetMode(clent)) return false;
+    if (!clent || !clent->client || !target || !target->inuse) return false;
+    if (!S_SpellEntityTargetMode(clent)) {
+        return false;
+    }
     return spell_point_or_entity_target_selected(clent, &target->s.origin2, target);
 }
 

@@ -4282,6 +4282,131 @@ TEST(wc3_spell, beastmaster_summons_use_force_of_nature_contract) {
 	T_ASSERT((bear->flags & AB_SPELL) && (quilbeast->flags & AB_SPELL) && (hawk->flags & AB_SPELL));
 }
 
+static edict_t *force_nature_test_tree(float x, float y) {
+	edict_t *tree = G_Spawn();
+	tree->class_id = MAKEFOURCC('B','0','0','X');
+	tree->s.class_id = tree->class_id;
+	G_BindEntityData(tree);
+	tree->s.origin = MAKE(vec3_t, x, y, 0);
+	tree->s.origin2 = MAKE(vec2_t, x, y);
+	tree->s.scale = 1.0f;
+	tree->targtype = TARG_TREE;
+	tree->health.value = tree->health.max_value = 200.0f;
+	G_AddDestructable(tree);
+	G_GetDestructable(tree)->item_table = (uint32_t)-1;
+	G_GetDestructable(tree)->placement_solid = false;
+	G_GetDestructable(tree)->pathing_active = false;
+	return tree;
+}
+
+TEST(wc3_spell, force_of_nature_consumes_required_area_trees_for_treants) {
+	static const char ability_slk[] =
+		"ID;PWXL;N;EBB;Y2;X12\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"DataA1\"\n"
+		"C;Y1;X4;K\"DataA2\"\nC;Y1;X5;K\"DataA3\"\n"
+		"C;Y1;X6;K\"Area1\"\nC;Y1;X7;K\"Area2\"\nC;Y1;X8;K\"Area3\"\n"
+		"C;Y1;X9;K\"Rng1\"\nC;Y1;X10;K\"Dur1\"\n"
+		"C;Y1;X11;K\"Dur2\"\nC;Y1;X12;K\"Dur3\"\n"
+		"C;Y2;X1;K\"AEfn\"\nC;Y2;X2;K\"AEfn\"\n"
+		"C;Y2;X3;K2\nC;Y2;X4;K3\nC;Y2;X5;K4\n"
+		"C;Y2;X6;K150\nC;Y2;X7;K225\nC;Y2;X8;K300\n"
+		"C;Y2;X9;K800\nC;Y2;X10;K60\nC;Y2;X11;K60\nC;Y2;X12;K60\nE\n";
+	static const char unit_ui_slk[] =
+		"ID;PWXL;N;EBB;Y2;X4\n"
+		"C;Y1;X1;K\"unitUIID\"\nC;Y1;X2;K\"file\"\n"
+		"C;Y1;X3;K\"modelScale\"\nC;Y1;X4;K\"scale\"\n"
+		"C;Y2;X1;K\"efon\"\nC;Y2;X2;K\"TestUI\\\\Models\\\\anim_pulse.mdx\"\n"
+		"C;Y2;X3;K1\nC;Y2;X4;K1\nE\n";
+	static const char unit_data_slk[] =
+		"ID;PWXL;N;EBB;Y2;X5\n"
+		"C;Y1;X1;K\"unitID\"\nC;Y1;X2;K\"targType\"\nC;Y1;X3;K\"movetp\"\n"
+		"C;Y1;X4;K\"collision\"\nC;Y1;X5;K\"propWin\"\n"
+		"C;Y2;X1;K\"efon\"\nC;Y2;X2;K\"ground\"\nC;Y2;X3;K\"foot\"\n"
+		"C;Y2;X4;K16\nC;Y2;X5;K60\nE\n";
+	static const char unit_balance_slk[] =
+		"ID;PWXL;N;EBB;Y2;X5\n"
+		"C;Y1;X1;K\"unitBalanceID\"\nC;Y1;X2;K\"realHP\"\n"
+		"C;Y1;X3;K\"realM\"\nC;Y1;X4;K\"mana0\"\nC;Y1;X5;K\"spd\"\n"
+		"C;Y2;X1;K\"efon\"\nC;Y2;X2;K300\nC;Y2;X3;K0\n"
+		"C;Y2;X4;K0\nC;Y2;X5;K270\nE\n";
+	slkTestData_t *ability_rows, *old_ability, *ui_rows, *old_ui;
+	slkTestData_t *data_rows, *old_data, *balance_rows, *old_balance;
+	edict_t *caster;
+	abilityitem_t spell;
+	abilityCall_t target_mode;
+	static uint32_t const counts[] = { 2, 3, 4 };
+	static float const areas[] = { 150.0f, 225.0f, 300.0f };
+	uint32_t rank;
+
+	reset_entities();
+	setup_test_world();
+	ability_rows = parse_slk_string(ability_slk); old_ability = G_SetSLKRows("AbilityData", ability_rows);
+	ui_rows = parse_slk_string(unit_ui_slk); old_ui = G_SetSLKRows("UnitUI", ui_rows);
+	data_rows = parse_slk_string(unit_data_slk); old_data = G_SetSLKRows("UnitData", data_rows);
+	balance_rows = parse_slk_string(unit_balance_slk); old_balance = G_SetSLKRows("UnitBalance", balance_rows);
+	caster = alloc_test_unit(MAKEFOURCC('E','k','g','r'), 0, 0);
+	caster->health.value = caster->health.max_value = 500.0f;
+	caster->mana.value = caster->mana.max_value = 500.0f;
+	caster->svflags |= SVF_MONSTER;
+	caster->stand = unit_stand;
+	caster->s.player = 0;
+	spell = S_AbilityItem(FS_SLKKey("AEfn"));
+	T_EQ(spell.ability->target_type, SPELL_TARGET_POINT);
+	target_mode = MAKE(abilityCall_t, .item = &spell);
+	spell.ability->proc(caster, A_SPELL_TARGET_MODE, &target_mode);
+	T_ASSERT(target_mode.spell_entity_target_mode);
+	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+
+	for (rank = 1; rank <= 3; rank++) {
+		float const center_x = (float)rank * 2000.0f;
+		vec2_t const center = { center_x, 0.0f };
+		spellTarget_t target = MAKE(spellTarget_t, .type = SPELL_TARGET_POINT, .point = center);
+		abilityCall_t call = MAKE(abilityCall_t, .item = &spell, .target = &target);
+		spellTarget_t tree_target;
+		abilityCall_t tree_call;
+		edict_t *trees[4] = { NULL, NULL, NULL, NULL };
+		edict_t *outside;
+		uint32_t i, summon_count = 0;
+		float const spacing = rank == 1 ? 30.0f : 36.0f;
+		caster->unit_state->ranks[0] = MAKE(heroability_t,
+			.code = MAKEFOURCC('A','E','f','n'), .level = rank);
+
+		for (i = 0; i + 1 < counts[rank - 1]; i++)
+			trees[i] = force_nature_test_tree(center_x + ((float)i - 1.0f) * spacing, 0.0f);
+		T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+		trees[counts[rank - 1] - 1] = force_nature_test_tree(center_x + areas[rank - 1] * 0.5f, 0.0f);
+		outside = force_nature_test_tree(center_x + areas[rank - 1] + 32.0f, 0.0f);
+		T_ASSERT(S_AbilityMessage(caster, A_VALIDATE, &call));
+		tree_target = MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = trees[0]);
+		tree_call = MAKE(abilityCall_t, .item = &spell, .target = &tree_target);
+		T_ASSERT(S_AbilityMessage(caster, A_VALIDATE, &tree_call));
+		tree_target.point = center;
+		tree_target.type = SPELL_TARGET_POINT;
+		tree_call.target = &tree_target;
+		T_ASSERT(S_AbilityMessage(caster, A_VALIDATE, &tree_call));
+		S_AbilityMessage(caster, A_EXECUTE, &call);
+
+		for (i = 0; i < counts[rank - 1]; i++)
+			T_ASSERT(G_GetDestructable(trees[i])->dead);
+		T_ASSERT(!G_GetDestructable(outside)->dead);
+		FILTER_EDICTS(summon, summon->summon_ability == spell.code && summon->class_id == MAKEFOURCC('e','f','o','n') &&
+			Vector2_distance(&summon->s.origin2, &center) <= areas[rank - 1] + 64.0f) {
+			bool near_consumed_tree = false;
+			for (i = 0; i < counts[rank - 1]; i++)
+				if (Vector2_distance(&summon->s.origin2, &trees[i]->s.origin2) <= 128.0f) near_consumed_tree = true;
+			T_ASSERT(near_consumed_tree);
+			summon_count++;
+		}
+		T_EQ(summon_count, counts[rank - 1]);
+	}
+
+	reset_entities();
+	G_SetSLKRows("UnitBalance", old_balance); free_slk_rows(balance_rows);
+	G_SetSLKRows("UnitData", old_data); free_slk_rows(data_rows);
+	G_SetSLKRows("UnitUI", old_ui); free_slk_rows(ui_rows);
+	G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+}
+
 TEST(wc3_spell, entangling_roots_is_a_timed_unit_spell) {
 	abilityitem_t roots_item = S_AbilityItem(FS_SLKKey("AEer"));
 	ability_t const *roots = roots_item.ability;

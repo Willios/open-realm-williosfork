@@ -243,7 +243,7 @@ static ability_t abilitylist[] = {
     { "AEer", CAbilityEntanglingRoots, AB_SPELL, SPELL_TARGET_UNIT },  /* Entangling Roots */
     { "Aenr", CAbilityEntanglingRoots, AB_SPELL, SPELL_TARGET_UNIT },  /* Entangling Roots (creep) */
     { "Aenw", CAbilityEntanglingRoots, AB_SPELL, SPELL_TARGET_UNIT },  /* Entangling Seaweed */
-    { "AEfn", CAbilityForceOfNature, AB_SPELL },  /* Force of Nature */
+    { "AEfn", CAbilityForceOfNature, AB_SPELL, SPELL_TARGET_POINT },  /* Force of Nature */
     { "AEah", CAbilityCreepAura, AB_PASSIVE },  /* Thorns Aura */
     { "AEtq", CAbilityTranquility, AB_SPELL | AB_CHANNEL },  /* Tranquility */
     { "AHfa", CAbilityFlamingArrows, AB_SPELL | AB_TOGGLE | AB_AUTOCAST },  /* Searing Arrows */

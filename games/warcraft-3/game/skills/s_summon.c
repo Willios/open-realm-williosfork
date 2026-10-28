@@ -345,10 +345,140 @@ BZ_SIMPLE_SPELL_PROC(AbilitySpiritWolf) {
     }
 }
 
+static uint32_t force_of_nature_unit_id(uint32_t code, uint32_t level) {
+    uint32_t unit_id = S_SpellUnitId(code, level);
+#if BZ_COMPAT_WORKAROUNDS
+    /* RoC 1.0 leaves AEfn UnitID empty; the authored result is efon. */
+    if (!unit_id && code == MAKEFOURCC('A','E','f','n'))
+        unit_id = MAKEFOURCC('e','f','o','n');
+#endif
+    return unit_id;
+}
+
+static bool force_of_nature_tree(edict_t const *tree) {
+    destructable_t const *destructable;
+    if (!tree || !tree->inuse || tree->targtype != TARG_TREE || !G_IsDestructable(tree)) return false;
+    destructable = G_GetDestructable(tree);
+    return destructable && !destructable->dead && !G_UnitHasFlag(tree, UNIT_FLAG_INVULNERABLE);
+}
+
+static uint32_t force_of_nature_count_trees(vec2_t const *point, float area) {
+    uint32_t count = 0;
+    FILTER_EDICTS(tree, force_of_nature_tree(tree) &&
+                  Vector2_distance(&tree->s.origin2, point) <= area) count++;
+    return count;
+}
+
+static edict_t *force_of_nature_nearest_tree(vec2_t const *point, float area) {
+    edict_t *nearest = NULL;
+    float nearest_distance = 1e30f;
+    FILTER_EDICTS(tree, force_of_nature_tree(tree) &&
+                  Vector2_distance(&tree->s.origin2, point) <= area) {
+        float const distance = Vector2_distance(&tree->s.origin2, point);
+        if (distance < nearest_distance) {
+            nearest = tree;
+            nearest_distance = distance;
+        }
+    }
+    return nearest;
+}
+
+static bool force_of_nature_validate(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
+    uint32_t level, unit_id, count;
+    float area;
+    vec2_t point;
+    if (!caster || !spell) {
+        return false;
+    }
+    if (st.type == SPELL_TARGET_POINT) point = st.point;
+    else if (st.type == SPELL_TARGET_UNIT && st.entity && st.entity->inuse)
+        point = st.entity->s.origin2;
+    else {
+        return false;
+    }
+    level = S_SpellLevel(caster, spell->code);
+    unit_id = force_of_nature_unit_id(spell->code, level);
+    count = (uint32_t)MAX(0.0f, S_SpellData(spell->code, level, 1));
+    area = MAX(0.0f, S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level));
+    {
+        uint32_t const available = force_of_nature_count_trees(&point, area);
+        bool const valid = unit_id && count && area > 0.0f && available >= count;
+        return valid;
+    }
+}
+
+static void force_of_nature_execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
+    uint32_t level = S_SpellLevel(caster, spell->code);
+    uint32_t unit_id = force_of_nature_unit_id(spell->code, level);
+    uint32_t count = (uint32_t)MAX(0.0f, S_SpellData(spell->code, level, 1));
+    float const area = MAX(0.0f, S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level));
+    float const duration = S_SpellDuration(spell->code, level, false);
+    vec2_t point;
+    if (!caster || !spell || !force_of_nature_validate(caster, st, spell) || !unit_id || !count) {
+        return;
+    }
+    point = st.type == SPELL_TARGET_POINT ? st.point : st.entity->s.origin2;
+    FOR_LOOP(i, count) {
+        edict_t *tree = force_of_nature_nearest_tree(&point, area);
+        vec2_t spawn;
+        edict_t *summon;
+        if (!tree) {
+            break;
+        }
+        spawn = tree->s.origin2;
+        /* Each consumed tree contributes one Treant. Killing it first clears
+         * its baked footprint so the summon can be placed on that spot. */
+        if (!G_KillDestructable(tree, caster)) {
+            continue;
+        }
+
+        summon = S_SummonAbilityAt(caster, spell->code, unit_id, &spawn, duration);
+        if (!summon) {
+            continue;
+        }
+        {
+            vec2_t clear;
+            if (G_FindUnitUnstuckPosition(summon, &spawn, &clear)) {
+                summon->s.origin2 = clear;
+                summon->s.origin.x = clear.x;
+                summon->s.origin.y = clear.y;
+                summon->s.origin.z = CM_GetHeightAtPoint(clear.x, clear.y);
+                gi.LinkEntity(summon);
+            }
+        }
+        if (!summon_magical_death(spell->code))
+            G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, summon, NULL, true);
+    }
+}
+
 /* Name=Force of Nature
- * Ubertip="Summons treants from a target area to fight for the caster."
+ * Ubertip="Converts trees in a target area into Treants."
  */
-BZ_SIMPLE_SPELL_PROC(AbilityForceOfNature) { summon_execute(caster, st, spell); }
+BZ_ABILITY_PROC(CAbilityForceOfNature) {
+    abilityitem_t const *spell = call ? call->item : NULL;
+    if (spell && spell->code == MAKEFOURCC('A','E','f','n')) {
+        spellTarget_t target = call && call->target ? *call->target :
+            MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+        if (msg == A_SPELL_TARGET_MODE) {
+            if (call) ((abilityCall_t *)call)->spell_entity_target_mode = true;
+            return true;
+        }
+        /* spell_approach_range dispatches with a NULL caster and seeds the
+         * field from the authored Rng value. Do not pass that query through
+         * generic spell handling, which expects a live unit. */
+        if (msg == A_SPELL_APPROACH_RANGE) return true;
+        if (msg == A_VALIDATE) return force_of_nature_validate(ent, target, spell);
+        if (msg == A_EXECUTE) { force_of_nature_execute(ent, target, spell); return true; }
+        return CAbilitySimpleSpell(ent, msg, call);
+    }
+    if (msg == A_EXECUTE) {
+        spellTarget_t target = call && call->target ? *call->target :
+            MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+        summon_execute(ent, target, spell);
+        return true;
+    }
+    return CAbilitySimpleSpell(ent, msg, call);
+}
 
 /* Name=Summon Bear
  * Ubertip="Summons Misha, a powerful bear, to attack your enemies."
