@@ -5972,6 +5972,20 @@ TEST(wc3_spell, unholy_frenzy_accepts_enemy_and_reads_tft_buffid) {
 	enemy->health.value = enemy->health.max_value = 200;
 	T_ASSERT(S_CastUnitTargetSpell(caster, MAKEFOURCC('A','u','h','f'), enemy));
 	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','U','h','f')));
+	T_EQ(G_UnitStatusBuffCode(unit_findstatus(enemy, MAKEFOURCC('B','U','h','f'))), MAKEFOURCC('B','u','h','f'));
+	T_STREQ(G_AbilityBuffArt(MAKEFOURCC('B','U','h','f')),
+	        "ReplaceableTextures\\CommandButtons\\BTNUnholyFrenzy.blp");
+	T_STREQ(G_AbilityEffectArt(MAKEFOURCC('B','U','h','f'), WC3_EFFECT_TARGET, 0),
+	        "Abilities\\Spells\\Undead\\UnholyFrenzy\\UnholyFrenzyTarget.mdx");
+	T_ASSERT(unit_findstatus(enemy, MAKEFOURCC('B','U','h','f'))->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+	{
+		uint32_t target_art_count = 0;
+		FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','U','h','f') && effect->goalentity == enemy) {
+			T_EQ(effect->s.model, G_RegisterModel("Abilities\\Spells\\Undead\\UnholyFrenzy\\UnholyFrenzyTarget.mdx"));
+			target_art_count++;
+		}
+		T_EQ(target_art_count, 1u);
+	}
 	T_FEQ(unit_status_modifier_total(enemy, WC3_STATUS_MOD_ATTACK_SPEED_PERCENT), 0.5f, 0.001f);
 	T_FEQ(S_UnholyFrenzyLifeDrain(enemy), 2.0f, 0.001f);
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);

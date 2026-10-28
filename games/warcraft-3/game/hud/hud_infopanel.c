@@ -516,7 +516,7 @@ static cstring_t StatusBuffArt(uint32_t code) {
      * instead of the ordinary status icon strip. Cooldowns are stored
      * separately and never enter this status presentation path. */
     if (unit_statusshowstimedbar(code)) return NULL;
-    art = StatusBuffField(code, "Buffart");
+    art = G_AbilityBuffArt(code);
     if (!art || !*art) return NULL;
     return art;
 }

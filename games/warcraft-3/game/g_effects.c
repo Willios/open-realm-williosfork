@@ -349,7 +349,15 @@ cstring_t G_AbilityEffectArt(uint32_t ability_id, wc3EffectType_t type, uint32_t
     uint32_t count = 0;
 
     out[0] = '\0';
-    if (!list || !*list || type == WC3_EFFECT_LIGHTNING) return NULL;
+    if (!list || !*list || type == WC3_EFFECT_LIGHTNING) {
+        /* Warcraft stores Unholy Frenzy's persistent target model on neither
+         * Auhf nor its AbilityBuffData row. Keep the stock asset as the final
+         * fallback for both TFT's BUhf and RoC's BUhf compatibility status. */
+        if (type == WC3_EFFECT_TARGET &&
+            (ability_id == MAKEFOURCC('B','U','h','f') || ability_id == MAKEFOURCC('B','u','h','f')))
+            return "Abilities\\Spells\\Undead\\UnholyFrenzy\\UnholyFrenzyTarget.mdx";
+        return NULL;
+    }
 
     PARSE_LIST(list, art, parse_segment) {
         if (!art || !*art || !strcmp(art, "-") || !strcmp(art, "_")) continue;
@@ -361,6 +369,16 @@ cstring_t G_AbilityEffectArt(uint32_t ability_id, wc3EffectType_t type, uint32_t
      * entry when an index exceeds the list. Preserve that useful data-driven
      * behavior rather than turning an otherwise valid spell invisible. */
     return count ? out : NULL;
+}
+
+cstring_t G_AbilityBuffArt(uint32_t buff_id) {
+    AbilityBuffData_t const *row = G_AbilityBuffData(buff_id);
+    if (row->id == buff_id && row->buffArt && *row->buffArt &&
+        strcmp(row->buffArt, "-") && strcmp(row->buffArt, "_")) return row->buffArt;
+    /* AbilityBuffData names this row Buhf, while Auhf's TFT BuffID is BUhf. */
+    if (buff_id == MAKEFOURCC('B','U','h','f') || buff_id == MAKEFOURCC('B','u','h','f'))
+        return "ReplaceableTextures\\CommandButtons\\BTNUnholyFrenzy.blp";
+    return NULL;
 }
 
 void G_EffectValidateTarget(edict_t *effect) {
