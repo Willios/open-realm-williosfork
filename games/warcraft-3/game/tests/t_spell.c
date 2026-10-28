@@ -860,7 +860,9 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     edict_t *clent;
     gameClient_t *client;
     cstring_t button[] = { "button", "AEim" };
-    uint32_t const buff = MAKEFOURCC('B','i','m','l');
+    uint32_t const buff = MAKEFOURCC('B','E','i','m');
+    heroabilitystatus_t *immolation_status;
+    edict_t *caster_effect;
 
     old = G_SetSLKRows("AbilityData", rows);
     reset_entities();
@@ -899,7 +901,17 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(caster->mana.value, 24.0f, 0.001f);
     caster->mana.value = 39.0f;
     G_ClientCommand(clent, 2, button);
-    T_NOT_NULL(unit_findstatus(caster, buff));
+    immolation_status = unit_findstatus(caster, buff);
+    T_NOT_NULL(immolation_status);
+    T_EQ(G_UnitStatusBuffCode(immolation_status), buff);
+    T_STREQ(G_AbilityBuffArt(buff), "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
+    T_STREQ(G_AbilityEffectArt(buff, WC3_EFFECT_TARGET, 0), "TestUI\\Models\\anim_pulse.mdx");
+    caster_effect = NULL;
+    FILTER_EDICTS(effect, effect->status_effect_code == buff && effect->goalentity == caster) {
+        caster_effect = effect;
+        break;
+    }
+    T_NOT_NULL(caster_effect);
     T_FEQ(caster->mana.value, 14.0f, 0.001f);
     level.time = 1000;
     S_RunAbilityUpdates(caster);
@@ -912,6 +924,12 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
     T_FEQ(caster->mana.value, 0.0f, 0.001f);
     T_NULL(unit_findstatus(caster, buff));
+    caster_effect = NULL;
+    FILTER_EDICTS(effect, effect->status_effect_code == buff && effect->goalentity == caster) {
+        caster_effect = effect;
+        break;
+    }
+    T_NULL(caster_effect);
     level.time = 3000;
     S_RunAbilityUpdates(caster);
     T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
@@ -927,6 +945,12 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(caster->mana.value, 7.0f, 0.001f);
     G_ClientCommand(clent, 2, button);
     T_NULL(unit_findstatus(caster, buff));
+    caster_effect = NULL;
+    FILTER_EDICTS(effect, effect->status_effect_code == buff && effect->goalentity == caster) {
+        caster_effect = effect;
+        break;
+    }
+    T_NULL(caster_effect);
     level.time = 5000;
     S_RunAbilityUpdates(caster);
     T_FEQ(enemy_land->health.value, 55.0f, 0.001f);

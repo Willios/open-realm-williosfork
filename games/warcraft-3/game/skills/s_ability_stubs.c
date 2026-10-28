@@ -10,12 +10,13 @@
  * and Area is its self-centered radius. The buff is persistent while toggled
  * on, but its damage and mana drain run on one-second pulses. */
 #define IMMOLATION_TICK_MS 1000
+#define ID_IMMOLATION_STATUS MAKEFOURCC('B','E','i','m')
 BZ_ABILITY_PROC(CAbilityImmolation) {
     heroabilitystatus_t *status;
     uint32_t code;
     if (msg == A_UPDATE) {
         if (!ent || !ent->unit_state) return true;
-        status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+        status = unit_findstatus(ent, ID_IMMOLATION_STATUS);
         if (!status || !status->level || !status->data) return true;
         if (!status->next_tick) status->next_tick = G_Time() + IMMOLATION_TICK_MS;
         while (status->level && status->next_tick && G_Time() >= status->next_tick) {
@@ -51,7 +52,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
     if (msg != A_EXECUTE) return CAbilitySimpleSpell(ent, msg, call);
     code = call && call->item ? call->item->code : 0;
     if (!code || !ent || !ent->unit_state) return true;
-    status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+    status = unit_findstatus(ent, ID_IMMOLATION_STATUS);
     if (status) {
         unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
         G_InvalidateUnitInfoPanel(ent);
@@ -60,15 +61,22 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
     {
         uint32_t const level = MAX(1u, S_SpellLevel(ent, code));
         float const cost = S_SpellNumber(code, ABILITY_NUMBER_COST, level);
-        if (ent->mana.value < cost || !unit_addstatus(ent, "Biml", 1)) return true;
+        status_application_t application = {
+            .buff = "BEim", .level = 1, .data = code,
+            .source_ability = code, .source = ent, .rank = level,
+            .buff_flags = WC3_STATUS_BUFF_TARGET_ART
+        };
+        if (ent->mana.value < cost) return true;
+        status = unit_applystatus(ent, &application);
+        if (!status) return true;
         /* Reserve the status slot before charging. A full status table must
          * not consume the activation cost without enabling Immolation. */
         if (!S_SpellSpendMana(ent, code, level)) {
-            status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+            status = unit_findstatus(ent, ID_IMMOLATION_STATUS);
             if (status) unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
             return true;
         }
-        status = unit_findstatus(ent, MAKEFOURCC('B','i','m','l'));
+        status = unit_findstatus(ent, ID_IMMOLATION_STATUS);
         if (status) {
             status->data = code;
             status->source_ability = code;
