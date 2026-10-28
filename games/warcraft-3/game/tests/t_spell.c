@@ -875,6 +875,7 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     clent = &g_edicts[0];
     client = &game.clients[0];
     clent->client = client;
+    client->connected = true;
     client->ps.number = 0;
     caster->data.UnitAbilities = &abilities;
     caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','i','m'), .level = 2);
@@ -933,11 +934,13 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     T_FEQ(friend_land->health.value, 100.0f, 0.001f);
     T_FEQ(enemy_air->health.value, 100.0f, 0.001f);
     T_FEQ(caster->mana.value, 7.0f, 0.001f);
+    client->commands_dirty = false;
     level.time = 2000;
     S_RunAbilityUpdates(caster);
     T_FEQ(enemy_land->health.value, 70.0f, 0.001f);
     T_FEQ(caster->mana.value, 0.0f, 0.001f);
     T_NULL(unit_findstatus(caster, buff));
+    T_ASSERT(client->commands_dirty);
     T_ASSERT(G_BuildCommandButton(caster, "AEim", false, 0, &command_button));
     T_STREQ(command_button.art, "ReplaceableTextures\\CommandButtons\\BTNImmolationOn.blp");
     caster_effect = NULL;

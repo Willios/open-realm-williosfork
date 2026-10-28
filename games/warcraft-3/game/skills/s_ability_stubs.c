@@ -52,6 +52,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
                 if (ent->mana.value <= 0.0f) {
                     unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
                     G_InvalidateUnitInfoPanel(ent);
+                    G_InvalidateUnitCommands(ent);
                     return true;
                 }
             } else status->next_tick += IMMOLATION_TICK_MS;
@@ -65,6 +66,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
     if (status) {
         unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
         G_InvalidateUnitInfoPanel(ent);
+        G_InvalidateUnitCommands(ent);
         return true;
     }
     {
@@ -96,6 +98,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
             status->next_tick = G_Time() + (IMMOLATION_TICK_MS + IMMOLATION_MANA_RATE - 1) / IMMOLATION_MANA_RATE;
         }
         G_InvalidateUnitInfoPanel(ent);
+        G_InvalidateUnitCommands(ent);
     }
     return true;
 }
