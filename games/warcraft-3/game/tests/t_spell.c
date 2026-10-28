@@ -6685,6 +6685,79 @@ TEST(wc3_spell, raise_dead_uses_two_authored_summon_groups_and_marks_summons) {
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
+TEST(wc3_spell, skeletal_longevity_extends_raise_dead_timed_life) {
+	const char ability_slk[] =
+		"ID;PWXL;N;EBB;Y2;X8\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\n"
+		"C;Y1;X3;K\"targs\"\nC;Y1;X4;K\"Dur1\"\n"
+		"C;Y1;X5;K\"DataA1\"\nC;Y1;X6;K\"DataC1\"\n"
+		"C;Y1;X7;K\"BuffID1\"\nC;Y1;X8;K\"UnitID1\"\n"
+		"C;Y2;X1;K\"Arai\"\nC;Y2;X2;K\"Arai\"\n"
+		"C;Y2;X3;K\"dead\"\nC;Y2;X4;K\"30\"\n"
+		"C;Y2;X5;K\"1\"\nC;Y2;X6;K\"uske\"\n"
+		"C;Y2;X7;K\"Brai\"\nC;Y2;X8;K\"ogru\"\nE\n";
+	const char upgrade_slk[] =
+		"ID;PWXL;N;EBB;Y2;X5\n"
+		"C;Y1;X1;K\"upgradeid\"\nC;Y1;X2;K\"effect1\"\n"
+		"C;Y1;X3;K\"base1\"\nC;Y1;X4;K\"mod1\"\n"
+		"C;Y1;X5;K\"maxlevel\"\n"
+		"C;Y2;X1;K\"Rusl\"\nC;Y2;X2;K\"rrai\"\n"
+		"C;Y2;X3;K\"15\"\nC;Y2;X4;K\"0\"\nC;Y2;X5;K\"1\"\nE\n";
+	slkTestData_t *ability_rows, *old_ability, *upgrade_rows, *old_upgrade;
+	static UnitBalance_t balance = { .upgrades = "Rusl" };
+	static UnitData_t corpse_data = { .deathType = 3 };
+	edict_t *caster;
+	edict_t *corpse, *summon = NULL;
+	heroabilitystatus_t *timed_life;
+	uint32_t base_duration_ms;
+
+	reset_entities(); setup_test_world();
+	ability_rows = parse_slk_string(ability_slk); old_ability = G_SetSLKRows("AbilityData", ability_rows);
+	upgrade_rows = parse_slk_string(upgrade_slk); old_upgrade = G_SetSLKRows("UpgradeData", upgrade_rows);
+	caster = make_hero(MAKEFOURCC('U','D','k','i'), 500, 500, 0, 0);
+	caster->s.player = 0;
+	caster->runtime.acquisition_range = 800.0f;
+	caster->data.UnitBalance = &balance;
+	caster->unit_state->ranks[0] = MAKE(heroability_t, .code = FS_SLKKey("Arai"), .level = 1);
+	g_edicts[0].client = &game.clients[0];
+	game.clients[0].connected = true;
+	game.clients[0].ps.number = 0;
+
+	corpse = alloc_test_unit(MAKEFOURCC('u','d','e','a'), 100, 0);
+	corpse->data.UnitData = &corpse_data;
+	corpse->health.value = 0; corpse->health.max_value = 100;
+	corpse->svflags |= SVF_MONSTER | SVF_DEADMONSTER;
+	test_execute_code(caster, "Arai", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+	FILTER_EDICTS(unit, unit->inuse && unit->summon_ability == FS_SLKKey("Arai") &&
+	              unit->class_id == MAKEFOURCC('u','s','k','e')) summon = unit;
+	T_NOT_NULL(summon);
+	timed_life = unit_findstatus(summon, MAKEFOURCC('B','T','L','F'));
+	T_NOT_NULL(timed_life);
+	base_duration_ms = timed_life->duration_ms;
+	T_EQ(base_duration_ms, 30000u);
+
+	G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','s','l'), 1);
+	corpse = alloc_test_unit(MAKEFOURCC('u','d','e','a'), 100, 0);
+	corpse->data.UnitData = &corpse_data;
+	corpse->health.value = 0; corpse->health.max_value = 100;
+	corpse->svflags |= SVF_MONSTER | SVF_DEADMONSTER;
+	test_execute_code(caster, "Arai", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+	summon = NULL;
+	FILTER_EDICTS(unit, unit->inuse && unit->summon_ability == FS_SLKKey("Arai") &&
+	              unit->class_id == MAKEFOURCC('u','s','k','e')) {
+		heroabilitystatus_t *status = unit_findstatus(unit, MAKEFOURCC('B','T','L','F'));
+		if (status && status->duration_ms == base_duration_ms + 15000u) summon = unit;
+	}
+	T_NOT_NULL(summon);
+	timed_life = unit_findstatus(summon, MAKEFOURCC('B','T','L','F'));
+	T_NOT_NULL(timed_life);
+	T_EQ(timed_life->duration_ms, base_duration_ms + 15000u);
+
+	G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','u','s','l'), 0);
+	G_SetSLKRows("UpgradeData", old_upgrade); free_slk_rows(upgrade_rows);
+	G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+}
+
 
 /* Retail Raise Dead spends the lowest-ranked corpse first even when a stronger
  * corpse is closer, preserving high-value remains for Animate Dead. */
