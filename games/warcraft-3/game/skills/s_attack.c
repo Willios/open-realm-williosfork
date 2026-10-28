@@ -136,6 +136,14 @@ static unitAttack_t const *attack_profile(edict_t const *attacker, edict_t const
         (attacker->unit_state->attack2.targetsAllowed & flag)) return &attacker->unit_state->attack2;
     return attacker ? &attacker->unit_state->attack1 : NULL;
 }
+
+bool S_AttackProfileIsMelee(unitAttack_t const *attack) {
+    if (!attack || attack->type == ATK_NONE) return false;
+    /* A short-range instant weapon is a melee hit; stock ranged instant attacks
+     * such as Riflemen are distinguished by their authored weapon range. */
+    return attack->weapon == WPN_NORMAL ||
+           (attack->weapon == WPN_INSTANT && attack->range <= 128.0f);
+}
 #define ACTIVE_ATTACK(ent) attack_profile((ent), (ent)->goalentity)
 
 /* Spawn a projectile entity aimed at desc->target.
@@ -534,7 +542,11 @@ void S_ResolveAttackHit(edict_t *attacker, edict_t *target, int damage) {
     S_SlowPoisonOnHit(attacker, target);
     S_OrbOnHit(attacker, target);
     S_PoisonOnHit(attacker, target);
-    G_AddHealth(attacker, damage * S_VampiricLifeSteal(attacker));
+    {
+        unitAttack_t const *profile = attack_profile(attacker, target);
+        if (S_AttackProfileIsMelee(profile))
+            G_AddHealth(attacker, damage * S_VampiricLifeSteal(attacker));
+    }
     if (target->inuse && attacker->inuse && !M_IsDead(attacker) &&
         S_SpellIsEnemy(target, attacker)) {
         /* Damage returned by a normal melee attack is a secondary damage

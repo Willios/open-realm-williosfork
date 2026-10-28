@@ -477,6 +477,12 @@ static bool aura_allows_target(edict_t *source, edict_t *target, cstring_t targe
     return true;
 }
 
+static bool aura_unit_has_melee_attack(edict_t const *unit) {
+    if (!unit || !unit->unit_state) return false;
+    return S_AttackProfileIsMelee(&unit->unit_state->attack1) ||
+           S_AttackProfileIsMelee(&unit->unit_state->attack2);
+}
+
 typedef struct {
     float amount;
     uint32_t alias;
@@ -975,6 +981,7 @@ static heroAuraPresentation_t hero_aura_presentation(edict_t *unit, uint32_t bas
     heroAuraPresentation_t result = {0};
 
     if (base_code == ID_BRILLIANCE && (!unit || unit->mana.max_value <= 0.0f)) return result;
+    if (base_code == ID_VAMPIRIC_AURA && !aura_unit_has_melee_attack(unit)) return result;
     regen_aura_cache_update();
     FOR_LOOP(i, regen_source_count) {
         edict_t *source = regen_sources[i].source;
@@ -1142,7 +1149,9 @@ float S_UnholyHealthRegen(edict_t *unit) { return hero_aura_bonus(unit, ID_UNHOL
 float S_UnholyMoveBonus(edict_t *unit) { return hero_aura_bonus(unit, ID_UNHOLY_AURA, 1); }
 float S_EnduranceMoveBonus(edict_t *unit) { return hero_aura_bonus(unit, ID_ENDURANCE_AURA, 1); }
 float S_EnduranceAttackBonus(edict_t *unit) { return hero_aura_bonus(unit, ID_ENDURANCE_AURA, 2); }
-float S_VampiricLifeSteal(edict_t *unit) { return hero_aura_bonus(unit, ID_VAMPIRIC_AURA, 1); }
+float S_VampiricLifeSteal(edict_t *unit) {
+    return aura_unit_has_melee_attack(unit) ? hero_aura_bonus(unit, ID_VAMPIRIC_AURA, 1) : 0.0f;
+}
 
 float S_SlowAuraMoveReduction(edict_t const *unit) {
     return MAX(0.0f, MIN(0.9f, hero_aura_bonus((edict_t *)unit, ID_SLOW_AURA, 1)));
