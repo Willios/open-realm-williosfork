@@ -203,6 +203,16 @@ uint32_t G_AbilityEffectCode(uint32_t ability_id, uint32_t level) {
         }
         return MAKEFOURCC('X','O','e','q');
     }
+    /* HACK: RoC 1.0's AUdd row has no EfctID value; the channel's persistent
+     * ground art and looped sound are authored by XUdd in UndeadAbilityFunc.txt. */
+    if (G_AbilityCode(ability_id) == MAKEFOURCC('A','U','d','d')) {
+        static bool warned_roc_death_and_decay;
+        if (!warned_roc_death_and_decay) {
+            fprintf(stderr, "WC3 compatibility: RoC AUdd has no EfctID column; using XUdd effect art\n");
+            warned_roc_death_and_decay = true;
+        }
+        return MAKEFOURCC('X','U','d','d');
+    }
 #endif
     return ability_id;
 }

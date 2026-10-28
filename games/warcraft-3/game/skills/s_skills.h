@@ -5,6 +5,9 @@
 
 #define AURA_UPDATE_MS 2000 // milliseconds; retail aura refresh interval; used to throttle recipient recalculation
 
+edict_t *S_SpellBeginAreaPresentation(edict_t *owner, uint32_t code, uint32_t level, vec2_t const *point);
+void S_SpellEndAreaPresentation(edict_t *owner);
+
 #define BZ_SIMPLE_SPELL_PROC(NAME) \
     static void NAME##_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell); \
     BZ_ABILITY_PROC(C##NAME) { \

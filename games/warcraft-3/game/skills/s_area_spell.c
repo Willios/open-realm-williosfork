@@ -321,11 +321,71 @@ BZ_SIMPLE_SPELL_PROC(AbilityRainOfFire) {
 
 /* Death and Decay deals the authored percentage of each enemy's maximum life
  * on every pulse; unlike Rain of Fire, DataA is not a fixed damage amount. */
+static void death_and_decay_area_effect_repeat(edict_t *effect) {
+    if (effect && effect->inuse && effect->animation)
+        effect->s.frame = effect->animation->interval[0];
+}
+
+static umove_t death_and_decay_area_effect_move = {
+    "stand", NULL, death_and_decay_area_effect_repeat, NULL
+};
+
+#define DEATH_AND_DECAY_AREA_EFFECT_COUNT 10
+
+static uint32_t death_and_decay_random(uint32_t *state) {
+    *state = *state * 1664525u + 1013904223u;
+    return *state;
+}
+
+static float death_and_decay_random_unit(uint32_t *state) {
+    return (float)(death_and_decay_random(state) >> 8) * (1.0f / 16777216.0f);
+}
+
+static edict_t *death_and_decay_spawn_area_effect(edict_t *owner, uint32_t code,
+                                                   uint32_t effect_code, vec2_t const *point) {
+    edict_t *effect = G_SpawnOwnedAbilityEffectAtPoint(owner, code, WC3_EFFECT_AREA_EFFECT, 0, point);
+    if (!effect) effect = G_SpawnOwnedAbilityEffectAtPoint(owner, code, WC3_EFFECT_EFFECT, 0, point);
+    if (!effect && effect_code != code)
+        effect = G_SpawnOwnedAbilityEffectAtPoint(owner, effect_code, WC3_EFFECT_AREA_EFFECT, 0, point);
+    if (!effect && effect_code != code)
+        effect = G_SpawnOwnedAbilityEffectAtPoint(owner, effect_code, WC3_EFFECT_EFFECT, 0, point);
+    if (!effect) return NULL;
+    effect->s.scale = 1.0f;
+    unit_setmove(effect, &death_and_decay_area_effect_move);
+    if (effect->animation) effect->s.frame = effect->animation->interval[0];
+    return effect;
+}
+
+static void death_and_decay_spawn_area_effects(edict_t *thinker, uint32_t code,
+                                               uint32_t level, vec2_t const *center,
+                                               float radius) {
+    uint32_t effect_code = G_AbilityEffectCode(code, level);
+    uint32_t seed = (thinker->spawn_time ^ thinker->s.number * 2654435761u ^ G_Time());
+    int loop_sound = G_AbilityEffectSoundIndex(code, true);
+    if (!loop_sound && effect_code != code)
+        loop_sound = G_AbilityEffectSoundIndex(effect_code, true);
+    if (G_AbilityEffectSoundIndex(code, false)) G_PlayAbilityEffectSound(code, center);
+    else if (effect_code != code) G_PlayAbilityEffectSound(effect_code, center);
+    if (!seed) seed = 1;
+
+    FOR_LOOP(i, DEATH_AND_DECAY_AREA_EFFECT_COUNT) {
+        float const angle = death_and_decay_random_unit(&seed) * (2.0f * (float)M_PI);
+        float const distance = sqrtf(death_and_decay_random_unit(&seed)) * radius;
+        vec2_t point = { center->x + cosf(angle) * distance,
+                         center->y + sinf(angle) * distance };
+        edict_t *effect = death_and_decay_spawn_area_effect(thinker, code, effect_code, &point);
+        if (!effect) break;
+        /* The authored looped sound belongs to the effect field, but only one
+         * of the scattered visuals should emit it. */
+        if (i == 0 && loop_sound) effect->s.sound = (uint16_t)loop_sound;
+    }
+}
+
 void death_and_decay_think(edict_t *ent) {
     uint32_t now = G_Time();
     edict_t *caster = ent->owner;
 
-    if (!S_SpellChannelActive(ent)) { S_SpellEndChannel(ent); return; }
+    if (!S_SpellChannelActive(ent)) { S_SpellEndAreaPresentation(ent); S_SpellEndChannel(ent); return; }
     if (ent->freetime && now < ent->freetime) return;
     FILTER_EDICTS(target, target->inuse && S_SpellIsAliveTarget(target) &&
                   S_SpellIsEnemy(caster, target) &&
@@ -333,6 +393,7 @@ void death_and_decay_think(edict_t *ent) {
         S_SpellDamage(target, caster, (uint32_t)MAX(1.0f, target->health.max_value * ent->wait));
     }
     if (ent->spawn_time && now >= ent->spawn_time) {
+        S_SpellEndAreaPresentation(ent);
         S_SpellEndChannel(ent);
         return;
     }
@@ -345,6 +406,7 @@ void death_and_decay_think(edict_t *ent) {
 BZ_SIMPLE_SPELL_PROC(AbilityDeathAndDecay) {
     uint32_t level = S_SpellLevel(caster, spell->code);
     edict_t *thinker = S_SpellChannelThinker(caster, spell->code);
+    float radius = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
     thinker->s.origin2 = st.point;
     thinker->s.origin.x = st.point.x;
     thinker->s.origin.y = st.point.y;
@@ -353,6 +415,7 @@ BZ_SIMPLE_SPELL_PROC(AbilityDeathAndDecay) {
     thinker->velocity = MAX(0.1f, S_SpellData(spell->code, level, 2));
     thinker->spawn_time = G_Time() + (uint32_t)(MAX(0.1f, S_SpellDuration(spell->code, level, true)) * 1000.0f);
     thinker->think = death_and_decay_think;
+    death_and_decay_spawn_area_effects(thinker, spell->code, level, &st.point, radius);
     death_and_decay_think(thinker);
 }
 

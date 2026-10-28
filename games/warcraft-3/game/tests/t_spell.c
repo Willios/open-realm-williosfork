@@ -4335,27 +4335,41 @@ TEST(wc3_spell, entangling_roots_alias_uses_own_data_and_hero_duration) {
 }
 
 TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
+	static animation_t one_shot_area_animation = { .interval = { 0, 1000 }, .flags = 1 };
 	const char slk[] =
-		"ID;PWXL;N;EBB;Y2;X6\n"
+		"ID;PWXL;N;EBB;Y2;X8\n"
 		"C;Y1;X1;K\"alias\"\n"
 		"C;Y1;X2;K\"code\"\n"
 		"C;Y1;X3;K\"Dur1\"\n"
 		"C;Y1;X4;K\"DataA1\"\n"
 		"C;Y1;X5;K\"DataB1\"\n"
 		"C;Y1;X6;K\"Area1\"\n"
+		"C;Y1;X7;K\"EfctID1\"\n"
+		"C;Y1;X8;K\"HeroDur1\"\n"
 		"C;Y2;X1;K\"AUdd\"\n"
 		"C;Y2;X2;K\"AUdd\"\n"
-		"C;Y2;X3;K\"2\"\n"
+		"C;Y2;X3;K\"35\"\n"
 		"C;Y2;X4;K\".04\"\n"
 		"C;Y2;X5;K\"1\"\n"
-		"C;Y2;X6;K\"128\"\n"
+		"C;Y2;X6;K\"300\"\n"
+		"C;Y2;X7;K\"XUdd\"\n"
+		"C;Y2;X8;K\"35\"\n"
 		"E\n";
+	const char effect_slk[] =
+		"ID;PWXL;N;EBB;Y2;X3\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"EffectArt\"\n"
+		"C;Y2;X1;K\"XUdd\"\nC;Y2;X2;K\"XUdd\"\n"
+		"C;Y2;X3;K\"TestUI\\\\Models\\\\anim_oneshot.mdx\"\nE\n";
 	slkTestData_t *rows = parse_slk_string(slk);
 	slkTestData_t *old = G_SetSLKRows("AbilityData", rows);
+	slkTestData_t *effect_rows = parse_slk_string(effect_slk);
+	slkTestData_t *old_effects = G_SetSLKRows("AbilityBuffData", effect_rows);
+	uint32_t area_effect_model = G_RegisterModel(G_AbilityEffectArt(MAKEFOURCC('X','U','d','d'), WC3_EFFECT_EFFECT, 0));
 	edict_t *caster = make_hero(MAKEFOURCC('h','p','e','a'), 250, 100, 0, 0);
 	edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
-	edict_t *thinker;
+	edict_t *thinker, *area_effects[10] = { NULL };
 	uint32_t thinker_slot = globals.num_edicts;
+	uint32_t area_effect_count = 0;
 	spellTarget_t st = { .type = SPELL_TARGET_POINT, .point = caster->s.origin2 };
 
 	caster->s.player = 0;
@@ -4372,7 +4386,49 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	T_FEQ(enemy->health.value, 96.0f, 0.01f);
 	T_FEQ(caster->health.value, 250.0f, 0.01f);
 	T_ASSERT(thinker->inuse);
+	T_EQ(thinker->spawn_time, G_Time() + 35000);
+	T_ASSERT(area_effect_model > 0);
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) {
+		T_ASSERT(area_effect_count < 10);
+		T_EQ(effect->s.model, area_effect_model);
+		T_FEQ(effect->s.scale, 1.0f, 0.001f);
+		T_ASSERT(Vector2_distance(&effect->s.origin2, &st.point) <= 300.0f);
+		area_effects[area_effect_count++] = effect;
+	}
+	T_EQ(area_effect_count, 10);
+	T_ASSERT(Vector2_distance(&area_effects[0]->s.origin2, &area_effects[1]->s.origin2) > 0.001f);
+	{
+		edict_t *area_effect = area_effects[0];
+	area_effect->animation = &one_shot_area_animation;
+	area_effect->animation_speed = 1.0f;
+	area_effect->s.frame = one_shot_area_animation.interval[1] - 1;
+	M_MoveFrame(area_effect);
+	T_ASSERT(area_effect->inuse);
+	T_ASSERT(!(area_effect->s.renderfx & RF_HIDDEN));
+	T_EQ(area_effect->s.frame, one_shot_area_animation.interval[0]);
+	}
+	level.time = thinker->spawn_time;
+	thinker->think(thinker);
+	T_ASSERT(!thinker->inuse);
+	FOR_LOOP(i, area_effect_count) T_ASSERT(!area_effects[i]->inuse);
 
+	G_SetSLKRows("AbilityData", old);
+	free_slk_rows(rows);
+	G_SetSLKRows("AbilityBuffData", old_effects);
+	free_slk_rows(effect_rows);
+}
+
+TEST(wc3_spell, death_and_decay_roc_effect_id_uses_authored_effect_object) {
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X2\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\n"
+		"C;Y2;X1;K\"AUdd\"\nC;Y2;X2;K\"AUdd\"\nE\n";
+	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+#if BZ_COMPAT_WORKAROUNDS
+	T_EQ(G_AbilityEffectCode(MAKEFOURCC('A','U','d','d'), 1), MAKEFOURCC('X','U','d','d'));
+#else
+	T_EQ(G_AbilityEffectCode(MAKEFOURCC('A','U','d','d'), 1), MAKEFOURCC('A','U','d','d'));
+#endif
 	G_SetSLKRows("AbilityData", old);
 	free_slk_rows(rows);
 }
