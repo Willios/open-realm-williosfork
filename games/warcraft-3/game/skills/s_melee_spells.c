@@ -31,6 +31,10 @@ static cstring_t melee_buff(abilityitem_t const *spell, uint32_t level) {
     return buff ? buff : melee_buff_fallback(spell->code);
 }
 
+static bool melee_unit_is_bear_form(edict_t const *unit) {
+    return unit && unit->class_id == MAKEFOURCC('e','d','c','m');
+}
+
 static void melee_status_execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
     uint32_t level = S_SpellLevel(caster, spell->code);
     cstring_t buff = melee_buff(spell, level);
@@ -113,7 +117,8 @@ static bool rejuv_validate(edict_t *caster, spellTarget_t st, abilityitem_t cons
     uint32_t level;
     cstring_t buff;
     wc3_status_apply_check_t check;
-    if (!spell || !st.entity || !S_SpellIsAliveTarget(st.entity) || !S_SpellIsFriend(caster, st.entity))
+    if (melee_unit_is_bear_form(caster) || !spell || !st.entity ||
+        !S_SpellIsAliveTarget(st.entity) || !S_SpellIsFriend(caster, st.entity))
         return false;
     level = S_SpellLevel(caster, spell->code);
     buff = melee_buff(spell, level);
@@ -173,7 +178,7 @@ BZ_SIMPLE_SPELL_PROC(AbilityRoar) {
     float area = S_SpellNumber(spell->code, ABILITY_NUMBER_AREA, level);
     cstring_t buff = melee_buff(spell, level);
     float duration = S_SpellDuration(spell->code, level, false);
-    if (!buff) return;
+    if (melee_unit_is_bear_form(caster) || !buff) return;
     FILTER_EDICTS(target, S_SpellIsAliveTarget(target) && S_SpellIsFriend(caster, target) &&
                   Vector2_distance(&target->s.origin2, &caster->s.origin2) <= area) {
         heroabilitystatus_t *status = S_SpellApplyTimedTargetStatus(target, spell->code, level, buff, duration);

@@ -32,6 +32,12 @@ LightningEffect=MBUR
 [Aroa]
 Casterart=TestUI\Models\anim_oneshot.mdx
 
+[Abrf]
+Art=ReplaceableTextures\CommandButtons\BTNBearForm.blp
+Unart=ReplaceableTextures\CommandButtons\BTNDruidOfTheClaw.blp
+Buttonpos=3,2
+Unbuttonpos=3,2
+
 [Broa]
 Targetart=TestUI\Models\anim_pulse.mdx
 Targetattach=overhead

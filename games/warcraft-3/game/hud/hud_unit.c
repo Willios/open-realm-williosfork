@@ -570,6 +570,10 @@ static void G_AddAbilityCommandButtons(edict_t *ent, gameCommandButton_t *button
                                  S_AbilityHasCommand(ability) && G_AncientAbilityVisible(ent, ability), false);
         return;
     }
+    /* Bear form uses its own attack and roar data. Hide the normal-form
+     * utility spells even when custom/unit ability lists retain their codes. */
+    if (ent->class_id == MAKEFOURCC('e','d','c','m') &&
+        (ability->proc == CAbilityRoar || ability->proc == CAbilityRejuvination)) return;
     memcpy(&rawcode, code, sizeof(rawcode));
     if (!G_IsUnitAbilityAvailable(ent, rawcode)) {
         if (G_IsRepairDiagnosticRawcode(code)) G_RepairCommandTrace(ent, code, "filtered-unavailable", ability, false, false);

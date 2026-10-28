@@ -880,7 +880,17 @@ BZ_ABILITY_PROC(CAbilityDeathPact) {
 /* Name=Metamorphosis
  * Ubertip="Transforms the Demon Hunter into a powerful demon."
  */
-BZ_SIMPLE_SPELL_PROC(AbilityMetamorphosis) {
+#define ID_BEAR_FORM_ABILITY MAKEFOURCC('A','b','r','f')
+#define ID_BEAR_FORM_NIGHT_ELF MAKEFOURCC('e','d','o','c')
+#define ID_BEAR_FORM_BEAR MAKEFOURCC('e','d','c','m')
+static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abilityitem_t const *spell) {
+    (void)st;
+    if (spell->code == ID_BEAR_FORM_ABILITY) {
+        uint32_t const target_form = caster->class_id == ID_BEAR_FORM_BEAR ?
+            ID_BEAR_FORM_NIGHT_ELF : ID_BEAR_FORM_BEAR;
+        G_TransformUnitType(caster, target_form);
+        return;
+    }
     uint32_t level = S_SpellLevel(caster, spell->code), form = S_SpellUnitId(spell->code, level), original = caster->class_id;
     float duration = S_SpellDuration(spell->code, level, true);
     if (!form || !G_TransformUnitType(caster, form) || duration <= 0.0f) return;
@@ -889,6 +899,17 @@ BZ_SIMPLE_SPELL_PROC(AbilityMetamorphosis) {
     G_AddChannel(thinker);
     G_GetChannel(thinker)->owner_spawn_time = caster->spawn_time;
     thinker->spawn_time = G_Time() + (uint32_t)(duration * 1000.0f); thinker->think = morph_end;
+}
+
+BZ_ABILITY_PROC(CAbilityMetamorphosis) {
+    if (msg == A_TOGGLE_ON && call && call->item && call->item->code == ID_BEAR_FORM_ABILITY)
+        return ent && ent->class_id == ID_BEAR_FORM_BEAR;
+    if (msg == A_EXECUTE) {
+        if (!call || !call->item) return false;
+        AbilityMetamorphosis_Execute(ent, call->target ? *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE), call->item);
+        return true;
+    }
+    return CAbilitySimpleSpell(ent, msg, call);
 }
 /* Name=Sleep
  * Ubertip="Puts a target enemy unit to sleep."

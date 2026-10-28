@@ -6290,6 +6290,58 @@ TEST(wc3_spell, roar_damage_bonus_is_shown_as_green_flat_damage_in_status_panel)
     free_slk_rows(rows);
 }
 
+TEST(wc3_spell, bear_form_hides_normal_form_spells_and_uses_reverse_button_art) {
+    static UnitAbilities_t const bear_abilities = { .abilList = "Abrf,Ara2,Arej,Aroa" };
+    static UnitBalance_t const bear_balance = { .speed = 270.0f };
+    edict_t *bear;
+    gameCommandButton_t buttons[16];
+    uint8_t count;
+    bool bear_form_button = false;
+    abilityitem_t bear_form = S_AbilityItem(FS_SLKKey("Abrf"));
+    abilityitem_t rejuv = S_AbilityItem(FS_SLKKey("Arej"));
+    abilityCall_t toggle_call = MAKE(abilityCall_t, .item = &bear_form);
+    edict_t *ally;
+    spellTarget_t ally_target;
+
+    setup_test_world();
+    bear = alloc_test_unit(MAKEFOURCC('e','d','c','m'), 0, 0);
+    bear->data.UnitAbilities = &bear_abilities;
+    bear->data.UnitBalance = &bear_balance;
+    count = G_GetCommandButtons(bear, buttons, (uint8_t)(sizeof(buttons) / sizeof(buttons[0])));
+    FOR_LOOP(i, count) {
+        if (!strcmp(buttons[i].command, "Abrf")) {
+            bear_form_button = true;
+            T_STREQ(buttons[i].art, "ReplaceableTextures\\CommandButtons\\BTNDruidOfTheClaw.blp");
+        }
+        T_ASSERT(strcmp(buttons[i].command, "Ara2") != 0);
+        T_ASSERT(strcmp(buttons[i].command, "Arej") != 0);
+        T_ASSERT(strcmp(buttons[i].command, "Aroa") != 0);
+    }
+    T_ASSERT(bear_form_button);
+    T_ASSERT(S_AbilityMessage(bear, A_TOGGLE_ON, &toggle_call));
+
+    ally = alloc_test_unit(MAKEFOURCC('e','d','o','c'), 64.0f, 0.0f);
+    ally_target = MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = ally);
+    T_ASSERT(!test_ability_message(bear, A_VALIDATE, &rejuv, &ally_target));
+
+    test_execute_code(bear, "Aroa", MAKE(spellTarget_t, .type = SPELL_TARGET_NONE));
+    T_EQ(G_UnitStatusLevel(bear, MAKEFOURCC('B','r','o','a')), 0);
+
+    /* The query drives the command button's Unart while the normal form is
+     * active. Keep the fixture ability list attached to exercise HUD art. */
+    bear->class_id = MAKEFOURCC('e','d','o','c');
+    T_ASSERT(!S_AbilityMessage(bear, A_TOGGLE_ON, &toggle_call));
+    bear_form_button = false;
+    count = G_GetCommandButtons(bear, buttons, (uint8_t)(sizeof(buttons) / sizeof(buttons[0])));
+    FOR_LOOP(i, count) {
+        if (!strcmp(buttons[i].command, "Abrf")) {
+            bear_form_button = true;
+            T_STREQ(buttons[i].art, "ReplaceableTextures\\CommandButtons\\BTNBearForm.blp");
+        }
+    }
+    T_ASSERT(bear_form_button);
+}
+
 TEST(wc3_spell, melee_spells_use_authored_status_and_bonus_values) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y5;X10\n"
