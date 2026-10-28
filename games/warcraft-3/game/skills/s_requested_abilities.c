@@ -755,7 +755,9 @@ static void animate_dead_execute(edict_t *caster, spellTarget_t st, abilityitem_
         selected->s.player = caster->s.player; selected->owner = caster;
         selected->summon_ability = spell->code;
         S_SpellApplyTimedLife(selected, level, duration);
-        G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_TARGET, 0, selected, NULL, true);
+        selected->vertex_color = MAKE(color32_t, 255, 0, 0, 255);
+        G_SetUnitFlag(selected, UNIT_FLAG_VERTEX_COLOR_SET, true);
+        G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_SPECIAL, 0, selected, NULL, true);
         count++;
     }
 }

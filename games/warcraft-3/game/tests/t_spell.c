@@ -4752,6 +4752,15 @@ TEST(wc3_spell, animate_dead_prefers_higher_level_corpse_and_restores_temporary_
     T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AUan")));
     T_ASSERT(M_IsDead(low)); T_ASSERT(!M_IsDead(high)); T_EQ(high->s.player, 0); T_ASSERT(high->owner == caster);
     T_ASSERT(!(high->aiflags & AI_HOLD_FRAME)); T_EQ(G_UnitStatusLevel(high, FS_SLKKey("BTLF")), 1);
+    T_ASSERT(G_UnitHasFlag(high, UNIT_FLAG_VERTEX_COLOR_SET));
+    T_EQ(high->vertex_color.r, 255); T_EQ(high->vertex_color.g, 0);
+    T_EQ(high->vertex_color.b, 0); T_EQ(high->vertex_color.a, 255);
+    {
+        uint32_t target_effects = 0;
+        FILTER_EDICTS(effect, effect->goalentity == high && effect->damage == high->spawn_time && effect->s.model)
+            target_effects++;
+        T_EQ(target_effects, 1);
+    }
     T_ASSERT(!G_GetFood(high) || G_GetFood(high)->used == 0); T_EQ(high->summon_ability, FS_SLKKey("AUan"));
     T_ASSERT(high->aiflags & AI_CORPSE_UNRAISABLE); T_ASSERT(high->aiflags & AI_CORPSE_NO_DECAY); T_ASSERT(G_UnitHasFlag(high, UNIT_FLAG_INVULNERABLE));
     T_EQ(ARRAY_COUNT(high->unit_state->overrides.added), 1); T_EQ(high->unit_state->overrides.added[0], MAKEFOURCC('A','I','n','v'));
