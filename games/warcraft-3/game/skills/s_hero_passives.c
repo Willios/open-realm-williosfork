@@ -1241,7 +1241,13 @@ int S_SearingArrowDamage(edict_t *attacker, int damage) {
         }
     }
     if (!level) { level = G_UnitStatusLevel(attacker, ID_POISON_ARROWS); code = ID_POISON_ARROWS; }
-    return level && attacker->unit_state->attack1.weapon == WPN_MISSILE ? damage + (int)S_SpellData(code, level, 1) : damage;
+    if (!level || attacker->unit_state->attack1.weapon != WPN_MISSILE) return damage;
+    /* Searing Arrows spends its authored mana cost per launched attack. The
+     * creep alias shares the same ability data and proc; ordinary Poison
+     * Arrows retain their independent, free bonus. */
+    if (G_AbilityCode(code) == ID_SEARING_ARROWS && !S_SpellSpendMana(attacker, code, level))
+        return damage;
+    return damage + (int)S_SpellData(code, level, 1);
 }
 
 static uint32_t mana_shield_buff(uint32_t code, uint32_t level) {

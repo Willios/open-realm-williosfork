@@ -4332,6 +4332,36 @@ TEST(wc3_spell, poison_arrows_uses_its_own_authored_bonus_damage) {
 	free_slk_rows(rows);
 }
 
+TEST(wc3_spell, searing_arrows_adds_authored_damage_and_spends_mana_per_attack) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X4\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"Cost1\"\nC;Y1;X4;K\"DataA1\"\n"
+        "C;Y2;X1;K\"AHfa\"\nC;Y2;X2;K\"AHfa\"\nC;Y2;X3;K\"7\"\nC;Y2;X4;K\"20\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+    edict_t *attacker = make_hero(MAKEFOURCC('n','n','s','w'), 100, 100, 0, 0);
+    edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+
+    attacker->s.player = 0;
+    attacker->mana.value = attacker->mana.max_value = 30;
+    attacker->unit_state->attack1.weapon = WPN_MISSILE;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    target->s.player = 1;
+    target->svflags |= SVF_MONSTER;
+    target->targtype = TARG_GROUND;
+    target->health.value = target->health.max_value = 1000;
+    unit_addstatus(attacker, "AHfa", 1);
+
+    S_ResolveAttackHit(attacker, target, 100);
+    T_FEQ(attacker->mana.value, 23.0f, 0.001f);
+    T_FEQ(target->health.value, 880.0f, 0.001f);
+    S_ResolveAttackHit(attacker, target, 100);
+    T_FEQ(attacker->mana.value, 16.0f, 0.001f);
+    T_FEQ(target->health.value, 760.0f, 0.001f);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 TEST(wc3_spell, mana_shield_toggle_status_controls_authored_damage_absorption) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X6\n"
