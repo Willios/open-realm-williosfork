@@ -838,6 +838,62 @@ TEST(wc3_ability_lifecycle, no_target_tranquility_establishes_channel) {
     T_ASSERT(cast); T_EQ(channel, FS_SLKKey("AEtq"));
 }
 
+/* Starfall damages every enemy in its authored radius on repeated channel pulses. */
+TEST(wc3_ability_lifecycle, priestess_starfall_repeatedly_damages_enemies_in_area) {
+    static UnitAbilities_t const starfall_abilities = { .abilList = "AEsf" };
+    static char const starfall_slk[] =
+        "ID;PWXL;N;EBB;Y2;X9\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Dur1\"\nC;Y1;X6;K\"HeroDur1\"\n"
+        "C;Y1;X7;K\"Area1\"\nC;Y1;X8;K\"DataA1\"\nC;Y1;X9;K\"DataB1\"\n"
+        "C;Y2;X1;K\"AEsf\"\nC;Y2;X2;K\"AEsf\"\nC;Y2;X3;K1\n"
+        "C;Y2;X4;K\"air,ground,enemy\"\nC;Y2;X5;K5\nC;Y2;X6;K5\n"
+        "C;Y2;X7;K150\nC;Y2;X8;K40\nC;Y2;X9;K1\nE\n";
+    edict_t *caster = review_setup();
+    edict_t *near_ground = review_unit(1, 100);
+    edict_t *near_air = review_unit(1, 120);
+    edict_t *far_enemy = review_unit(1, 200);
+    edict_t *ally = review_unit(0, 80);
+    slkTestData_t *rows = parse_slk_string(starfall_slk), *old = G_SetSLKRows("AbilityData", rows);
+    uint32_t const code = FS_SLKKey("AEsf");
+    edict_t *thinker;
+
+    caster->data.UnitAbilities = (UnitAbilities_t *)&starfall_abilities;
+    caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
+    near_air->targtype = TARG_AIR;
+    far_enemy->s.origin2.x = 151;
+    far_enemy->s.origin.x = 151;
+
+    T_ASSERT(S_CastNoTargetSpell(caster, code));
+    thinker = review_thinker(caster);
+    T_NOT_NULL(thinker);
+    T_FEQ(near_ground->health.value, 960, .001f);
+    T_FEQ(near_air->health.value, 960, .001f);
+    T_FEQ(far_enemy->health.value, 1000, .001f);
+    T_FEQ(ally->health.value, 1000, .001f);
+
+    level.time = 1999;
+    G_RunEntity(thinker);
+    T_FEQ(near_ground->health.value, 960, .001f);
+    level.time = 2000;
+    G_RunEntity(thinker);
+    T_FEQ(near_ground->health.value, 920, .001f);
+    T_FEQ(near_air->health.value, 920, .001f);
+    T_FEQ(far_enemy->health.value, 1000, .001f);
+    T_FEQ(ally->health.value, 1000, .001f);
+
+    caster->s.origin2.x += 10;
+    caster->s.origin.x += 10;
+    level.time = 3000;
+    G_RunEntity(thinker);
+    T_ASSERT(!thinker->inuse);
+    T_ASSERT(!G_GetChannel(caster) || G_GetChannel(caster)->code == 0);
+    T_FEQ(near_ground->health.value, 920, .001f);
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 /* Cannibalize reserves the nearest eligible corpse for the whole channel and
  * consumes it when healing reaches full HP.  Mechanical corpses fail the authored
  * ground,dead,organic target mask rather than a Cannibalize-only type check. */
