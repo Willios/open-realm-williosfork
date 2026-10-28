@@ -4335,7 +4335,6 @@ TEST(wc3_spell, entangling_roots_alias_uses_own_data_and_hero_duration) {
 }
 
 TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
-	static animation_t one_shot_area_animation = { .interval = { 0, 1000 }, .flags = 1 };
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X8\n"
 		"C;Y1;X1;K\"alias\"\n"
@@ -4367,7 +4366,7 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	uint32_t area_effect_model = G_RegisterModel(G_AbilityEffectArt(MAKEFOURCC('X','U','d','d'), WC3_EFFECT_EFFECT, 0));
 	edict_t *caster = make_hero(MAKEFOURCC('h','p','e','a'), 250, 100, 0, 0);
 	edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
-	edict_t *thinker, *area_effects[10] = { NULL };
+	edict_t *thinker, *area_effects[20] = { NULL };
 	uint32_t thinker_slot = globals.num_edicts;
 	uint32_t area_effect_count = 0;
 	spellTarget_t st = { .type = SPELL_TARGET_POINT, .point = caster->s.origin2 };
@@ -4389,28 +4388,42 @@ TEST(wc3_spell, death_and_decay_uses_percentage_damage_and_enemy_filter) {
 	T_EQ(thinker->spawn_time, G_Time() + 35000);
 	T_ASSERT(area_effect_model > 0);
 	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) {
-		T_ASSERT(area_effect_count < 10);
+		T_ASSERT(area_effect_count < 20);
 		T_EQ(effect->s.model, area_effect_model);
 		T_FEQ(effect->s.scale, 1.0f, 0.001f);
 		T_ASSERT(Vector2_distance(&effect->s.origin2, &st.point) <= 300.0f);
+		T_ASSERT(effect->currentmove == &death_and_decay_area_effect_move);
+		T_ASSERT(effect->currentmove->endfunc == G_FreeEdict);
 		area_effects[area_effect_count++] = effect;
 	}
 	T_EQ(area_effect_count, 10);
 	T_ASSERT(Vector2_distance(&area_effects[0]->s.origin2, &area_effects[1]->s.origin2) > 0.001f);
-	{
-		edict_t *area_effect = area_effects[0];
-	area_effect->animation = &one_shot_area_animation;
-	area_effect->animation_speed = 1.0f;
-	area_effect->s.frame = one_shot_area_animation.interval[1] - 1;
-	M_MoveFrame(area_effect);
-	T_ASSERT(area_effect->inuse);
-	T_ASSERT(!(area_effect->s.renderfx & RF_HIDDEN));
-	T_EQ(area_effect->s.frame, one_shot_area_animation.interval[0]);
+	/* Stand is a 1867 ms one-shot. The next ten scatter effects arrive halfway
+	 * through it, so the groups overlap for the remaining half-cycle. */
+	level.time = 932;
+	death_and_decay_think(thinker);
+	area_effect_count = 0;
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
+	T_EQ(area_effect_count, 10);
+	level.time = 933;
+	death_and_decay_think(thinker);
+	area_effect_count = 0;
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) {
+		T_ASSERT(area_effect_count < 20);
+		area_effects[area_effect_count++] = effect;
 	}
+	T_EQ(area_effect_count, 20);
+	/* Finish the first batch during the overlap. */
+	FOR_LOOP(i, 10) area_effects[i]->currentmove->endfunc(area_effects[i]);
+	area_effect_count = 0;
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
+	T_EQ(area_effect_count, 10);
 	level.time = thinker->spawn_time;
 	thinker->think(thinker);
 	T_ASSERT(!thinker->inuse);
-	FOR_LOOP(i, area_effect_count) T_ASSERT(!area_effects[i]->inuse);
+	area_effect_count = 0;
+	FILTER_EDICTS(effect, effect->owner == thinker && effect->s.model) area_effect_count++;
+	T_EQ(area_effect_count, 0);
 
 	G_SetSLKRows("AbilityData", old);
 	free_slk_rows(rows);
