@@ -5,6 +5,7 @@
 
 void attack_melee(edict_t *self);
 void whirlwind_think(edict_t *ent);
+void morph_end(edict_t *thinker);
 
 uint32_t S_TestHeroAuraAliasResolves(void);
 void S_TestResetHeroAuraAliasResolves(void);
@@ -6288,6 +6289,79 @@ TEST(wc3_spell, roar_damage_bonus_is_shown_as_green_flat_damage_in_status_panel)
 
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);
+}
+
+TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bonus_health) {
+    char const ability_data[] =
+        "ID;PWXL;N;EBB;Y5;X6\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"UnitID1\"\nC;Y1;X5;K\"DataE1\"\nC;Y1;X6;K\"HeroDur1\"\n"
+        "C;Y2;X1;K\"AEme\"\nC;Y2;X2;K\"AEme\"\nC;Y2;X3;K1\nC;Y2;X4;K\"Edmm\"\nC;Y2;X5;K500\nC;Y2;X6;K30\n"
+        "C;Y3;X1;K\"AEmb\"\nC;Y3;X2;K\"AEmb\"\nC;Y3;X3;K1\n"
+        "C;Y4;X1;K\"AEim\"\nC;Y4;X2;K\"AEim\"\nC;Y4;X3;K1\n"
+        "C;Y5;X1;K\"AEev\"\nC;Y5;X2;K\"AEev\"\nC;Y5;X3;K1\nE\n";
+    char const unit_abilities[] =
+        "ID;PWXL;N;EBB;Y3;X2\nC;Y1;X1;K\"unitAbilID\"\nC;Y1;X2;K\"abilList\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K\"AEme\"\nC;Y3;X1;K\"Edmm\"\nC;Y3;X2;K\"AEme\"\nE\n";
+    char const unit_ui[] =
+        "ID;PWXL;N;EBB;Y3;X3\nC;Y1;X1;K\"unitUIID\"\nC;Y1;X2;K\"file\"\nC;Y1;X3;K\"modelScale\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K\"Units\\NightElf\\DemonHunter\\DemonHunter.mdx\"\nC;Y2;X3;K1\n"
+        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K\"Units\\NightElf\\DemonHunter\\DemonHunter.mdx\"\nC;Y3;X3;K1\nE\n";
+    char const unit_balance[] =
+        "ID;PWXL;N;EBB;Y3;X3\nC;Y1;X1;K\"unitBalanceID\"\nC;Y1;X2;K\"realHP\"\nC;Y1;X3;K\"spd\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K500\nC;Y2;X3;K300\nC;Y3;X1;K\"Edmm\"\nC;Y3;X2;K500\nC;Y3;X3;K300\nE\n";
+    char const unit_data[] =
+        "ID;PWXL;N;EBB;Y3;X3\nC;Y1;X1;K\"unitID\"\nC;Y1;X2;K\"targType\"\nC;Y1;X3;K\"movetp\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K\"ground\"\nC;Y2;X3;K\"foot\"\n"
+        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K\"ground\"\nC;Y3;X3;K\"foot\"\nE\n";
+    char const unit_weapons[] =
+        "ID;PWXL;N;EBB;Y3;X6\nC;Y1;X1;K\"unitWeaponsID\"\nC;Y1;X2;K\"weapsOn\"\n"
+        "C;Y1;X3;K\"atkType1\"\nC;Y1;X4;K\"weapTp1\"\nC;Y1;X5;K\"rangeN1\"\nC;Y1;X6;K\"dice1\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K1\nC;Y2;X3;K\"hero\"\nC;Y2;X4;K\"mwc\"\nC;Y2;X5;K100\nC;Y2;X6;K1\n"
+        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K1\nC;Y3;X3;K\"chaos\"\nC;Y3;X4;K\"missile\"\nC;Y3;X5;K600\nC;Y3;X6;K1\nE\n";
+    slkTestData_t *ability_rows = parse_slk_string(ability_data), *old_ability = G_SetSLKRows("AbilityData", ability_rows);
+    slkTestData_t *abilities_rows = parse_slk_string(unit_abilities), *old_abilities = G_SetSLKRows("UnitAbilities", abilities_rows);
+    slkTestData_t *ui_rows = parse_slk_string(unit_ui), *old_ui = G_SetSLKRows("UnitUI", ui_rows);
+    slkTestData_t *balance_rows = parse_slk_string(unit_balance), *old_balance = G_SetSLKRows("UnitBalance", balance_rows);
+    slkTestData_t *data_rows = parse_slk_string(unit_data), *old_data = G_SetSLKRows("UnitData", data_rows);
+    slkTestData_t *weapons_rows = parse_slk_string(unit_weapons), *old_weapons = G_SetSLKRows("UnitWeapons", weapons_rows);
+    edict_t *demon, *morph = NULL;
+
+    reset_entities(); setup_test_world();
+    demon = alloc_test_unit(MAKEFOURCC('E','d','e','m'), 64.0f, 64.0f);
+    demon->s.player = 0;
+    demon->svflags |= SVF_MONSTER;
+    demon->health.max_value = demon->health.value = 500.0f;
+    demon->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','m','e'), .level = 1);
+    abilityitem_t const spell = S_AbilityItem(MAKEFOURCC('A','E','m','e'));
+    spellTarget_t const target = MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
+    abilityCall_t const call = MAKE(abilityCall_t, .item = &spell, .target = &target);
+    T_ASSERT(S_AbilityMessage(demon, A_EXECUTE, &call));
+    T_EQ(demon->class_id, MAKEFOURCC('E','d','m','m'));
+    T_FEQ(demon->health.max_value, 1000.0f, 0.001f);
+    T_FEQ(demon->unit_state->attack1.range, 600.0f, 0.001f);
+    T_EQ(demon->unit_state->attack1.weapon, WPN_MISSILE);
+    T_ASSERT(G_ActorHasSkill(demon, "AEmb"));
+    T_ASSERT(G_ActorHasSkill(demon, "AEim"));
+    T_ASSERT(G_ActorHasSkill(demon, "AEev"));
+    FOR_LOOP(i, globals.num_edicts) {
+        edict_t *candidate = g_edicts + i;
+        if (candidate->inuse && candidate->think == morph_end && candidate->owner == demon) morph = candidate;
+    }
+    T_NOT_NULL(morph);
+    if (morph) {
+        level.time = morph->spawn_time;
+        morph_end(morph);
+    }
+    T_EQ(demon->class_id, MAKEFOURCC('E','d','e','m'));
+    T_FEQ(demon->health.max_value, 500.0f, 0.001f);
+
+    G_SetSLKRows("UnitWeapons", old_weapons); free_slk_rows(weapons_rows);
+    G_SetSLKRows("UnitData", old_data); free_slk_rows(data_rows);
+    G_SetSLKRows("UnitBalance", old_balance); free_slk_rows(balance_rows);
+    G_SetSLKRows("UnitUI", old_ui); free_slk_rows(ui_rows);
+    G_SetSLKRows("UnitAbilities", old_abilities); free_slk_rows(abilities_rows);
+    G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
 }
 
 TEST(wc3_spell, bear_form_hides_normal_form_spells_and_uses_reverse_button_art) {
