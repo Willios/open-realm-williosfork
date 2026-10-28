@@ -151,6 +151,47 @@ static umove_t shockwave_visual_move = {
     .endfunc = G_FreeEdict
 };
 
+/* Carrion Swarm resolves its damage at the selected point, while this
+ * presentation-only missile travels from the caster to that point. */
+static void carrion_swarm_spawn_missile(edict_t *caster, uint32_t code, vec2_t const *point) {
+    cstring_t art = G_AbilityEffectArt(code, WC3_EFFECT_MISSILE, 0);
+    cstring_t speed_text = S_SpellString(code, "Missilespeed", 0);
+    float speed = speed_text ? (float)atof(speed_text) : 0.0f;
+    vec2_t offset = Vector2_sub(point, &caster->s.origin2);
+    float distance = Vector2_len(&offset);
+    vec2_t direction;
+    edict_t *missile;
+    channel_t *cast;
+
+#if BZ_COMPAT_WORKAROUNDS
+    /* RoC 1.0 omits AUcs MissileArt and Missilespeed; the 1.29 row authors
+     * these same retail values. */
+    if (!art) art = "Abilities\\Spells\\Undead\\CarrionSwarm\\CarrionSwarmMissile.mdl";
+    if (speed <= 0.0f) speed = 1100.0f;
+#endif
+    if (!art || !*art || distance <= 0.0f || speed <= 0.0f) return;
+    direction = Vector2_scale(&offset, 1.0f / distance);
+    missile = G_Spawn();
+    if (!missile) return;
+    missile->class_id = code;
+    missile->owner = caster;
+    missile->s.player = caster->s.player;
+    missile->s.origin = caster->s.origin;
+    missile->s.origin2 = caster->s.origin2;
+    missile->s.angle = atan2f(direction.y, direction.x);
+    missile->s.model = G_RegisterModel(art);
+    if (!missile->s.model) { G_FreeEdict(missile); return; }
+    G_InheritUnitTeamColor(missile, caster);
+    cast = G_AddChannel(missile);
+    cast->owner_spawn_time = caster->spawn_time;
+    cast->origin = *point;
+    missile->velocity = speed / 1000.0f;
+    missile->movetype = MOVETYPE_FLYMISSILE;
+    missile->aiflags |= AI_PROJECTILE_FIXED_TARGET;
+    missile->currentmove = &shockwave_visual_move;
+    G_StartProjectilePresentation(missile);
+}
+
 /* Shockwave's line damage resolves immediately, while its authored missile
  * travels along that same corridor as a presentation-only projectile. */
 static void shockwave_spawn_missile(edict_t *caster, uint32_t code, vec2_t const *direction,
@@ -262,6 +303,8 @@ BZ_SIMPLE_SPELL_PROC(AbilityCarrionSwarm) {
     uint32_t level = S_SpellLevel(caster, spell->code);
     edict_t *blast;
 
+    carrion_swarm_spawn_missile(caster, spell->code, &st.point);
+    G_SpawnAbilityEffectAtPoint(spell->code, WC3_EFFECT_SPECIAL, 0, &st.point, true);
     blast = G_Spawn();
     blast->owner = caster;
     blast->s.origin2 = st.point;
