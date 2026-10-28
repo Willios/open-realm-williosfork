@@ -464,8 +464,15 @@ BZ_SIMPLE_SPELL_PROC(AbilityFrostNova) {
                   Vector2_distance(&target->s.origin2, &center) <= radius) {
         float damage = S_SpellData(spell->code, rank, 1);
         if (target == st.entity) damage += S_SpellData(spell->code, rank, 2);
-        if (S_SpellDamage(target, caster, (int)damage) && !M_IsDead(target) && buff && strlen(buff) >= 4)
-            S_SpellApplyTimedStatus(target, buff, rank, S_SpellHeroDuration(spell->code, rank, target));
+        if (S_SpellDamage(target, caster, (int)damage) && !M_IsDead(target)) {
+            if (target == st.entity)
+                G_SpawnAbilityEffectTarget(spell->code, WC3_EFFECT_EFFECT, 0, target, NULL, true);
+            if (buff && strlen(buff) >= 4) {
+                heroabilitystatus_t *status = S_SpellApplyTimedStatus(
+                    target, buff, rank, S_SpellHeroDuration(spell->code, rank, target));
+                if (status) unit_status_enabletargetart(target, status, "origin");
+            }
+        }
     }
 }
 

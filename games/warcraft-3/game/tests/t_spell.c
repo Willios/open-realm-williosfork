@@ -4121,6 +4121,52 @@ TEST(wc3_spell, entangling_roots_is_a_timed_unit_spell) {
 	T_EQ((int)roots->target_type, (int)SPELL_TARGET_UNIT);
 }
 
+TEST(wc3_spell, frost_nova_spawns_target_effect_on_primary_victim) {
+    static char const ability_slk[] =
+        "ID;PWXL;N;EBB;Y2;X7\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"DataA1\"\n"
+        "C;Y1;X4;K\"DataB1\"\nC;Y1;X5;K\"Area1\"\nC;Y1;X6;K\"BuffID1\"\nC;Y1;X7;K\"HeroDur1\"\n"
+        "C;Y2;X1;K\"AUfn\"\nC;Y2;X2;K\"AUfn\"\nC;Y2;X3;K\"10\"\n"
+        "C;Y2;X4;K\"20\"\nC;Y2;X5;K\"300\"\nC;Y2;X6;K\"Bfro\"\nC;Y2;X7;K\"5\"\nE\n";
+    static char const buff_slk[] =
+        "ID;PWXL;N;EBB;Y2;X3\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"TargetArt\"\n"
+        "C;Y2;X1;K\"Bfro\"\nC;Y2;X2;K\"Bfro\"\n"
+        "C;Y2;X3;K\"TestUI\\\\Models\\\\anim_pulse.mdx\"\nE\n";
+    slkTestData_t *ability_rows = parse_slk_string(ability_slk), *old_ability = G_SetSLKRows("AbilityData", ability_rows);
+    slkTestData_t *buff_rows = parse_slk_string(buff_slk), *old_buff = G_SetSLKRows("AbilityBuffData", buff_rows);
+    edict_t *caster = make_hero(MAKEFOURCC('U','n','e','c'), 500, 200, 0, 0);
+    edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+    edict_t *nearby = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 72, 0);
+    uint32_t target_effects = 0;
+
+    caster->s.player = 0;
+    target->s.player = nearby->s.player = 1;
+    target->svflags |= SVF_MONSTER; nearby->svflags |= SVF_MONSTER;
+    target->health.value = target->health.max_value = 100;
+    nearby->health.value = nearby->health.max_value = 100;
+    nearby->s.origin2.x = 100;
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+    memset(level.alliances, 0, sizeof(level.alliances));
+
+    T_ASSERT(test_execute_code(caster, "AUfn", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target)));
+    T_FEQ(target->health.value, 70.0f, 0.01f);
+    T_FEQ(nearby->health.value, 90.0f, 0.01f);
+    FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','f','r','o') && effect->goalentity) {
+        T_ASSERT(effect->s.model > 0);
+        target_effects++;
+    }
+    T_EQ(target_effects, 2);
+    T_ASSERT(unit_findstatus(target, MAKEFOURCC('B','f','r','o'))->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+    T_ASSERT(unit_findstatus(nearby, MAKEFOURCC('B','f','r','o'))->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+    T_EQ(G_UnitStatusLevel(target, MAKEFOURCC('B','f','r','o')), 1);
+    T_EQ(G_UnitStatusLevel(nearby, MAKEFOURCC('B','f','r','o')), 1);
+
+    G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+    G_SetSLKRows("AbilityBuffData", old_buff); free_slk_rows(buff_rows);
+}
+
 TEST(wc3_spell, entangling_roots_visual_resolves_from_buff_target_art) {
 	cstring_t art = G_AbilityEffectArt(MAKEFOURCC('B', 'E', 'e', 'r'), WC3_EFFECT_TARGET, 0);
 
