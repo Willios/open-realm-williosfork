@@ -57,9 +57,12 @@ BZ_ABILITY_PROC(CAbilitySlowPoison) { return CAbilityPassive(ent, msg, call); }
  * Bspo buff which the movement and attack-speed hooks read each frame. */
 void S_SlowPoisonOnHit(edict_t *attacker, edict_t *target) {
     uint32_t level = G_UnitAbilityLevel(attacker, ID_SLOW_POISON);
-    if (!level || !target || !S_SpellIsEnemy(attacker, target)) return;
+    heroabilitystatus_t *status;
+    if (!level || !target || !S_SpellAllowsTarget(ID_SLOW_POISON, attacker, target)) return;
     /* DataA DPS / BuffID Bssd are leftover; this slice only applies Bspo slow. */
-    S_SpellApplyTimedStatus(target, "Bspo", level, S_SpellResistantDuration(ID_SLOW_POISON, level, target));
+    status = S_SpellApplyTimedStatusFromAbility(target, ID_SLOW_POISON, level, "Bspo",
+                                               S_SpellResistantDuration(ID_SLOW_POISON, level, target));
+    if (status) unit_status_enabletargetart(target, status, "origin");
 }
 
 /* DataB/DataC are fractions (stock 0.5 / 0.25), same %>% convention as Bloodlust. */

@@ -360,6 +360,8 @@ cstring_t G_AbilityEffectArt(uint32_t ability_id, wc3EffectType_t type, uint32_t
         if (type == WC3_EFFECT_TARGET &&
             (ability_id == MAKEFOURCC('B','U','h','f') || ability_id == MAKEFOURCC('B','u','h','f')))
             return "Abilities\\Spells\\Undead\\UnholyFrenzy\\UnholyFrenzyTarget.mdx";
+        if (type == WC3_EFFECT_TARGET && ability_id == MAKEFOURCC('B','s','p','o'))
+            return "Abilities\\Weapons\\PoisonSting\\PoisonStingTarget.mdl";
         return NULL;
     }
 
@@ -392,6 +394,8 @@ cstring_t G_AbilityBuffArt(uint32_t buff_id) {
      * icon available when the passive aura uses its compatibility BuffID. */
     if (buff_id == MAKEFOURCC('B','E','a','r'))
         return "ReplaceableTextures\\CommandButtons\\BTNTrueshotAura.blp";
+    if (buff_id == MAKEFOURCC('B','s','p','o'))
+        return "ReplaceableTextures\\CommandButtons\\BTNSlowPoison.blp";
     return NULL;
 }
 

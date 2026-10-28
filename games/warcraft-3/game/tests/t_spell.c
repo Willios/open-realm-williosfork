@@ -7098,6 +7098,100 @@ TEST(wc3_spell, slow_poison_on_hit_applies_buff_and_returns_authored_reduction) 
 	T_ASSERT(S_UnitHasStatus(target, MAKEFOURCC('B','s','p','o')));
 	T_FEQ(S_SlowPoisonMoveReduction(target), 0.25f, 0.001f);
 	T_FEQ(S_SlowPoisonAttackReduction(target), 0.15f, 0.001f);
+	{
+		bool target_art = false;
+		FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','s','p','o') &&
+		              effect->goalentity == target) target_art = true;
+		T_ASSERT(target_art);
+	}
+	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
+TEST(wc3_spell, dryad_landed_attack_applies_slow_poison_status) {
+	const char slk[] =
+		"ID;PWXL;N;EBB;Y2;X7\n"
+		"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"Dur1\"\n"
+		"C;Y1;X4;K\"DataA1\"\nC;Y1;X5;K\"DataB1\"\nC;Y1;X6;K\"DataC1\"\nC;Y1;X7;K\"targs\"\n"
+		"C;Y2;X1;K\"Aspo\"\nC;Y2;X2;K\"Aspo\"\nC;Y2;X3;K\"10\"\n"
+		"C;Y2;X4;K\"5\"\nC;Y2;X5;K\"0.25\"\nC;Y2;X6;K\"0.15\"\nC;Y2;X7;K\"air,ground,organic\"\nE\n";
+	static UnitAbilities_t const dryad_abilities = { .abilList = "Aadm,Amim,Aspo,Aien,Ault" };
+	slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+	edict_t *attacker, *target, *missile, *ally, *allied;
+
+	reset_entities(); setup_test_world();
+	attacker = alloc_test_unit(MAKEFOURCC('e','d','r','y'), 0, 0);
+	attacker->data.UnitAbilities = &dryad_abilities;
+	attacker->unit_state->attack1.type = ATK_PIERCE;
+	attacker->unit_state->attack1.weapon = WPN_MISSILE;
+	target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+	target->health.value = target->health.max_value = 200.0f;
+	target->targtype = TARG_GROUND;
+	attacker->s.player = 0; target->s.player = 1;
+	attacker->svflags |= SVF_MONSTER; target->svflags |= SVF_MONSTER;
+	((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+	((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+	((mapInfo_t *)level.mapinfo)->players[2].playerType = kPlayerTypeHuman;
+	memset(level.alliances, 0, sizeof(level.alliances));
+	level.alliances[0][2] = 1 << ALLIANCE_PASSIVE;
+	missile = G_Spawn();
+	missile->owner = attacker;
+	missile->goalentity = target;
+	missile->s.origin = target->s.origin;
+	missile->velocity = 1.0f;
+	missile->damage = 10;
+	G_InitMissile(missile);
+	missile->missile->attack_type = ATK_PIERCE;
+	missile->missile->owner_spawn_time = attacker->spawn_time;
+
+	T_ASSERT(!S_UnitHasStatus(target, MAKEFOURCC('B','s','p','o')));
+	SV_Physics_Toss(missile);
+	T_ASSERT(S_UnitHasStatus(target, MAKEFOURCC('B','s','p','o')));
+	T_STREQ(G_AbilityBuffArt(MAKEFOURCC('B','s','p','o')),
+	        "ReplaceableTextures\\CommandButtons\\BTNSlowPoison.blp");
+	T_STREQ(G_AbilityEffectArt(MAKEFOURCC('B','s','p','o'), WC3_EFFECT_TARGET, 0),
+	        "TestUI\\Models\\anim_pulse.mdx");
+	T_FEQ(S_SlowPoisonMoveReduction(target), 0.25f, 0.001f);
+	T_FEQ(S_SlowPoisonAttackReduction(target), 0.15f, 0.001f);
+	{
+		bool target_art = false;
+		FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','s','p','o') &&
+		              effect->goalentity == target) target_art = true;
+		T_ASSERT(target_art);
+	}
+	ally = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96, 0);
+	ally->health.value = ally->health.max_value = 200.0f;
+	ally->targtype = TARG_GROUND;
+	ally->s.player = attacker->s.player;
+	ally->svflags |= SVF_MONSTER;
+	missile = G_Spawn();
+	missile->owner = attacker;
+	missile->goalentity = ally;
+	missile->s.origin = ally->s.origin;
+	missile->velocity = 1.0f;
+	missile->damage = 10;
+	G_InitMissile(missile);
+	missile->missile->attack_type = ATK_PIERCE;
+	missile->missile->owner_spawn_time = attacker->spawn_time;
+	T_ASSERT(!S_UnitHasStatus(ally, MAKEFOURCC('B','s','p','o')));
+	SV_Physics_Toss(missile);
+	T_ASSERT(S_UnitHasStatus(ally, MAKEFOURCC('B','s','p','o')));
+	allied = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 128, 0);
+	allied->health.value = allied->health.max_value = 200.0f;
+	allied->targtype = TARG_GROUND;
+	allied->s.player = 2;
+	allied->svflags |= SVF_MONSTER;
+	missile = G_Spawn();
+	missile->owner = attacker;
+	missile->goalentity = allied;
+	missile->s.origin = allied->s.origin;
+	missile->velocity = 1.0f;
+	missile->damage = 10;
+	G_InitMissile(missile);
+	missile->missile->attack_type = ATK_PIERCE;
+	missile->missile->owner_spawn_time = attacker->spawn_time;
+	T_ASSERT(!S_UnitHasStatus(allied, MAKEFOURCC('B','s','p','o')));
+	SV_Physics_Toss(missile);
+	T_ASSERT(S_UnitHasStatus(allied, MAKEFOURCC('B','s','p','o')));
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
