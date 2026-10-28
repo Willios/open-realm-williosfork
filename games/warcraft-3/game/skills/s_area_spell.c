@@ -559,14 +559,25 @@ BZ_SIMPLE_SPELL_PROC(AbilityFrostNova) {
 void tranquility_think(edict_t *ent) {
     uint32_t now = G_Time();
     edict_t *caster = ent->owner;
+    static uint32_t const heal_art_code = MAKEFOURCC('A','E','t','r');
 
-    if (!S_SpellChannelActive(ent)) { S_SpellEndChannel(ent); return; }
+    if (!S_SpellChannelActive(ent)) {
+        S_SpellEndAreaPresentation(ent);
+        S_SpellEndChannel(ent);
+        return;
+    }
     if (ent->freetime && now < ent->freetime) return;
     FILTER_EDICTS(target, target->inuse && S_SpellIsAliveTarget(target) &&
                   S_SpellIsFriend(caster, target) &&
-                  Vector2_distance(&target->s.origin2, &ent->s.origin2) <= ent->collision)
+                  Vector2_distance(&target->s.origin2, &ent->s.origin2) <= ent->collision) {
+        edict_t *effect;
         S_SpellHeal(target, ent->damage);
+        effect = G_SpawnAbilityEffectTarget(heal_art_code, WC3_EFFECT_TARGET, 0, target, NULL, true);
+        if (!effect)
+            G_SpawnAbilityEffectTarget(heal_art_code, WC3_EFFECT_EFFECT, 0, target, NULL, true);
+    }
     if (ent->spawn_time && now >= ent->spawn_time) {
+        S_SpellEndAreaPresentation(ent);
         S_SpellEndChannel(ent);
         return;
     }
@@ -586,6 +597,7 @@ BZ_SIMPLE_SPELL_PROC(AbilityTranquility) {
     thinker->damage = (uint32_t)MAX(1.0f, S_SpellData(spell->code, level, 1));
     thinker->velocity = MAX(0.1f, S_SpellData(spell->code, level, 2));
     thinker->spawn_time = G_Time() + (uint32_t)(MAX(0.1f, S_SpellDuration(spell->code, level, true)) * 1000.0f);
+    S_SpellBeginAreaPresentation(thinker, spell->code, level, &thinker->s.origin2);
     thinker->think = tranquility_think;
     tranquility_think(thinker);
 }
