@@ -1232,22 +1232,66 @@ float S_TrueshotAttackBonus(edict_t *unit) {
 
 int S_SearingArrowDamage(edict_t *attacker, int damage) {
     uint32_t code = ID_SEARING_ARROWS, level = 0;
-    if (!attacker) return damage;
+    heroabilitystatus_t *manual = NULL;
+    if (!attacker || !attacker->unit_state) return damage;
     FOR_LOOP(i, attacker->unit_state ? MAX_UNIT_STATUSES : 0) {
-        heroabilitystatus_t const *st = attacker->unit_state->statuses + i;
+        heroabilitystatus_t *st = attacker->unit_state->statuses + i;
         if (!st->level || (st->timestamp && st->timestamp <= G_Time())) continue;
-        if (st->code == ID_SEARING_ARROWS || G_AbilityCode(st->code) == ID_SEARING_ARROWS) {
-            code = st->code; level = st->level; break;
+        if ((st->buff_flags & WC3_STATUS_BUFF_ONE_SHOT_ATTACK) &&
+            G_AbilityCode(st->source_ability ? st->source_ability : st->code) == ID_SEARING_ARROWS) {
+            manual = st;
+            code = st->source_ability ? st->source_ability : st->code;
+            level = st->rank ? st->rank : st->level;
+            break;
         }
+    }
+    if (!level && attacker->unit_state && attacker->unit_state->autocast &&
+        G_AbilityCode(attacker->unit_state->autocast) == ID_SEARING_ARROWS &&
+        G_UnitAutocastIsOn(attacker, attacker->unit_state->autocast)) {
+        code = attacker->unit_state->autocast;
+        level = G_UnitAbilityLevel(attacker, code);
     }
     if (!level) { level = G_UnitStatusLevel(attacker, ID_POISON_ARROWS); code = ID_POISON_ARROWS; }
     if (!level || attacker->unit_state->attack1.weapon != WPN_MISSILE) return damage;
-    /* Searing Arrows spends its authored mana cost per launched attack. The
-     * creep alias shares the same ability data and proc; ordinary Poison
-     * Arrows retain their independent, free bonus. */
-    if (G_AbilityCode(code) == ID_SEARING_ARROWS && !S_SpellSpendMana(attacker, code, level))
-        return damage;
+    /* Autocast and a manually targeted one-shot use the same authored damage
+     * and mana cost. With insufficient mana the weapon still fires normally. */
+    if (G_AbilityCode(code) == ID_SEARING_ARROWS) {
+        bool const paid = S_SpellSpendMana(attacker, code, level);
+        if (manual) unit_removestatus(attacker, manual, STATUS_REMOVE_SCRIPT);
+        if (!paid) return damage;
+    }
     return damage + (int)S_SpellData(code, level, 1);
+}
+
+/* Authored AbilityFunc MissileArt normally supplies this value. Keep the
+ * stock Searing Arrow missile available for data sets that omit that field. */
+cstring_t S_SearingArrowsMissileArt(edict_t *attacker) {
+    uint32_t code = 0, level = 0;
+    if (!attacker || !attacker->unit_state || attacker->unit_state->attack1.weapon != WPN_MISSILE)
+        return NULL;
+    FOR_LOOP(i, MAX_UNIT_STATUSES) {
+        heroabilitystatus_t const *status = attacker->unit_state->statuses + i;
+        if (!status->level || !(status->buff_flags & WC3_STATUS_BUFF_ONE_SHOT_ATTACK) ||
+            (status->timestamp && status->timestamp <= G_Time())) continue;
+        code = status->source_ability ? status->source_ability : status->code;
+        if (G_AbilityCode(code) == ID_SEARING_ARROWS) {
+            level = status->rank ? status->rank : status->level;
+            break;
+        }
+        code = 0;
+    }
+    if (!code && attacker->unit_state->autocast &&
+        G_AbilityCode(attacker->unit_state->autocast) == ID_SEARING_ARROWS &&
+        G_UnitAutocastIsOn(attacker, attacker->unit_state->autocast)) {
+        code = attacker->unit_state->autocast;
+        level = G_UnitAbilityLevel(attacker, code);
+    }
+    if (!code || !level || attacker->mana.value < S_SpellNumber(code, ABILITY_NUMBER_COST, level))
+        return NULL;
+    {
+        cstring_t art = G_AbilityEffectArt(code, WC3_EFFECT_MISSILE, 0);
+        return art ? art : "Abilities\\Weapons\\SearingArrow\\Missile.mdl";
+    }
 }
 
 static uint32_t mana_shield_buff(uint32_t code, uint32_t level) {

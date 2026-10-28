@@ -679,13 +679,14 @@ static void throw_missile(edict_t *ent) {
     unitAttack_t const *atk = ACTIVE_ATTACK(ent);
     vec3_t origin = Matrix4_multiply_vector3(&matrix, &atk->origin);
     vec2_t impact = other->s.origin2;
+    cstring_t missile_art = S_SearingArrowsMissileArt(ent);
     attack_set_backswing_deadline(ent);
     fire_rocket(ent, &(rocketDesc_t) {
         .start = origin,
         .target = other,
         .fixed_target = atk->weapon == WPN_ARTILLERY ? &impact : NULL,
         .speed = atk->projectile.speed,
-        .model = atk->projectile.model,
+        .model = missile_art ? G_RegisterModel(missile_art) : atk->projectile.model,
         .damage = damage,
         .attack_type = atk->type,
         .attack = atk,
@@ -981,6 +982,28 @@ bool S_OrderAttack(edict_t *self, edict_t *target) {
     order_attack(self, target);
     self->orders->explicit_allied_attack = G_PlayerTreatsPlayerAsAlly(self->s.player, target->s.player);
     return true;
+}
+
+/* A manually targeted attack modifier arms exactly one normal Attack order;
+ * mana is charged later when its ranged weapon reaches the damage point. */
+bool S_SearingArrowsIssueOrder(edict_t *attacker, edict_t *target, uint32_t ability) {
+    status_application_t app;
+    heroabilitystatus_t *status;
+    uint32_t level;
+    if (!attacker || !target || G_AbilityCode(ability) != MAKEFOURCC('A','H','f','a') ||
+        !G_UnitAbilityLevel(attacker, ability) || !S_AttackCanTarget(attacker, target) ||
+        !attacker->unit_state || attacker->unit_state->attack1.weapon != WPN_MISSILE) return false;
+    level = G_UnitAbilityLevel(attacker, ability);
+    app = (status_application_t){
+        .buff = GetClassName(ability), .level = level, .source_ability = ability,
+        .rank = level, .buff_flags = WC3_STATUS_BUFF_ONE_SHOT_ATTACK
+    };
+    status = unit_applystatus(attacker, &app);
+    if (!status) return false;
+    status->buff_flags |= WC3_STATUS_BUFF_ONE_SHOT_ATTACK;
+    if (S_OrderAttack(attacker, target)) return true;
+    unit_removestatus(attacker, status, STATUS_REMOVE_SCRIPT);
+    return false;
 }
 
 static float attack_speed_divisor(edict_t *self) {

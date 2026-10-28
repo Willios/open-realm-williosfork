@@ -171,7 +171,7 @@ TEST(wc3_spell, creep_mana_shield_uses_alias_data_and_orders) {
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
-/* Toggle stores ACsa; bonus damage must read that alias, not AHfa. */
+/* Autocast stores ACsa; bonus damage must read that alias, not AHfa. */
 TEST(wc3_spell, creep_searing_arrows_uses_alias_bonus_damage) {
     const char slk[] =
         "ID;PWXL;N;EBB;Y3;X3\n"
@@ -188,11 +188,14 @@ TEST(wc3_spell, creep_searing_arrows_uses_alias_bonus_damage) {
     attacker->data.UnitAbilities = &abilities;
     attacker->unit_state->attack1.weapon = WPN_MISSILE;
     attacker->svflags |= SVF_MONSTER;
-    T_ASSERT(S_CastNoTargetSpell(attacker, BZ_ACSA));
-    T_EQ(G_UnitStatusLevel(attacker, BZ_ACSA), 1);
-    T_EQ(G_UnitStatusLevel(attacker, BZ_AHFA), 0);
+    T_ASSERT(G_SetUnitAutocast(attacker, BZ_ACSA, true));
+    T_ASSERT(G_UnitAutocastIsOn(attacker, BZ_ACSA));
+    T_EQ(G_UnitStatusLevel(attacker, BZ_ACSA), 0);
     T_EQ(S_SearingArrowDamage(attacker, 20), 33);
     attacker->unit_state->attack1.weapon = WPN_NORMAL;
+    T_EQ(S_SearingArrowDamage(attacker, 20), 20);
+    attacker->unit_state->attack1.weapon = WPN_MISSILE;
+    T_ASSERT(G_SetUnitAutocast(attacker, BZ_ACSA, false));
     T_EQ(S_SearingArrowDamage(attacker, 20), 20);
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }

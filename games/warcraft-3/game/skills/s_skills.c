@@ -246,8 +246,8 @@ static ability_t abilitylist[] = {
     { "AEfn", CAbilityForceOfNature, AB_SPELL, SPELL_TARGET_POINT },  /* Force of Nature */
     { "AEah", CAbilityCreepAura, AB_PASSIVE },  /* Thorns Aura */
     { "AEtq", CAbilityTranquility, AB_SPELL | AB_CHANNEL },  /* Tranquility */
-    { "AHfa", CAbilityFlamingArrows, AB_SPELL | AB_TOGGLE | AB_AUTOCAST },  /* Searing Arrows */
-    { "ACsa", CAbilityFlamingArrows, AB_SPELL | AB_TOGGLE | AB_AUTOCAST },  /* Searing Arrows (creep) */
+    { "AHfa", CAbilityFlamingArrows, AB_SPELL | AB_TOGGLE | AB_AUTOCAST, SPELL_TARGET_UNIT },  /* Searing Arrows */
+    { "ACsa", CAbilityFlamingArrows, AB_SPELL | AB_TOGGLE | AB_AUTOCAST, SPELL_TARGET_UNIT },  /* Searing Arrows (creep) */
     { "AEar", CAbilityCreepAura, AB_PASSIVE },  /* Trueshot Aura */
     { "AEsf", CAbilityStarfall, AB_SPELL | AB_CHANNEL },  /* Starfall */
     { "Aren", CAbilityRepairGeneric, AB_COMMAND | AB_AUTOCAST },  /* Renew */

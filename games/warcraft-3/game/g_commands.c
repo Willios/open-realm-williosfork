@@ -1257,7 +1257,9 @@ bool G_SelectedSubgroupAutocastAllOn(gameClient_t *client, edict_t *main, uint32
     if (!client || !main || !code) return false;
     FOR_CONTROLLABLE_SELECTED_UNITS(client, ent) {
         if (ent->class_id != main->class_id) continue;
-        if (!G_ActorHasSkill(ent, GetClassName(code))) continue;
+        /* Hero abilities live in the learned-rank table rather than
+         * UnitAbilities, but autocast buttons still need to toggle them. */
+        if (!G_UnitAbilityLevel(ent, code)) continue;
         any = true;
         if (!G_UnitAutocastIsOn(ent, code)) return false;
     }
@@ -1278,7 +1280,7 @@ CLIENTCOMMAND(Autocast) {
     if (!classname || strlen(classname) != 4) return;
     main = G_GetMainSelectedUnit(client);
     ability = FindAbilityForCommand(classname);
-    if (!G_UnitCanControl(client, main) || !G_ActorHasSkill(main, classname) ||
+    if (!G_UnitCanControl(client, main) || !G_UnitAbilityLevel(main, FS_SLKKey(classname)) ||
         !ability || !(ability->flags & AB_AUTOCAST)) {
 #ifdef WC3_DEBUG_AUTOCAST
         if (G_AutocastDebugLevel() >= 1) {
@@ -1287,7 +1289,7 @@ CLIENTCOMMAND(Autocast) {
                     main && g_edicts ? (long)(main - g_edicts) : -1L,
                     classname,
                     G_UnitCanControl(client, main) ? 1 : 0,
-                    main && G_ActorHasSkill(main, classname) ? 1 : 0,
+                    main && G_UnitAbilityLevel(main, FS_SLKKey(classname)) ? 1 : 0,
                     (void *)ability,
                     ability && (ability->flags & AB_AUTOCAST) ? 1 : 0,
                     ability && (ability->flags & AB_AUTOCAST) ? 1 : 0);
@@ -1302,7 +1304,7 @@ CLIENTCOMMAND(Autocast) {
          * subgroup. Other selected types keep their own autocast state even if
          * custom object data gives them the same ability rawcode. */
         if (ent->class_id != main->class_id) continue;
-        if (!G_ActorHasSkill(ent, classname)) continue;
+        if (!G_UnitAbilityLevel(ent, FS_SLKKey(classname))) continue;
         if (G_SetUnitAutocast(ent, FS_SLKKey(classname), enabled)) {
             changed = true;
             /* The toggle itself must not interrupt active work or movement, but

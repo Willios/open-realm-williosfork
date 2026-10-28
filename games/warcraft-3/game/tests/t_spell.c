@@ -4338,25 +4338,78 @@ TEST(wc3_spell, searing_arrows_adds_authored_damage_and_spends_mana_per_attack) 
         "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"Cost1\"\nC;Y1;X4;K\"DataA1\"\n"
         "C;Y2;X1;K\"AHfa\"\nC;Y2;X2;K\"AHfa\"\nC;Y2;X3;K\"7\"\nC;Y2;X4;K\"20\"\nE\n";
     slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
-    edict_t *attacker = make_hero(MAKEFOURCC('n','n','s','w'), 100, 100, 0, 0);
-    edict_t *target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+    edict_t *attacker;
+    edict_t *target;
+    edict_t *clent = &g_edicts[0];
+    gameClient_t *client = &game.clients[0];
+    /* AHfa is a learned Hero ability, so it is owned through hero ranks and
+     * absent from the unit's ordinary UnitAbilities list. */
+    UnitAbilities_t abilities = { .abilList = "" };
+    char target_number[16];
+    cstring_t button[] = { "button", "AHfa" };
+    cstring_t focus_target[] = { "focus", target_number };
 
+    reset_entities(); setup_test_world();
+    /* Allocate actors after installing the world fixture. */
+    attacker = make_hero(MAKEFOURCC('n','n','s','w'), 100, 100, 0, 0);
+    target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64, 0);
+    clent = &g_edicts[0];
+    client = &game.clients[0];
+    clent->client = client;
+    client->ps.number = 0;
+    attacker->data.UnitAbilities = &abilities;
+    attacker->unit_state->ranks[0] = MAKE(heroability_t,
+        .code = MAKEFOURCC('A','H','f','a'), .level = 1);
     attacker->s.player = 0;
     attacker->mana.value = attacker->mana.max_value = 30;
     attacker->unit_state->attack1.weapon = WPN_MISSILE;
     attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.targetsAllowed = G_TargetFlagForType(TARG_GROUND);
     target->s.player = 1;
     target->svflags |= SVF_MONSTER;
     target->targtype = TARG_GROUND;
     target->health.value = target->health.max_value = 1000;
-    unit_addstatus(attacker, "AHfa", 1);
 
+    /* Clicking AHfa and choosing a target issues an attack order. The shot is
+     * paid for at the attack damage point, and manual targeting does not turn
+     * ongoing autocast on. */
+    G_SelectEntity(client, attacker);
+    G_SelectEntity(client, target);
+    T_ASSERT(G_FocusSelectedUnit(client, attacker));
+    snprintf(target_number, sizeof(target_number), "%u", (unsigned)target->s.number);
+    G_ClientCommand(clent, 2, button);
+    T_NOT_NULL(client->menu.on_entity_selected);
+    G_ClientCommand(clent, 2, focus_target);
+    T_NULL(client->menu.on_entity_selected);
+    T_ASSERT(attacker->goalentity == target);
+    T_ASSERT(!G_UnitAutocastIsOn(attacker, MAKEFOURCC('A','H','f','a')));
+    T_STREQ(S_SearingArrowsMissileArt(attacker), "Abilities\\Weapons\\SearingArrow\\Missile.mdl");
+    T_FEQ(attacker->mana.value, 30.0f, 0.001f);
     S_ResolveAttackHit(attacker, target, 100);
     T_FEQ(attacker->mana.value, 23.0f, 0.001f);
     T_FEQ(target->health.value, 880.0f, 0.001f);
+    T_NULL(S_SearingArrowsMissileArt(attacker));
     S_ResolveAttackHit(attacker, target, 100);
-    T_FEQ(attacker->mana.value, 16.0f, 0.001f);
-    T_FEQ(target->health.value, 760.0f, 0.001f);
+    T_FEQ(attacker->mana.value, 23.0f, 0.001f);
+    T_FEQ(target->health.value, 780.0f, 0.001f);
+
+    /* Right-click autocast applies the modifier on each shot while mana is
+     * available; with no mana, the same target still takes a normal attack. */
+    G_ClientCommand(clent, 2, (cstring_t[]){ "autocast", "AHfa" });
+    T_ASSERT(G_UnitAutocastIsOn(attacker, MAKEFOURCC('A','H','f','a')));
+    G_ClientCommand(clent, 2, (cstring_t[]){ "autocast", "AHfa" });
+    T_ASSERT(!G_UnitAutocastIsOn(attacker, MAKEFOURCC('A','H','f','a')));
+    G_ClientCommand(clent, 2, (cstring_t[]){ "autocast", "AHfa" });
+    T_ASSERT(G_UnitAutocastIsOn(attacker, MAKEFOURCC('A','H','f','a')));
+    attacker->mana.value = 7.0f;
+    T_STREQ(S_SearingArrowsMissileArt(attacker), "Abilities\\Weapons\\SearingArrow\\Missile.mdl");
+    S_ResolveAttackHit(attacker, target, 100);
+    T_FEQ(attacker->mana.value, 0.0f, 0.001f);
+    T_FEQ(target->health.value, 660.0f, 0.001f);
+    S_ResolveAttackHit(attacker, target, 100);
+    T_FEQ(attacker->mana.value, 0.0f, 0.001f);
+    T_FEQ(target->health.value, 560.0f, 0.001f);
+    T_NULL(S_SearingArrowsMissileArt(attacker));
 
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);

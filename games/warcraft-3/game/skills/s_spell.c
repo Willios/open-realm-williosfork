@@ -1047,6 +1047,14 @@ static bool spell_unit_target_selected(edict_t *clent, edict_t *target) {
     spellTarget_t st = { .type = SPELL_TARGET_UNIT, .entity = target };
 
     if (!spell || !spell_item_source_valid(caster, source_item, source_item_spawn_time)) return false;
+    /* Searing Arrows is an attack modifier, not a unit-target spell cast. Its
+     * manual target order arms one projectile and spends mana at weapon
+     * damage point, so it must bypass cast-time mana/cooldown commit. */
+    if (spell->proc == CAbilityFlamingArrows) {
+        bool const accepted = S_SearingArrowsIssueOrder(caster, target, code);
+        if (accepted) spell_order_accepted(caster, spell);
+        return accepted;
+    }
     /* Range is intentionally excluded here. An otherwise valid out-of-range
      * target is an accepted order; the caster must walk into cast range. */
     if (!spell_validate(clent, caster, code, level, target, 0.0f)) return false;
@@ -1821,7 +1829,7 @@ void spell_cmd(edict_t *clent) {
     }
 
     /* Toggle abilities bypass the normal pipeline. */
-    if (spell->flags & AB_TOGGLE) {
+    if ((spell->flags & AB_TOGGLE) && spell->proc != CAbilityFlamingArrows) {
         spellTarget_t target = { .type = SPELL_TARGET_NONE };
         spell_message(caster, A_EXECUTE, &item, &target);
         Get_Commands_f(clent);

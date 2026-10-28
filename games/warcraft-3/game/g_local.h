@@ -1586,7 +1586,9 @@ typedef enum {
     WC3_STATUS_BUFF_UNDISPELLABLE = 1u << 4,
     WC3_STATUS_BUFF_TRANSFERABLE = 1u << 5,
     /* Opt-in persistent TargetArt owned by the status lifecycle, not the caster. */
-    WC3_STATUS_BUFF_TARGET_ART = 1u << 6
+    WC3_STATUS_BUFF_TARGET_ART = 1u << 6,
+    /* Runtime-only armed manual attack modifier; consumed by the next ranged shot. */
+    WC3_STATUS_BUFF_ONE_SHOT_ATTACK = 1u << 7
 } wc3_status_buff_flag_t;
 
 /* Active buff/debuff instance retaining source identity, timing, modifiers and owning procedure. */

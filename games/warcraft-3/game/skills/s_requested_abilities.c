@@ -1067,6 +1067,11 @@ BZ_SIMPLE_SPELL_PROC(AbilityAcidBomb) {
     thinker->spawn_time = G_Time() + (uint32_t)(S_SpellDuration(spell->code, level, false) * 1000.0f); thinker->think = acid_bomb_think;
 }
 
-BZ_SIMPLE_SPELL_PROC(AbilityFlamingArrows) {
-    toggle_status_execute(caster, st, spell);
+BZ_ABILITY_PROC(CAbilityFlamingArrows) {
+    uint32_t code = call && call->item ? call->item->code : 0;
+    switch (msg) {
+    case A_AUTOCAST_ON: return ent && ent->unit_state && ent->unit_state->autocast == code;
+    case A_AUTOCAST_SET: return true;
+    default: return CAbilitySimpleSpell(ent, msg, call);
+    }
 }
