@@ -134,6 +134,43 @@ static intptr_t test_execute_code(edict_t *ent, cstring_t code, spellTarget_t ta
     return test_ability_message(ent, A_EXECUTE, &item, &target);
 }
 
+TEST(wc3_spell, mana_burn_drains_mana_and_deals_equal_health_damage_at_each_rank) {
+    char const slk[] =
+        "ID;PWXL;N;EBB;Y2;X6\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+        "C;Y1;X4;K\"DataA1\"\nC;Y1;X5;K\"DataA2\"\nC;Y1;X6;K\"DataA3\"\n"
+        "C;Y2;X1;K\"AEmb\"\nC;Y2;X2;K\"AEmb\"\nC;Y2;X3;K\"3\"\n"
+        "C;Y2;X4;K\"50\"\nC;Y2;X5;K\"100\"\nC;Y2;X6;K\"150\"\nE\n";
+    slkTestData_t *rows = parse_slk_string(slk), *old;
+    edict_t *caster, *target;
+    uint32_t rank;
+    float const amounts[] = { 50.0f, 100.0f, 150.0f };
+
+    old = G_SetSLKRows("AbilityData", rows);
+    reset_entities();
+    setup_test_world();
+    caster = make_hero(MAKEFOURCC('E','d','e','m'), 500, 0, 0, 0);
+    caster->s.player = 0;
+    memset(level.alliances, 0, sizeof(level.alliances));
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+
+    for (rank = 1; rank <= 3; rank++) {
+        caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','m','b'), .level = rank);
+        target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 100, 0);
+        target->s.player = 1;
+        target->svflags |= SVF_MONSTER;
+        target->health.value = target->health.max_value = 500.0f;
+        target->mana.value = target->mana.max_value = 300.0f;
+        T_ASSERT(test_execute_code(caster, "AEmb", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = target)));
+        T_FEQ(target->mana.value, 300.0f - amounts[rank - 1], 0.001f);
+        T_FEQ(target->health.value, 500.0f - amounts[rank - 1], 0.001f);
+    }
+
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
 TEST(wc3_spell, dark_ritual_full_mana_command_shows_error_without_targeting) {
     static UnitAbilities_t const abilities = { .abilList = "AUdr" };
     edict_t *caster, *clent;

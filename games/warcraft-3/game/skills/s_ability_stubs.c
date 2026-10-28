@@ -155,6 +155,7 @@ BZ_SIMPLE_SPELL_PROC(AbilityManaBurn) {
     float amount = MIN(target->mana.value, S_SpellData(spell->code, level, 1));
 
     target->mana.value -= amount;
+    if (amount > 0.0f) S_SpellDamage(target, caster, (int)amount);
 }
 
 /* Name=Dark Ritual
