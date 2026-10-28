@@ -174,6 +174,7 @@ static bool unit_has_attack(edict_t const *self) {
 #define AI_ACQUIRE_INTERVAL 300 /* ms */
 
 bool G_ShouldAcquireThisFrame(edict_t const *self) {
+    if (S_SpellIsChanneling((edict_t *)self)) return false;
     uint32_t const stagger = (uint32_t)(self - g_edicts) % AI_ACQUIRE_INTERVAL;
     return ((level.time + stagger) % AI_ACQUIRE_INTERVAL) < (uint32_t)FRAMETIME;
 }

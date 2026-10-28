@@ -710,7 +710,7 @@ void spell_run_frame(edict_t *ent) {
         return;
 
     /* Stun or death interrupts channel. */
-    if (unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED) || M_IsDead(ent)) {
+    if (unit_hasstatusstate(ent, WC3_STATUS_STATE_STUNNED) || S_UnitIsSilenced(ent) || M_IsDead(ent)) {
         S_SpellCancelChannel(ent);
         return;
     }

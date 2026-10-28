@@ -975,6 +975,7 @@ bool S_OrderAttack(edict_t *self, edict_t *target) {
     if (!self || M_IsDead(self) || S_UnitIsCycloned(self) || S_GoldMineWorkerIsInside(self) ||
         !S_AttackCanTarget(self, target))
         return false;
+    S_SpellCancelChannel(self);
     self->orders->attackmove_waypoint = NULL;
     self->orders->patrol_a = self->orders->patrol_b = self->orders->patrol_target = NULL;
     self->orders->follow_target = NULL;
@@ -1270,6 +1271,7 @@ static umove_t attackmove_move_walk = { "walk", ai_attackmove_walk, NULL, CAbili
 void order_attackmove(edict_t *self, edict_t *waypoint) {
     if (S_GoldMineWorkerIsInside(self))
         return;
+    S_SpellCancelChannel(self);
     self->orders->attackmove_waypoint = waypoint;
     self->orders->patrol_a = NULL;
     self->orders->patrol_b = NULL;

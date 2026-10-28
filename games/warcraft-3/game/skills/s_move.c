@@ -1750,6 +1750,7 @@ void order_follow(edict_t *self, edict_t *target) {
         !follow_target_is_valid(self, target)) {
         return;
     }
+    S_SpellCancelChannel(self);
     self->orders->attackmove_waypoint = NULL;
     self->orders->patrol_a = NULL;
     self->orders->patrol_b = NULL;
@@ -1942,6 +1943,7 @@ void order_move(edict_t *self, edict_t *target) {
     if ((self->aiflags & AI_IMMOBILE) || S_UnitIsCycloned(self) || unit_hasstatusstate(self, WC3_STATUS_STATE_ROOTED)
         || S_PurgeIsImmobilized(self))
         return;
+    S_SpellCancelChannel(self);
     move_cancel_displacement(self);
     {
         abilityCall_t call = MAKE(abilityCall_t, .entity = target);

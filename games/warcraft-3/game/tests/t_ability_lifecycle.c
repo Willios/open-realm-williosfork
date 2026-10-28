@@ -245,6 +245,50 @@ static edict_t *review_thinker(edict_t *caster) {
     return NULL;
 }
 
+static UnitAbilities_t starfall_channel_abilities = { .abilList = "AEsf,AEtq" };
+static char const starfall_channel_slk[] =
+    "ID;PWXL;N;EBB;Y3;X9\n"
+    "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+    "C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Dur1\"\nC;Y1;X6;K\"HeroDur1\"\n"
+    "C;Y1;X7;K\"Area1\"\nC;Y1;X8;K\"DataA1\"\nC;Y1;X9;K\"DataB1\"\n"
+    "C;Y2;X1;K\"AEsf\"\nC;Y2;X2;K\"AEsf\"\nC;Y2;X3;K1\n"
+    "C;Y2;X4;K\"air,ground,structure,enemy,neutral\"\nC;Y2;X5;K5\nC;Y2;X6;K5\n"
+    "C;Y2;X7;K150\nC;Y2;X8;K40\nC;Y2;X9;K1\n"
+    "C;Y3;X1;K\"AEtq\"\nC;Y3;X2;K\"AEtq\"\nC;Y3;X3;K1\n"
+    "C;Y3;X4;K\"air,ground,friend\"\nC;Y3;X5;K5\nC;Y3;X6;K5\n"
+    "C;Y3;X7;K250\nC;Y3;X8;K20\nC;Y3;X9;K1\nE\n";
+
+typedef struct {
+    slkTestData_t *rows, *old;
+    edict_t *caster, *thinker;
+    bool cast;
+} starfallChannelFix_t;
+
+static starfallChannelFix_t starfall_channel_setup(void) {
+    starfallChannelFix_t fix = { 0 };
+    uint32_t const code = FS_SLKKey("AEsf");
+    fix.caster = review_setup();
+    fix.rows = parse_slk_string(starfall_channel_slk);
+    fix.old = G_SetSLKRows("AbilityData", fix.rows);
+    fix.caster->data.UnitAbilities = &starfall_channel_abilities;
+    fix.caster->unit_state->ranks[0] = MAKE(heroability_t, .code = code, .level = 1);
+    fix.caster->unit_state->ranks[1] = MAKE(heroability_t, .code = FS_SLKKey("AEtq"), .level = 1);
+    fix.caster->unit_state->attack1.type = ATK_NORMAL;
+    fix.caster->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    fix.caster->unit_state->attack1.damageBase = 10;
+    fix.caster->unit_state->attack1.cooldown = 1.0f;
+    fix.cast = S_CastNoTargetSpell(fix.caster, code);
+    fix.thinker = review_thinker(fix.caster);
+    return fix;
+}
+
+static void starfall_channel_done(starfallChannelFix_t fix) {
+    S_SpellCancelChannel(fix.caster);
+    if (fix.thinker && fix.thinker->inuse) G_RunEntity(fix.thinker);
+    G_SetSLKRows("AbilityData", fix.old);
+    free_slk_rows(fix.rows);
+}
+
 /* AHdr accepts enemy and friend targets. An enemy cast must still be blocked,
  * and the committed blocked cast must not leave its channel active. */
 TEST(wc3_ability_lifecycle, spell_shield_blocks_hostile_mixed_target_channel) {
@@ -892,6 +936,80 @@ TEST(wc3_ability_lifecycle, priestess_starfall_repeatedly_damages_enemies_in_are
 
     G_SetSLKRows("AbilityData", old);
     free_slk_rows(rows);
+}
+
+TEST(wc3_ability_lifecycle, starfall_stops_on_stun_sleep_silence_or_death) {
+    static cstring_t const interruptions[] = { "Bstu", "BUsl", "BNsi", NULL };
+    FOR_LOOP(i, sizeof(interruptions) / sizeof(interruptions[0])) {
+        starfallChannelFix_t fix = starfall_channel_setup();
+        T_ASSERT(fix.cast); T_NOT_NULL(fix.thinker);
+        if (interruptions[i]) unit_addtimedstatus(fix.caster, interruptions[i], 1, 30.0f);
+        else fix.caster->health.value = 0;
+        G_RunEntity(fix.caster);
+        T_ASSERT(!S_SpellIsChanneling(fix.caster));
+        if (fix.thinker && fix.thinker->inuse) G_RunEntity(fix.thinker);
+        T_ASSERT(!fix.thinker || !fix.thinker->inuse);
+        starfall_channel_done(fix);
+    }
+}
+
+TEST(wc3_ability_lifecycle, starfall_stops_when_another_spell_is_cast) {
+    starfallChannelFix_t fix = starfall_channel_setup();
+    T_ASSERT(fix.cast); T_NOT_NULL(fix.thinker);
+    T_ASSERT(S_CastNoTargetSpell(fix.caster, FS_SLKKey("AEtq")));
+    T_EQ(G_GetChannel(fix.caster)->code, FS_SLKKey("AEtq"));
+    G_RunEntity(fix.thinker);
+    T_ASSERT(!fix.thinker->inuse);
+    T_EQ(G_GetChannel(fix.caster)->code, FS_SLKKey("AEtq"));
+    starfall_channel_done(fix);
+}
+
+TEST(wc3_ability_lifecycle, starfall_stops_when_its_duration_expires) {
+    starfallChannelFix_t fix = starfall_channel_setup();
+    T_ASSERT(fix.cast); T_NOT_NULL(fix.thinker);
+    level.time = fix.thinker->spawn_time;
+    G_RunEntity(fix.thinker);
+    T_ASSERT(!fix.thinker->inuse);
+    T_ASSERT(!S_SpellIsChanneling(fix.caster));
+    starfall_channel_done(fix);
+}
+
+TEST(wc3_ability_lifecycle, starfall_manual_move_attack_and_stop_orders_interrupt_channel) {
+    starfallChannelFix_t fix = starfall_channel_setup();
+    vec2_t point = { 300, 0 };
+    T_ASSERT(fix.cast);
+    T_ASSERT(unit_issueorder(fix.caster, "move", &point));
+    T_ASSERT(!S_SpellIsChanneling(fix.caster));
+    starfall_channel_done(fix);
+
+    fix = starfall_channel_setup();
+    edict_t *enemy = review_unit(1, 50);
+    T_ASSERT(fix.cast);
+    T_ASSERT(unit_issuetargetorder(fix.caster, "attack", enemy));
+    T_ASSERT(!S_SpellIsChanneling(fix.caster));
+    starfall_channel_done(fix);
+
+    fix = starfall_channel_setup();
+    T_ASSERT(fix.cast);
+    T_ASSERT(unit_issueimmediateorder(fix.caster, "stop"));
+    T_ASSERT(!S_SpellIsChanneling(fix.caster));
+    starfall_channel_done(fix);
+}
+
+TEST(wc3_ability_lifecycle, starfall_does_not_auto_acquire_until_manual_right_click) {
+    starfallChannelFix_t fix = starfall_channel_setup();
+    edict_t *enemy = review_unit(1, 50);
+    T_ASSERT(fix.cast);
+    level.time = 300 - (uint32_t)(fix.caster - g_edicts) % 300;
+    T_ASSERT(!G_ShouldAcquireThisFrame(fix.caster));
+    G_RunEntity(fix.caster);
+    T_ASSERT(fix.caster->goalentity != enemy);
+    T_EQ(G_GetChannel(fix.caster)->code, FS_SLKKey("AEsf"));
+
+    T_ASSERT(unit_issuetargetorder(fix.caster, "smart", enemy));
+    T_ASSERT(!S_SpellIsChanneling(fix.caster));
+    T_ASSERT(fix.caster->goalentity == enemy);
+    starfall_channel_done(fix);
 }
 
 /* Cannibalize reserves the nearest eligible corpse for the whole channel and

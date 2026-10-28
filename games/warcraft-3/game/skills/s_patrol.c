@@ -36,6 +36,7 @@ void order_patrol_resume(edict_t *self) {
 void order_patrol(edict_t *self, edict_t *b) {
     if (S_GoldMineWorkerIsInside(self))
         return;
+    S_SpellCancelChannel(self);
     self->orders->attackmove_waypoint = NULL;
     self->orders->patrol_a = Waypoint_add(&self->s.origin2);
     self->orders->patrol_b = b;
