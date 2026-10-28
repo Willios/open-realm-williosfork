@@ -47,8 +47,11 @@ static void melee_status_execute(edict_t *caster, spellTarget_t st, abilityitem_
     else if (status && (status->code == MAKEFOURCC('B','r','e','j') ||
                         status->code == MAKEFOURCC('B','r','o','a')))
         status->buff_flags |= WC3_STATUS_BUFF_POSITIVE | WC3_STATUS_BUFF_MAGICAL;
-    else if (status && (status->code == MAKEFOURCC('B','c','r','s') ||
-                        status->code == MAKEFOURCC('B','U','h','f') ||
+    else if (status && status->code == MAKEFOURCC('B','c','r','s')) {
+        status->buff_flags |= WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL;
+        unit_status_enabletargetart(st.entity, status, "overhead");
+    }
+    else if (status && (status->code == MAKEFOURCC('B','U','h','f') ||
                         status->code == MAKEFOURCC('B','u','h','f')))
         status->buff_flags |= WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_MAGICAL;
 }

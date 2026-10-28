@@ -5834,6 +5834,8 @@ TEST(wc3_spell, frenzy_unholy_frenzy_curse_use_authored_status_and_bonus_values)
 	abilityitem_t fzy = S_AbilityItem(FS_SLKKey("Afzy"));
 	abilityitem_t uhf = S_AbilityItem(FS_SLKKey("Auhf"));
 	abilityitem_t crs = S_AbilityItem(FS_SLKKey("Acrs"));
+	edict_t *curse_effect = NULL;
+	uint32_t curse_effect_count = 0;
 	caster->s.player = ally->s.player = 0; enemy->s.player = 1;
 	ally->unit_state->armor_value = 5; ally->svflags |= SVF_MONSTER; enemy->svflags |= SVF_MONSTER;
 	ally->health.value = ally->health.max_value = 100;
@@ -5851,6 +5853,15 @@ TEST(wc3_spell, frenzy_unholy_frenzy_curse_use_authored_status_and_bonus_values)
 	T_FEQ(S_UnholyFrenzyLifeDrain(ally), 2.0f, 0.001f);
 	test_execute_code(caster, "Acrs", MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = enemy));
 	T_ASSERT(S_UnitHasStatus(enemy, MAKEFOURCC('B','c','r','s'))); T_FEQ(S_CurseMissChance(enemy), 0.33f, 0.001f);
+	T_ASSERT(unit_findstatus(enemy, MAKEFOURCC('B','c','r','s'))->buff_flags & WC3_STATUS_BUFF_TARGET_ART);
+	FILTER_EDICTS(effect, effect->status_effect_code == MAKEFOURCC('B','c','r','s') && effect->goalentity == enemy) {
+		curse_effect = effect;
+		T_EQ(effect->s.model, G_RegisterModel("TestUI\\Models\\anim_pulse.mdx"));
+		curse_effect_count++;
+	}
+	T_EQ(curse_effect_count, 1);
+	unit_removestatus(enemy, unit_findstatus(enemy, MAKEFOURCC('B','c','r','s')), STATUS_REMOVE_SCRIPT);
+	T_EQ(curse_effect->status_effect_code, 0);
 
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
