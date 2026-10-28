@@ -121,6 +121,12 @@ BZ_ABILITY_PROC(CAbilityDiseaseCloud) {
         if (slot->code == MAKEFOURCC('B','a','p','l'))
             slot->buff_flags = (slot->buff_flags & ~(WC3_STATUS_BUFF_MAGICAL | WC3_STATUS_BUFF_TRANSFERABLE)) |
                                WC3_STATUS_BUFF_NEGATIVE | WC3_STATUS_BUFF_PHYSICAL;
+        /* Disease Cloud's persistent target model is authored on Bapl. The
+         * direct status application above intentionally owns independent
+         * infections, so opt each slot into the regular status-art lifecycle
+         * here (including same-source refreshes). */
+        if (slot->code == MAKEFOURCC('B','a','p','l'))
+            unit_status_enabletargetart(target, slot, NULL);
     }
     return true;
 }
