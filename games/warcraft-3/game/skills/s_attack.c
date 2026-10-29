@@ -1407,12 +1407,33 @@ static bool attack_ground_selectlocation(edict_t *clent, vec2_t const *location)
                                   clent->client->menu.order_queued,
                                   clent->client->ps.number, 0.0f)) any = true;
     }
-    if (any) G_SendPointConfirmation(clent, location, true);
+    if (any) {
+        S_SpellCursorSplat(clent, 0.0f);
+        G_SendPointConfirmation(clent, location, true);
+    }
     return any;
+}
+
+static float attack_ground_cursor_radius(gameClient_t *client) {
+    float radius = 0.0f;
+    if (!client) return 200.0f;
+    FOR_CONTROLLABLE_SELECTED_UNITS(client, ent) {
+        unitAttack_t const *attacks[] = { &ent->unit_state->attack1, &ent->unit_state->attack2 };
+        FOR_LOOP(i, 2) {
+            unitAttack_t const *attack = attacks[i];
+            if (!S_UnitAttackSlotEnabled(ent, i) ||
+                (attack->weapon != WPN_ARTILLERY && attack->weapon != WPN_ALINE)) continue;
+            radius = MAX(radius, MAX(attack->areaFull, MAX(attack->areaMedium, attack->areaSmall)));
+        }
+    }
+    /* Some custom artillery rows omit splash bands but still use the standard
+     * Attack Ground placement preview size. */
+    return radius > 0.0f ? radius : 200.0f;
 }
 
 BZ_COMMAND_PROC(AbilityAttackGround) {
     UI_AddCancelButton(clent);
     clent->client->menu.on_location_selected = attack_ground_selectlocation;
     clent->client->menu.supports_order_queue = true;
+    S_SpellCursorSplat(clent, attack_ground_cursor_radius(clent->client));
 }

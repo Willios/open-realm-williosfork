@@ -80,6 +80,22 @@ static PATHSTR _fire_model;
 static char _hero_menu_clicks[8][64];
 static uint32_t _hero_menu_click_count;
 static uint32_t _hero_menu_command_button_count;
+static bool _attack_ground_splat_seen;
+static float _attack_ground_splat_radius;
+
+static int attack_ground_test_image_index(cstring_t path) {
+    (void)path;
+    return 77;
+}
+
+static void attack_ground_test_capture_write(pfWriteType_t type, void const *value) {
+    if (type == PF_BYTE) {
+        _attack_ground_splat_seen = *(int32_t const *)value == svc_cursor_splat;
+    } else if (_attack_ground_splat_seen && type == PF_FLOAT) {
+        _attack_ground_splat_radius = *(float const *)value;
+        _attack_ground_splat_seen = false;
+    }
+}
 
 static void hero_menu_capture_write(pfWriteType_t type, void const *value) {
     uiFrame_t const *frame;
@@ -3179,6 +3195,45 @@ TEST(wc3_combat, attack_ground_accepts_artillery_point_and_launches_fixed_projec
         T_FEQ(G_GetChannel(missile)->origin.x, point.x, 0.001f);
         T_FEQ(G_GetChannel(missile)->origin.y, point.y, 0.001f);
     }
+}
+
+TEST(wc3_combat, attack_ground_shows_artillery_splash_cursor_overlay) {
+    UnitWeapons_t weapons = { .attacksEnabled = 1 };
+    void (*old_write)(pfWriteType_t, void const *) = gi.Write;
+    int32_t (*old_image_index)(cstring_t) = gi.ImageIndex;
+    gameClient_t *client;
+    edict_t *clent, *artillery;
+    abilityCall_t call;
+
+    setup_test_world(); reset_entities();
+    client = &game.clients[0];
+    clent = &g_edicts[0];
+    clent->inuse = true;
+    clent->client = client;
+    client->connected = true;
+    client->ps.number = 0;
+    artillery = make_combat_unit(MAKEFOURCC('e','b','a','l'), 400.0f, 0.0f, 0.0f);
+    artillery->data.UnitWeapons = &weapons;
+    artillery->unit_state->attack1.type = ATK_SIEGE;
+    artillery->unit_state->attack1.weapon = WPN_ALINE;
+    artillery->unit_state->attack1.areaFull = 50.0f;
+    artillery->unit_state->attack1.areaMedium = 100.0f;
+    artillery->unit_state->attack1.areaSmall = 175.0f;
+    G_SelectEntity(client, artillery);
+    call = MAKE(abilityCall_t, .entity = clent);
+    _attack_ground_splat_seen = false;
+    _attack_ground_splat_radius = 0.0f;
+    gi.Write = attack_ground_test_capture_write;
+    gi.ImageIndex = attack_ground_test_image_index;
+
+    T_ASSERT(CAbilityAttackGround(artillery, A_COMMAND, &call));
+    T_NOT_NULL(client->menu.on_location_selected);
+    T_FEQ(_attack_ground_splat_radius, 175.0f, 0.001f);
+    T_ASSERT(G_CancelTargetMode(clent));
+    T_FEQ(_attack_ground_splat_radius, 0.0f, 0.001f);
+
+    gi.Write = old_write;
+    gi.ImageIndex = old_image_index;
 }
 
 /* Impaling Bolt / Vorpal Blades: the authoring upgrade is player tech,

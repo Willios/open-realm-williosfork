@@ -708,6 +708,9 @@ bool G_CancelTargetMode(edict_t *clent) {
     if (!client || (!client->menu.on_entity_selected && !client->menu.on_location_selected))
         return false;
     S_AbilityTargetModeExit(clent);
+    /* Some non-spell point commands (for example Attack Ground) also use the
+     * shared world-space cursor splat, but have no ability exit callback. */
+    S_SpellCursorSplat(clent, 0.0f);
     /* Reset a possible item-owned building model preview as well as the
      * generic targeting state. A zero-model cursor is harmless for spells. */
     gi.Write(PF_BYTE, &(int32_t){svc_cursor});
