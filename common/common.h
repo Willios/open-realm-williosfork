@@ -250,6 +250,9 @@ bool FS_FindNextFile(handle_t find, sfileFindData_t *findData);
 bool FS_FindClose(handle_t find);
 uint32_t FS_ListMaps(fsMapListFunc_t func, void *userData);
 fsMapResolve_t FS_ResolveMapPath(cstring_t name, string_t out, uint32_t out_size);
+/* Register one generic archive manifest that exposes map basenames below a virtual path. */
+void FS_RegisterArchiveMapSource(cstring_t archive, cstring_t manifest,
+                                 cstring_t virtual_prefix, cstring_t archive_prefix);
 
 typedef struct {
     handle_t (*ReadFile)(cstring_t filename, uint32_t *size);

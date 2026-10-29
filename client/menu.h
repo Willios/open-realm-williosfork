@@ -51,6 +51,8 @@ typedef struct {
     int (*FS_ReadFile)(cstring_t fileName, void **buf);  /* Returns file size, allocates buf */
     void (*FS_FreeFile)(void *buf);
     int (*FS_GetFileList)(cstring_t path, cstring_t extension, char *listbuf, int bufsize);
+    void (*FS_RegisterArchiveMapSource)(cstring_t archive, cstring_t manifest,
+                                        cstring_t virtual_prefix, cstring_t archive_prefix);
     void (*FS_WriteFile)(cstring_t path, void const *data, int size); /* Write to local disk */
     void (*UserPath)(cstring_t rel, string_t out, uint32_t out_size); /* Resolve writable per-user game data */
     /* Manual save slots belong to the engine; the menu never traverses the host filesystem or parses save headers. */

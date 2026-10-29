@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
+#include <ctype.h>
+#include <string.h>
 
 #include "menu_local.h"
 #include "common/difficulty.h"
@@ -39,6 +41,48 @@ static bool ui_menu_commands_registered;
 static void UI_ClearScreen(void);
 static void M_ShowSinglePlayerSkirmishMenu(void);
 static void M_ShowOnlineBrowserMenu(void);
+
+#if BZ_COMPAT_WORKAROUNDS
+static void UI_RegisterClassicInstallerMaps(void) {
+    void *installer_data = NULL;
+    int installer_size = mi.FS_ReadFile("SetupDat\\inst_files.ins", &installer_data);
+    char build[64] = "Files100";
+    if (installer_size > 0 && installer_size <= 65536 && installer_data) {
+        char *contents = malloc((size_t)installer_size + 1);
+        if (contents) {
+            memcpy(contents, installer_data, (size_t)installer_size);
+            contents[installer_size] = '\0';
+            for (char *line = contents; *line; ) {
+                char *current = line;
+                char *end = strpbrk(line, "\r\n");
+                if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
+                else line += strlen(line);
+                if (!strstr(current, "String Build")) continue;
+                char *value = strchr(current, '='), *first, *last;
+                if (!value || !(first = strchr(value, '"')) || !(last = strchr(first + 1, '"'))) break;
+                size_t length = (size_t)(last - first - 1);
+                bool valid = length > 0 && length < sizeof(build);
+                for (size_t i = 0; valid && i < length; i++) {
+                    unsigned char ch = (unsigned char)first[i + 1];
+                    if (!isalnum(ch) && ch != '_' && ch != '-') valid = false;
+                }
+                if (valid) { memcpy(build, first + 1, length); build[length] = '\0'; }
+                break;
+            }
+            free(contents);
+        }
+    }
+    if (installer_data) {
+        mi.FS_FreeFile(installer_data);
+    }
+    char archive_prefix[128];
+    snprintf(archive_prefix, sizeof(archive_prefix), "%s\\Maps\\", build);
+    mi.FS_RegisterArchiveMapSource("Setup.mpq", "SetupDat\\maps.lst", "Maps\\", archive_prefix);
+    snprintf(archive_prefix, sizeof(archive_prefix), "%s\\Maps\\Scenario\\", build);
+    mi.FS_RegisterArchiveMapSource("Setup.mpq", "SetupDat\\Scenario.lst",
+                                   "Maps\\Scenario\\", archive_prefix);
+}
+#endif
 
 typedef struct { cstring_t name; void (*func)(void); } menucommand_t;
 
@@ -375,6 +419,9 @@ void M_Init(void) {
     memset(&ui_state, 0, sizeof(ui_state));
     UI_ResetGlueSceneModels();
     UI_RegisterMenuCommands();
+#if BZ_COMPAT_WORKAROUNDS
+    UI_RegisterClassicInstallerMaps();
+#endif
     
     mi.Printf("M_Init: loading FDF assets\n");
 

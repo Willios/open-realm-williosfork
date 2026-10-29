@@ -883,6 +883,10 @@ TEST(commands, roc_setup_mpq_maps_are_discovered_and_loaded_without_campaigns) {
     T_ASSERT(SFileCloseArchive(setup_archive));
     T_ASSERT(FS_AddArchive(setup_path) != NULL);
 
+    FS_RegisterArchiveMapSource("Setup.mpq", "SetupDat\\maps.lst", "Maps\\", "Files100\\Maps\\");
+    FS_RegisterArchiveMapSource("Setup.mpq", "SetupDat\\Scenario.lst", "Maps\\Scenario\\",
+                                "Files100\\Maps\\Scenario\\");
+
     FS_ListMaps(check_setup_map_list, &listed);
     T_ASSERT(listed.lost_temple);
     T_ASSERT(listed.scenario);

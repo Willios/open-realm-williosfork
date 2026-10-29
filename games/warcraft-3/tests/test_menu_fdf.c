@@ -55,6 +55,8 @@ static char test_saved_game_deleted[256];
 static char test_saved_game_loaded[256];
 static uint32_t test_saved_game_load_count;
 static uint32_t test_campaign_strings_read_count;
+static char registered_map_sources[2][4][128];
+static uint32_t registered_map_source_count;
 static bool test_skip_menu_transitions;
 static bool test_background_birth_available = true;
 static int test_vid_native = -1;
@@ -66,6 +68,11 @@ static uint32_t map_reads, texture_releases;
 static char forwarded_command[1024];
 
 static void test_glue_setup(void);
+static void test_register_archive_map_source(cstring_t archive, cstring_t manifest,
+                                             cstring_t virtual_prefix, cstring_t archive_prefix);
+static int test_installer_fs_read(cstring_t file_name, void **buf);
+static void test_capture_map_archive_source(cstring_t archive, cstring_t manifest,
+                                            cstring_t virtual_prefix, cstring_t archive_prefix);
 static void test_glue_tick(uint32_t msec);
 
 static void test_play_music(cstring_t playlist) { (void)playlist; }
@@ -96,6 +103,7 @@ static void test_command_imports(void) {
     mi.Cmd_ArgsFrom = Cmd_ArgsFrom;
     mi.PlayMusic = test_play_music;
     mi.StopMusic = test_stop_music;
+    mi.FS_RegisterArchiveMapSource = test_register_archive_map_source;
 }
 
 static int fake_image_index(cstring_t name) {
@@ -215,6 +223,27 @@ static int test_fs_read_file(cstring_t file_name, void **buf) {
     ((char *)data)[size] = '\0';
     *buf = data;
     return (int)size;
+}
+
+static int test_installer_fs_read(cstring_t file_name, void **buf) {
+    static char const installer[] = "String Build = \"Files201\";\r\n";
+    if (file_name && !strcasecmp(file_name, "SetupDat\\inst_files.ins")) {
+        *buf = malloc(sizeof(installer));
+        if (!*buf) return -1;
+        memcpy(*buf, installer, sizeof(installer));
+        return (int)(sizeof(installer) - 1);
+    }
+    return test_fs_read_file(file_name, buf);
+}
+
+static void test_capture_map_archive_source(cstring_t archive, cstring_t manifest,
+                                            cstring_t virtual_prefix, cstring_t archive_prefix) {
+    if (registered_map_source_count >= 2) return;
+    char (*source)[128] = registered_map_sources[registered_map_source_count++];
+    snprintf(source[0], sizeof(registered_map_sources[0][0]), "%s", archive);
+    snprintf(source[1], sizeof(registered_map_sources[0][1]), "%s", manifest);
+    snprintf(source[2], sizeof(registered_map_sources[0][2]), "%s", virtual_prefix);
+    snprintf(source[3], sizeof(registered_map_sources[0][3]), "%s", archive_prefix);
 }
 
 static int test_campaign_strings_fs_read(cstring_t file_name, void **buf) {
@@ -471,6 +500,11 @@ static bool test_delete_saved_game(cstring_t name) {
 static void test_load_saved_game(cstring_t name) {
     snprintf(test_saved_game_loaded, sizeof(test_saved_game_loaded), "%s", name);
     test_saved_game_load_count++;
+}
+
+static void test_register_archive_map_source(cstring_t archive, cstring_t manifest,
+                                             cstring_t virtual_prefix, cstring_t archive_prefix) {
+    (void)archive; (void)manifest; (void)virtual_prefix; (void)archive_prefix;
 }
 
 TEST(menu_fdf, saved_game_map_selects_tft_archives_from_campaign_path) {
@@ -2777,6 +2811,32 @@ static void test_glue_setup(void) {
     mi.UserPath = test_user_path;
     UI_ResetGlueSceneModels();
 }
+
+#if BZ_COMPAT_WORKAROUNDS
+TEST(menu_fdf, classic_setup_map_sources_use_installer_build_folder) {
+    menuImport_t saved = mi;
+    test_glue_setup();
+    memset(registered_map_sources, 0, sizeof(registered_map_sources));
+    registered_map_source_count = 0;
+    mi.FS_ReadFile = test_installer_fs_read;
+    mi.FS_FreeFile = test_fs_free_file;
+    mi.FS_RegisterArchiveMapSource = test_capture_map_archive_source;
+    mi.Cvar_Register = test_cvar_register;
+
+    M_Init();
+
+    T_EQ(registered_map_source_count, 2);
+    T_STREQ(registered_map_sources[0][0], "Setup.mpq");
+    T_STREQ(registered_map_sources[0][1], "SetupDat\\maps.lst");
+    T_STREQ(registered_map_sources[0][2], "Maps\\");
+    T_STREQ(registered_map_sources[0][3], "Files201\\Maps\\");
+    T_STREQ(registered_map_sources[1][1], "SetupDat\\Scenario.lst");
+    T_STREQ(registered_map_sources[1][2], "Maps\\Scenario\\");
+    T_STREQ(registered_map_sources[1][3], "Files201\\Maps\\Scenario\\");
+    M_Shutdown();
+    mi = saved;
+}
+#endif
 
 static void test_glue_tick(uint32_t msec) {
     captured_sprite_calls = 0;

@@ -104,129 +104,28 @@ const cstring_t WarcraftSheets[] = {
 
 #define MAX_ARCHIVES 64
 #define MAX_GAME_DIRS 16
+#define MAX_MAP_ARCHIVE_SOURCES 32
 
 static handle_t archives[MAX_ARCHIVES] = { 0 };
 static PATHSTR archiveNames[MAX_ARCHIVES];
 static PATHSTR gameDirs[MAX_GAME_DIRS];
 static handle_t priority_archive; /* optional session overlay; searched before archives[] */
 
+typedef struct {
+    PATHSTR archive;
+    PATHSTR manifest;
+    PATHSTR virtual_prefix;
+    PATHSTR archive_prefix;
+} fsMapArchiveSource_t;
+
+static fsMapArchiveSource_t map_archive_sources[MAX_MAP_ARCHIVE_SOURCES];
+static uint32_t num_map_archive_sources;
+
 static cstring_t FS_BaseName(cstring_t path);
 static void FS_NormalizePath(cstring_t in, string_t out, uint32_t out_size);
 static bool FS_PathHasExtension(cstring_t filename, cstring_t extension);
+static bool FS_IsMapPath(cstring_t filename);
 static bool FS_MapListHas(PATHSTR *maps, uint32_t count, cstring_t path);
-
-#if BZ_COMPAT_WORKAROUNDS
-/* RoC Setup.mpq stores its retail maps beneath the installer's build folder
- * (for example Files100\\Maps), while the game addresses them as Maps\\... . */
-static bool FS_IsSetupArchive(cstring_t archive_name) {
-    return archive_name && !strcasecmp(FS_BaseName(archive_name), "Setup.mpq");
-}
-
-static cstring_t FS_SetupBuildFolder(handle_t archive) {
-    static handle_t cached_archive;
-    static char cached_build[64];
-    handle_t file = NULL;
-    uint32_t size, bytes_read = 0;
-    char *contents;
-    if (!archive) return NULL;
-    if (archive == cached_archive && cached_build[0]) return cached_build;
-    cached_archive = archive;
-    snprintf(cached_build, sizeof(cached_build), "%s", "Files100");
-    if (!SFileOpenFileEx(archive, "SetupDat\\inst_files.ins", SFILE_OPEN_FROM_MPQ, &file))
-        return cached_build;
-    size = SFileGetFileSize(file, NULL);
-    if (size == 0 || size > 65536) { SFileCloseFile(file); return cached_build; }
-    contents = malloc((size_t)size + 1);
-    if (!contents) { SFileCloseFile(file); return cached_build; }
-    if (!SFileReadFile(file, contents, size, &bytes_read, NULL) || bytes_read != size) {
-        free(contents); SFileCloseFile(file); return cached_build;
-    }
-    SFileCloseFile(file);
-    contents[size] = '\0';
-    for (char *line = contents; *line; ) {
-        char *current = line;
-        char *end = strpbrk(line, "\r\n");
-        if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
-        else line += strlen(line);
-        if (!strstr(current, "String Build")) continue;
-        char *value = strchr(current, '=');
-        char *first_quote, *last_quote;
-        if (!value || !(first_quote = strchr(value, '"')) ||
-            !(last_quote = strchr(first_quote + 1, '"'))) continue;
-        size_t length = (size_t)(last_quote - first_quote - 1);
-        if (length == 0 || length >= sizeof(cached_build)) continue;
-        bool valid = true;
-        for (size_t i = 0; i < length; i++) {
-            unsigned char ch = (unsigned char)first_quote[1 + i];
-            if (!isalnum(ch) && ch != '_' && ch != '-') { valid = false; break; }
-        }
-        if (valid) { memcpy(cached_build, first_quote + 1, length); cached_build[length] = '\0'; }
-        break;
-    }
-    free(contents);
-    return cached_build;
-}
-
-static bool FS_SetupMapMember(handle_t archive, cstring_t filename, string_t out, uint32_t out_size) {
-    static cstring_t const maps_prefix = "Maps\\";
-    PATHSTR normalized;
-    cstring_t build = FS_SetupBuildFolder(archive);
-    if (!filename || !out || out_size == 0) {
-        return false;
-    }
-    FS_NormalizePath(filename, normalized, sizeof(normalized));
-    if (strncasecmp(normalized, maps_prefix, strlen(maps_prefix))) return false;
-    /* Setup's scenario map list is allowed; campaign maps are intentionally
-     * not exposed by the custom-game picker. */
-    if (!strncasecmp(normalized, "Maps\\Campaign\\", 14) ||
-        !strncasecmp(normalized, "Maps\\FrozenThrone\\Campaign\\", 26)) {
-        return false;
-    }
-    return build && snprintf(out, out_size, "%s\\%s", build, normalized) < (int)out_size;
-}
-
-static void FS_ListSetupMapManifest(handle_t archive, cstring_t manifest,
-                                    cstring_t map_directory,
-                                    PATHSTR *maps, uint32_t *count) {
-    handle_t file = NULL;
-    cstring_t build = FS_SetupBuildFolder(archive);
-    uint32_t size, bytes_read = 0;
-    char *contents;
-    if (!SFileOpenFileEx(archive, manifest, SFILE_OPEN_FROM_MPQ, &file)) return;
-    size = SFileGetFileSize(file, NULL);
-    if (size == 0 || size > 65536) { SFileCloseFile(file); return; }
-    contents = malloc((size_t)size + 1);
-    if (!contents) { SFileCloseFile(file); return; }
-    if (!SFileReadFile(file, contents, size, &bytes_read, NULL) || bytes_read != size) {
-        free(contents); SFileCloseFile(file); return;
-    }
-    SFileCloseFile(file);
-    contents[size] = '\0';
-    for (char *line = contents; *line && *count < MAX_FS_MAPS; ) {
-        char *end = strpbrk(line, "\r\n");
-        char *name = line;
-        char *quote;
-        char member[MAX_PATHLEN];
-        PATHSTR game_path;
-        if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
-        else line += strlen(line);
-        while (*name == ' ' || *name == '\t') name++;
-        if (*name == '"' && (quote = strrchr(name + 1, '"')) != NULL) {
-            *quote = '\0'; name++;
-        }
-        if (!*name || strchr(name, '\\') || strchr(name, '/') ||
-            (!FS_PathHasExtension(name, ".w3m") && !FS_PathHasExtension(name, ".w3x"))) continue;
-        if (snprintf(member, sizeof(member), "%s\\Maps\\%s%s", build, map_directory, name) >= (int)sizeof(member)) continue;
-        if (snprintf(game_path, sizeof(game_path), "Maps\\%s%s", map_directory, name) >= (int)sizeof(game_path)) continue;
-        handle_t probe = NULL;
-        if (!SFileOpenFileEx(archive, member, SFILE_OPEN_FROM_MPQ, &probe)) continue;
-        SFileCloseFile(probe);
-        if (FS_MapListHas(maps, *count, game_path)) continue;
-        snprintf(maps[(*count)++], sizeof(*maps), "%s", game_path);
-    }
-    free(contents);
-}
-#endif
 
 typedef void (*fsDiskEntryFunc_t)(cstring_t name, cstring_t path, bool isDirectory, bool isFile, void *userData);
 
@@ -305,6 +204,92 @@ static cstring_t FS_BaseName(cstring_t path) {
         }
     }
     return base;
+}
+
+void FS_RegisterArchiveMapSource(cstring_t archive, cstring_t manifest,
+                                 cstring_t virtual_prefix, cstring_t archive_prefix) {
+    PATHSTR normalized_virtual, normalized_archive;
+    fsMapArchiveSource_t *source = NULL;
+    if (!archive || !*archive || !manifest || !*manifest || !virtual_prefix || !archive_prefix) return;
+    if (strlen(FS_BaseName(archive)) >= sizeof(map_archive_sources[0].archive) ||
+        strlen(manifest) >= sizeof(map_archive_sources[0].manifest) ||
+        strlen(virtual_prefix) >= sizeof(map_archive_sources[0].virtual_prefix) ||
+        strlen(archive_prefix) >= sizeof(map_archive_sources[0].archive_prefix)) return;
+    FS_NormalizePath(virtual_prefix, normalized_virtual, sizeof(normalized_virtual));
+    FS_NormalizePath(archive_prefix, normalized_archive, sizeof(normalized_archive));
+    FOR_LOOP(i, num_map_archive_sources) {
+        fsMapArchiveSource_t *candidate = map_archive_sources + i;
+        if (!strcasecmp(candidate->archive, FS_BaseName(archive)) &&
+            !strcasecmp(candidate->manifest, manifest)) { source = candidate; break; }
+    }
+    if (!source) {
+        if (num_map_archive_sources >= MAX_MAP_ARCHIVE_SOURCES) return;
+        source = map_archive_sources + num_map_archive_sources++;
+    }
+    strlcpy(source->archive, FS_BaseName(archive), sizeof(source->archive));
+    strlcpy(source->manifest, manifest, sizeof(source->manifest));
+    strlcpy(source->virtual_prefix, normalized_virtual, sizeof(source->virtual_prefix));
+    strlcpy(source->archive_prefix, normalized_archive, sizeof(source->archive_prefix));
+}
+
+static handle_t FS_FindMapSourceArchive(cstring_t archive_name) {
+    if (!archive_name || !*archive_name) return NULL;
+    for (int i = MAX_ARCHIVES - 1; i >= 0; i--) {
+        if (archives[i] && !strcasecmp(FS_BaseName(archiveNames[i]), archive_name)) return archives[i];
+    }
+    return NULL;
+}
+
+static bool FS_OpenMapSourceMember(fsMapArchiveSource_t const *source, cstring_t filename,
+                                  handle_t *out_file) {
+    PATHSTR normalized;
+    PATHSTR member;
+    handle_t archive;
+    size_t prefix_size;
+    if (!source || !filename || !out_file) return false;
+    FS_NormalizePath(filename, normalized, sizeof(normalized));
+    prefix_size = strlen(source->virtual_prefix);
+    if (!prefix_size || strncasecmp(normalized, source->virtual_prefix, prefix_size) ||
+        !normalized[prefix_size]) return false;
+    archive = FS_FindMapSourceArchive(source->archive);
+    if (!archive || snprintf(member, sizeof(member), "%s%s", source->archive_prefix,
+                             normalized + prefix_size) >= (int)sizeof(member)) return false;
+    return SFileOpenFileEx(archive, member, SFILE_OPEN_FROM_MPQ, out_file);
+}
+
+static void FS_ListArchiveMapSource(fsMapArchiveSource_t const *source, PATHSTR *maps, uint32_t *count) {
+    handle_t archive = source ? FS_FindMapSourceArchive(source->archive) : NULL;
+    handle_t file = NULL;
+    uint32_t size, bytes_read = 0;
+    char *contents;
+    if (!archive || !SFileOpenFileEx(archive, source->manifest, SFILE_OPEN_FROM_MPQ, &file)) return;
+    size = SFileGetFileSize(file, NULL);
+    if (!size || size > 65536) { SFileCloseFile(file); return; }
+    contents = malloc((size_t)size + 1);
+    if (!contents) { SFileCloseFile(file); return; }
+    if (!SFileReadFile(file, contents, size, &bytes_read, NULL) || bytes_read != size) {
+        free(contents); SFileCloseFile(file); return;
+    }
+    SFileCloseFile(file);
+    contents[size] = '\0';
+    for (char *line = contents; *line && *count < MAX_FS_MAPS; ) {
+        char *end = strpbrk(line, "\r\n");
+        char *name = line;
+        char *quote;
+        PATHSTR game_path;
+        handle_t probe = NULL;
+        if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
+        else line += strlen(line);
+        while (*name == ' ' || *name == '\t') name++;
+        if (*name == '"' && (quote = strrchr(name + 1, '"')) != NULL) { *quote = '\0'; name++; }
+        if (!*name || strchr(name, '\\') || strchr(name, '/') || !FS_IsMapPath(name)) continue;
+        if (snprintf(game_path, sizeof(game_path), "%s%s", source->virtual_prefix, name) >= (int)sizeof(game_path)) continue;
+        if (!FS_OpenMapSourceMember(source, game_path, &probe)) continue;
+        SFileCloseFile(probe);
+        if (FS_MapListHas(maps, *count, game_path)) continue;
+        strlcpy(maps[(*count)++], game_path, sizeof(maps[0]));
+    }
+    free(contents);
 }
 
 static bool FS_MapBaseEquals(cstring_t path, cstring_t name) {
@@ -1137,17 +1122,10 @@ handle_t FS_OpenFile(cstring_t fileName) {
             return file;
         }
     }
-#if BZ_COMPAT_WORKAROUNDS
-    {
-        PATHSTR member;
-        for (int i = MAX_ARCHIVES - 1; i >= 0; i--) {
-            handle_t file;
-            if (!archives[i] || !FS_IsSetupArchive(archiveNames[i]) ||
-                !FS_SetupMapMember(archives[i], fileName, member, sizeof(member))) continue;
-            if (SFileOpenFileEx(archives[i], member, SFILE_OPEN_FROM_MPQ, &file)) return file;
-        }
+    FOR_LOOP(i, num_map_archive_sources) {
+        handle_t file;
+        if (FS_OpenMapSourceMember(map_archive_sources + i, fileName, &file)) return file;
     }
-#endif
     handle_t looseNestedFile = FS_OpenNestedLooseFile(fileName);
     if (looseNestedFile) {
         return looseNestedFile;
@@ -1543,19 +1521,9 @@ uint32_t FS_ListMaps(fsMapListFunc_t func, void *userData) {
     if (handle) {
         FS_FindClose(handle);
     }
-#if BZ_COMPAT_WORKAROUNDS
-    {
-        for (int i = MAX_ARCHIVES - 1; i >= 0 && count < MAX_FS_MAPS; i--) {
-            handle_t setup = archives[i];
-            if (setup && FS_IsSetupArchive(archiveNames[i])) {
-                /* The installer manifests enumerate melee maps and scenario
-                 * maps; campaign maps live in separate manifests and stay out. */
-                FS_ListSetupMapManifest(setup, "SetupDat\\maps.lst", "", maps, &count);
-                FS_ListSetupMapManifest(setup, "SetupDat\\Scenario.lst", "Scenario\\", maps, &count);
-            }
-        }
+    FOR_LOOP(i, num_map_archive_sources) {
+        if (count < MAX_FS_MAPS) FS_ListArchiveMapSource(map_archive_sources + i, maps, &count);
     }
-#endif
     qsort(maps, count, sizeof(maps[0]), FS_CompareMapPaths);
     if (func) {
         FOR_LOOP(i, count) {
@@ -1694,6 +1662,8 @@ void FS_Init(void) {
 
 void FS_Shutdown(void) {
     priority_archive = NULL;
+    memset(map_archive_sources, 0, sizeof(map_archive_sources));
+    num_map_archive_sources = 0;
     FOR_LOOP(i, MAX_ARCHIVES) {
         SFileCloseArchive(archives[i]);
         archives[i] = NULL;

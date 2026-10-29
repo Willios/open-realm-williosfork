@@ -1161,6 +1161,7 @@ void CL_Init(void) {
         .FS_ReadFile = CL_UI_ReadFile,
         .FS_FreeFile = FS_FreeFile,
         .FS_GetFileList = CL_UI_GetFileList,
+        .FS_RegisterArchiveMapSource = FS_RegisterArchiveMapSource,
         .FS_WriteFile = CL_UI_WriteFile,
         .UserPath = FS_UserPath,
         .ListSaves = FS_ListSaves,
