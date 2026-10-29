@@ -473,6 +473,10 @@ void ai_train_build(edict_t *ent) {
             G_CancelHeroRevive(ent, hero);
             return;
         }
+        if (G_PlayerInstantBuild(ent->s.player)) {
+            CompleteHeroRevive(ent, hero);
+            return;
+        }
         required = G_HeroReviveTime(hero);
         if (required <= 0.0f) return;
         revival->progress += (float)FRAMETIME / 1000.0f;
