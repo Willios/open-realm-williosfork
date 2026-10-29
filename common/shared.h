@@ -620,7 +620,11 @@ typedef struct environlight_s {
 
 _Static_assert(UI_PLAYERSTAT_ENV_PHASE != UI_PLAYERSTAT_CINEMATIC_PORTRAIT_COLOR,
                "env phase and cinematic portrait color must occupy distinct stats[] slots");
-enum { CURSOR_INPUT_MINIMAP_POINT = 1u << 0 };
+enum {
+    CURSOR_INPUT_MINIMAP_POINT = 1u << 0,
+    /* This target mode consumes world points even when a scene entity is hit. */
+    CURSOR_INPUT_LOCATION_POINT = 1u << 1
+};
 
 _Static_assert(UI_PLAYERSTAT_CURSOR_FLAGS < MAX_STATS,
                "presentation stats must fit playerState.stats[]");

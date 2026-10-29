@@ -618,5 +618,7 @@ void UI_UpdateCursorPresentation(gameClient_t *client) {
         }
     } else if (client->menu.on_entity_selected || client->menu.on_location_selected) {
         client->ps.stats[UI_PLAYERSTAT_CURSOR_INTERACTION] = WC3_POINTER_TARGETING;
+        if (client->menu.on_location_selected && !client->menu.on_entity_selected)
+            client->ps.stats[UI_PLAYERSTAT_CURSOR_FLAGS] = CURSOR_INPUT_LOCATION_POINT;
     }
 }

@@ -1227,6 +1227,19 @@ void IN_SelectUp(void) {
     if (fabs(r.w)+fabs(r.h) < 10) {
         SDL_Keymod const mods = SDL_GetModState();
         bool const queue = (mods & (KMOD_LSHIFT | KMOD_RSHIFT)) != 0;
+        bool const location_target =
+            (cl.playerstate.stats[UI_PLAYERSTAT_CURSOR_FLAGS] & CURSOR_INPUT_LOCATION_POINT) != 0;
+        if (location_target) {
+            if (re.TraceLocation(&cl.viewDef, r.x, r.y, &point)) {
+                CL_ResetSelectClickChain();
+                MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+                SZ_Printf(&cls.netchan.message, queue ? "point %d %d queue" : "point %d %d",
+                          (int)point.x, (int)point.y);
+            } else {
+                CL_ResetSelectClickChain();
+            }
+            return;
+        }
         if (re.TraceEntity(&cl.viewDef, r.x, r.y, &entnum)) {
             bool const same_type_enabled = Cvar_Integer("cl_same_type_select", 0) != 0;
             bool const ctrl_same_type = same_type_enabled && !queue &&
@@ -1666,6 +1679,42 @@ TEST(client_input, same_type_selection_click_paths_use_visible_matching_candidat
     cl.ents[9].current.class_id = old_class[2]; cls.netchan.message = old_msg;
     cls.state = old_state; cls.key_dest = old_dest; cl.playerstate.client_ui_state = old_ui;
     Cvar_SetValue("cl_selection_limit", old_limit); Cvar_SetValue("cl_same_type_select", old_same_type);
+    SDL_SetModState(old_mod);
+}
+
+TEST(client_input, point_only_target_click_over_entity_sends_ground_point) {
+    uint8_t data[128];
+    sizeBuf_t old_msg = cls.netchan.message;
+    refExport_t saved = re;
+    __typeof__(cl.selection) old_selection = cl.selection;
+    __typeof__(input) old_input = input;
+    int old_state = cls.state, old_dest = cls.key_dest, old_ui = cl.playerstate.client_ui_state;
+    uint32_t old_cursor_flags = cl.playerstate.stats[UI_PLAYERSTAT_CURSOR_FLAGS];
+    SDL_Keymod old_mod = SDL_GetModState();
+    char command[64];
+
+    re.TraceEntity = CL_TestSelectEntity;
+    re.TraceLocation = CL_TestSmartLocation;
+    cls.state = ca_active; cls.key_dest = key_game;
+    cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    cl.playerstate.stats[UI_PLAYERSTAT_CURSOR_FLAGS] = CURSOR_INPUT_LOCATION_POINT;
+    input = (__typeof__(input)){ .focus = true, .select = true };
+    cl.selection.in_progress = true;
+    cl.selection.rect = (rect_t){ .x = 200, .y = 200, .w = 0, .h = 0 };
+    SDL_SetModState(KMOD_NONE);
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+
+    IN_SelectUp();
+
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "point 123 456");
+    T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
+
+    re = saved; cls.netchan.message = old_msg; cl.selection = old_selection; input = old_input;
+    cls.state = old_state; cls.key_dest = old_dest;
+    cl.playerstate.client_ui_state = old_ui;
+    cl.playerstate.stats[UI_PLAYERSTAT_CURSOR_FLAGS] = old_cursor_flags;
     SDL_SetModState(old_mod);
 }
 
