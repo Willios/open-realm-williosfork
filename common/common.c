@@ -110,6 +110,124 @@ static PATHSTR archiveNames[MAX_ARCHIVES];
 static PATHSTR gameDirs[MAX_GAME_DIRS];
 static handle_t priority_archive; /* optional session overlay; searched before archives[] */
 
+static cstring_t FS_BaseName(cstring_t path);
+static void FS_NormalizePath(cstring_t in, string_t out, uint32_t out_size);
+static bool FS_PathHasExtension(cstring_t filename, cstring_t extension);
+static bool FS_MapListHas(PATHSTR *maps, uint32_t count, cstring_t path);
+
+#if BZ_COMPAT_WORKAROUNDS
+/* RoC Setup.mpq stores its retail maps beneath the installer's build folder
+ * (for example Files100\\Maps), while the game addresses them as Maps\\... . */
+static bool FS_IsSetupArchive(cstring_t archive_name) {
+    return archive_name && !strcasecmp(FS_BaseName(archive_name), "Setup.mpq");
+}
+
+static cstring_t FS_SetupBuildFolder(handle_t archive) {
+    static handle_t cached_archive;
+    static char cached_build[64];
+    handle_t file = NULL;
+    uint32_t size, bytes_read = 0;
+    char *contents;
+    if (!archive) return NULL;
+    if (archive == cached_archive && cached_build[0]) return cached_build;
+    cached_archive = archive;
+    snprintf(cached_build, sizeof(cached_build), "%s", "Files100");
+    if (!SFileOpenFileEx(archive, "SetupDat\\inst_files.ins", SFILE_OPEN_FROM_MPQ, &file))
+        return cached_build;
+    size = SFileGetFileSize(file, NULL);
+    if (size == 0 || size > 65536) { SFileCloseFile(file); return cached_build; }
+    contents = malloc((size_t)size + 1);
+    if (!contents) { SFileCloseFile(file); return cached_build; }
+    if (!SFileReadFile(file, contents, size, &bytes_read, NULL) || bytes_read != size) {
+        free(contents); SFileCloseFile(file); return cached_build;
+    }
+    SFileCloseFile(file);
+    contents[size] = '\0';
+    for (char *line = contents; *line; ) {
+        char *current = line;
+        char *end = strpbrk(line, "\r\n");
+        if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
+        else line += strlen(line);
+        if (!strstr(current, "String Build")) continue;
+        char *value = strchr(current, '=');
+        char *first_quote, *last_quote;
+        if (!value || !(first_quote = strchr(value, '"')) ||
+            !(last_quote = strchr(first_quote + 1, '"'))) continue;
+        size_t length = (size_t)(last_quote - first_quote - 1);
+        if (length == 0 || length >= sizeof(cached_build)) continue;
+        bool valid = true;
+        for (size_t i = 0; i < length; i++) {
+            unsigned char ch = (unsigned char)first_quote[1 + i];
+            if (!isalnum(ch) && ch != '_' && ch != '-') { valid = false; break; }
+        }
+        if (valid) { memcpy(cached_build, first_quote + 1, length); cached_build[length] = '\0'; }
+        break;
+    }
+    free(contents);
+    return cached_build;
+}
+
+static bool FS_SetupMapMember(handle_t archive, cstring_t filename, string_t out, uint32_t out_size) {
+    static cstring_t const maps_prefix = "Maps\\";
+    PATHSTR normalized;
+    cstring_t build = FS_SetupBuildFolder(archive);
+    if (!filename || !out || out_size == 0) {
+        return false;
+    }
+    FS_NormalizePath(filename, normalized, sizeof(normalized));
+    if (strncasecmp(normalized, maps_prefix, strlen(maps_prefix))) return false;
+    /* Setup's scenario map list is allowed; campaign maps are intentionally
+     * not exposed by the custom-game picker. */
+    if (!strncasecmp(normalized, "Maps\\Campaign\\", 14) ||
+        !strncasecmp(normalized, "Maps\\FrozenThrone\\Campaign\\", 26)) {
+        return false;
+    }
+    return build && snprintf(out, out_size, "%s\\%s", build, normalized) < (int)out_size;
+}
+
+static void FS_ListSetupMapManifest(handle_t archive, cstring_t manifest,
+                                    cstring_t map_directory,
+                                    PATHSTR *maps, uint32_t *count) {
+    handle_t file = NULL;
+    cstring_t build = FS_SetupBuildFolder(archive);
+    uint32_t size, bytes_read = 0;
+    char *contents;
+    if (!SFileOpenFileEx(archive, manifest, SFILE_OPEN_FROM_MPQ, &file)) return;
+    size = SFileGetFileSize(file, NULL);
+    if (size == 0 || size > 65536) { SFileCloseFile(file); return; }
+    contents = malloc((size_t)size + 1);
+    if (!contents) { SFileCloseFile(file); return; }
+    if (!SFileReadFile(file, contents, size, &bytes_read, NULL) || bytes_read != size) {
+        free(contents); SFileCloseFile(file); return;
+    }
+    SFileCloseFile(file);
+    contents[size] = '\0';
+    for (char *line = contents; *line && *count < MAX_FS_MAPS; ) {
+        char *end = strpbrk(line, "\r\n");
+        char *name = line;
+        char *quote;
+        char member[MAX_PATHLEN];
+        PATHSTR game_path;
+        if (end) { *end = '\0'; line = end + 1; while (*line == '\r' || *line == '\n') line++; }
+        else line += strlen(line);
+        while (*name == ' ' || *name == '\t') name++;
+        if (*name == '"' && (quote = strrchr(name + 1, '"')) != NULL) {
+            *quote = '\0'; name++;
+        }
+        if (!*name || strchr(name, '\\') || strchr(name, '/') ||
+            (!FS_PathHasExtension(name, ".w3m") && !FS_PathHasExtension(name, ".w3x"))) continue;
+        if (snprintf(member, sizeof(member), "%s\\Maps\\%s%s", build, map_directory, name) >= (int)sizeof(member)) continue;
+        if (snprintf(game_path, sizeof(game_path), "Maps\\%s%s", map_directory, name) >= (int)sizeof(game_path)) continue;
+        handle_t probe = NULL;
+        if (!SFileOpenFileEx(archive, member, SFILE_OPEN_FROM_MPQ, &probe)) continue;
+        SFileCloseFile(probe);
+        if (FS_MapListHas(maps, *count, game_path)) continue;
+        snprintf(maps[(*count)++], sizeof(*maps), "%s", game_path);
+    }
+    free(contents);
+}
+#endif
+
 typedef void (*fsDiskEntryFunc_t)(cstring_t name, cstring_t path, bool isDirectory, bool isFile, void *userData);
 
 static void FS_NormalizePath(cstring_t in, string_t out, uint32_t out_size) {
@@ -1019,6 +1137,17 @@ handle_t FS_OpenFile(cstring_t fileName) {
             return file;
         }
     }
+#if BZ_COMPAT_WORKAROUNDS
+    {
+        PATHSTR member;
+        for (int i = MAX_ARCHIVES - 1; i >= 0; i--) {
+            handle_t file;
+            if (!archives[i] || !FS_IsSetupArchive(archiveNames[i]) ||
+                !FS_SetupMapMember(archives[i], fileName, member, sizeof(member))) continue;
+            if (SFileOpenFileEx(archives[i], member, SFILE_OPEN_FROM_MPQ, &file)) return file;
+        }
+    }
+#endif
     handle_t looseNestedFile = FS_OpenNestedLooseFile(fileName);
     if (looseNestedFile) {
         return looseNestedFile;
@@ -1414,6 +1543,19 @@ uint32_t FS_ListMaps(fsMapListFunc_t func, void *userData) {
     if (handle) {
         FS_FindClose(handle);
     }
+#if BZ_COMPAT_WORKAROUNDS
+    {
+        for (int i = MAX_ARCHIVES - 1; i >= 0 && count < MAX_FS_MAPS; i--) {
+            handle_t setup = archives[i];
+            if (setup && FS_IsSetupArchive(archiveNames[i])) {
+                /* The installer manifests enumerate melee maps and scenario
+                 * maps; campaign maps live in separate manifests and stay out. */
+                FS_ListSetupMapManifest(setup, "SetupDat\\maps.lst", "", maps, &count);
+                FS_ListSetupMapManifest(setup, "SetupDat\\Scenario.lst", "Scenario\\", maps, &count);
+            }
+        }
+    }
+#endif
     qsort(maps, count, sizeof(maps[0]), FS_CompareMapPaths);
     if (func) {
         FOR_LOOP(i, count) {

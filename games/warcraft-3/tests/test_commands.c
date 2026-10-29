@@ -810,3 +810,91 @@ TEST(commands, renderer_profile_is_registered_and_not_archived) {
     T_STREQ(Cvar_String("r_profile", NULL), "0");
     Cvar_EndConfig();
 }
+
+#if BZ_COMPAT_WORKAROUNDS
+typedef struct {
+    bool lost_temple;
+    bool scenario;
+    bool campaign;
+} setup_map_list_state_t;
+
+static void check_setup_map_list(cstring_t path, void *userData) {
+    setup_map_list_state_t *state = userData;
+    if (!strcasecmp(path, "Maps\\(4)LostTemple.w3m")) state->lost_temple = true;
+    if (!strcasecmp(path, "Maps\\Scenario\\(1)TheDeathSheep.w3m")) state->scenario = true;
+    if (strstr(path, "NotForCustomGames")) state->campaign = true;
+}
+
+TEST(commands, roc_setup_mpq_maps_are_discovered_and_loaded_without_campaigns) {
+    static uint8_t const map_info[] = "W3I fixture from embedded map";
+    static char const installer_manifest[] = "String Build = \"Files100\";\r\n";
+    static char const melee_manifest[] = "\"(4)LostTemple.w3m\"\r\n";
+    static char const scenario_manifest[] = "\"(1)TheDeathSheep.w3m\"\r\n";
+    static char const absent_campaign[] = "campaign payload";
+    cstring_t const nested_path = Test_TempPath("setup-map-fixture.w3m");
+    cstring_t const setup_path = Test_TempPath("Setup.mpq");
+    uint8_t *nested_data = NULL;
+    long nested_size;
+    FILE *file;
+    handle_t archive = NULL;
+    handle_t setup_archive = NULL;
+    setup_map_list_state_t listed = { 0 };
+    uint32_t read_size = 0;
+    uint8_t *read_data;
+
+    setup_command_tests();
+    T_ASSERT(SFileCreateArchive(nested_path, 0, 8, &archive));
+    if (!archive) return;
+    T_ASSERT(SFileAddFileFromBuffer(archive, "war3map.w3i", map_info, sizeof(map_info)));
+    T_ASSERT(SFileCloseArchive(archive));
+    archive = NULL;
+    file = fopen(nested_path, "rb");
+    T_NOT_NULL(file);
+    if (!file) return;
+    T_ASSERT(fseek(file, 0, SEEK_END) == 0);
+    nested_size = ftell(file);
+    T_ASSERT(nested_size > 0);
+    T_ASSERT(fseek(file, 0, SEEK_SET) == 0);
+    if (nested_size > 0) {
+        nested_data = malloc((size_t)nested_size);
+        T_NOT_NULL(nested_data);
+        if (nested_data) T_EQ(fread(nested_data, 1, (size_t)nested_size, file), (size_t)nested_size);
+    }
+    fclose(file);
+    if (!nested_data || nested_size <= 0) { free(nested_data); return; }
+
+    T_ASSERT(SFileCreateArchive(setup_path, 0, 16, &setup_archive));
+    if (!setup_archive) { free(nested_data); return; }
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive, "SetupDat\\inst_files.ins",
+                                    installer_manifest, sizeof(installer_manifest) - 1));
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive, "SetupDat\\maps.lst",
+                                    melee_manifest, sizeof(melee_manifest) - 1));
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive, "SetupDat\\Scenario.lst",
+                                    scenario_manifest, sizeof(scenario_manifest) - 1));
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive, "Files100\\Maps\\(4)LostTemple.w3m",
+                                    nested_data, (uint32_t)nested_size));
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive,
+                                    "Files100\\Maps\\Scenario\\(1)TheDeathSheep.w3m",
+                                    absent_campaign, sizeof(absent_campaign) - 1));
+    T_ASSERT(SFileAddFileFromBuffer(setup_archive,
+                                    "Files100\\Maps\\Campaign\\NotForCustomGames.w3m",
+                                    absent_campaign, sizeof(absent_campaign) - 1));
+    free(nested_data);
+    T_ASSERT(SFileCloseArchive(setup_archive));
+    T_ASSERT(FS_AddArchive(setup_path) != NULL);
+
+    FS_ListMaps(check_setup_map_list, &listed);
+    T_ASSERT(listed.lost_temple);
+    T_ASSERT(listed.scenario);
+    T_ASSERT(!listed.campaign);
+    T_ASSERT(FS_FileExists("Maps\\(4)LostTemple.w3m"));
+    read_data = FS_ReadFile("Maps\\(4)LostTemple.w3m\\war3map.w3i", &read_size);
+    T_NOT_NULL(read_data);
+    if (read_data) {
+        T_EQ(read_size, sizeof(map_info));
+        T_ASSERT(!memcmp(read_data, map_info, sizeof(map_info)));
+        FS_FreeFile(read_data);
+    }
+    remove(nested_path);
+}
+#endif
