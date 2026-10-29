@@ -946,6 +946,9 @@ static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abil
             if (!G_ActorHasSkill(caster, GetClassName(metamorphosis_abilities[i])))
                 G_ActorAddSkill(caster, metamorphosis_abilities[i]);
         }
+        /* Edmm reuses the Demon Hunter model; its alternate geosets and
+         * attack/walk sequences are selected by the Required Animation Name. */
+        G_AddUnitAnimationProperties(caster, "alternate", true);
     }
     if (bonus_health > 0.0f) G_ApplyTemporaryMaxHealthBonus(caster, bonus_health);
     edict_t *thinker = G_Spawn();
