@@ -24,6 +24,12 @@ unit object data
 
 Melee resolves the target-facing stages at the damage point. Missile attacks roll damage and snapshot the selected attack type at launch, then apply that type against the target's current defense and armor at impact. Thus in-flight target defense/armor changes affect the hit while a target morph or later attacker order cannot replace the launched attack slot. Before that normal impact path, a basic missile may be consumed or retargeted by the Defend projectile reaction. Spell missiles provide their own `currentmove/endfunc` and do not enter this physical-attack/Defend-missile branch.
 
+`WPN_MBOUNCE` now shares the ordinary physical missile launch path. After
+a successful primary impact, the Night Elf Moon Glaive passive chains to
+additional targets with damage loss and an extra `Remg`-researched bounce.
+Secondary bounce damage currently resolves immediately at impact rather than
+travelling between targets; see [Moon Glaive](moon-glaive.md).
+
 `WPN_ARTILLERY` shares the physical projectile launch path instead of falling through the melee resolver. The unit-level authored `minRange` is a real dead zone: a mobile attacker backs away until the target is outside it, while a holding/immobile attacker cannot fire. At the attack damage point an artillery unit target is converted to a fixed point, matching Warsmash's `CBehaviorAttack`: the missile flies to that snapshot even if the original unit moves afterward. The projectile snapshots its attack type, splash bands, factors, and matching `splashTargs` mask at launch, so later orders or target selection cannot change impact behavior. Impact then applies those values around the fixed point. If the original unit target is still inside the blast, it retains the ordinary primary-hit pipeline; secondary victims (and all victims of Attack Ground, which has no primary unit) receive physical splash damage without duplicating primary-only orb/lifesteal/cleave behavior. `CmdAttackGround` uses the same point-target projectile/splash path and is exposed only for the implemented `WPN_ARTILLERY` class. Attack Ground approach/retreat steps consult Move-owned `S_UnitCanTranslate` (immobile, Cyclone, Roots, Ensnare, Purge pause) every tick: a locked unit holds its firing point without translating or cancelling, and still fires in-range points.
 
 `WPN_MSPLASH` uses that same server-owned missile launch/presentation pipeline,
@@ -78,7 +84,7 @@ For each `unitAttack_t`:
 - `temporaryDamageBonus`: item/temporary modifier added to each roll but not folded into the base range.
 - `cooldown`, `damagePoint`, `backswingPoint`: attack-cycle timing.
 - `range`, `rangeBuffer`: true weapon range and cooldown-only movement hysteresis.
-- splash metadata (`Farea`/`Harea`/`Qarea`, `Hfact`/`Qfact`, `splashTargs`) is consumed by both fixed `WPN_ARTILLERY` and homing `WPN_MSPLASH` impact paths; bounce and line weapon classes remain separate gaps.
+- splash metadata (`Farea`/`Harea`/`Qarea`, `Hfact`/`Qfact`, `splashTargs`) is consumed by fixed `WPN_ARTILLERY` and homing `WPN_MSPLASH` paths; `WPN_MBOUNCE` chains secondary hits immediately and currently lacks secondary missile presentation, while line attacks remain a gap.
 
 ### Chase range and attack timing
 

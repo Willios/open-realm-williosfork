@@ -216,6 +216,19 @@ bool G_UnitUsesUpgrade(edict_t const *unit, uint32_t upgrade_id) {
     return false;
 }
 
+/* Moon Glaive is a weapon-profile upgrade, not a new attack ability: Huntresses
+ * already bounce to one additional target before researching Remg. Only units
+ * which opt in through Upgrades Used gain the extra bounce. Resolve ownership
+ * at hit time for JASS technology changes, captures and save/load. */
+int32_t G_MoonGlaiveResearchLevel(edict_t const *unit) {
+    gameClient_t *owner;
+    uint32_t const upgrade = MAKEFOURCC('R', 'e', 'm', 'g');
+    if (!unit || !unit->inuse || !G_UnitUsesUpgrade(unit, upgrade)) return 0;
+    owner = G_GetPlayerClientByNumber(unit->s.player);
+    if (!owner || owner->ps.number != unit->s.player) return 0;
+    return G_GetPlayerTechResearchedLevel(owner, upgrade);
+}
+
 /* -1 means this is not a research-controlled barricade holder. In
  * particular, a custom unit with a directly granted Aspi and no Rosp entry
  * retains the standalone passive's authored damage values. Never cache the

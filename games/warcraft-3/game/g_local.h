@@ -3609,6 +3609,7 @@ void G_InvalidateUnitCommands(edict_t *unit);
 bool G_BuildInventoryItem(edict_t *ent, edict_t *item, uint8_t slot, gameInventoryItem_t *out);
 uint8_t G_GetInventory(edict_t *ent, gameInventoryItem_t *items, uint8_t max_items);
 uint8_t G_GetBuildQueue(edict_t *ent, gameQueueItem_t *queue, uint8_t max_queue);
+int32_t G_MoonGlaiveResearchLevel(edict_t const *unit);
 
 // g_ai.c
 edict_t *G_GetMainSelectedUnit(gameClient_t *);

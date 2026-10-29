@@ -73,36 +73,71 @@ cstring_t const barkskin_orders[] = { "barkskinon", "barkskinoff", NULL };
 
 BZ_ABILITY_PROC(CAbilityMoonGlaive) { return CAbilityPassive(ent, msg, call); }
 
-/* Called from S_ResolveAttackHit after the primary hit lands. Stock Amgl DataA
- * and Area are 0; that means one extra bounce inside attack range, not "no bounce".
- * Authored DataA>0 is total targets. Damage is the already-mitigated primary hit. */
+/* The stock Huntress weapon is mbounce with two total targets before
+ * research (the primary plus one bounce). Remg grants one additional target;
+ * it does not unlock the first bounce. Custom unit data can author a different
+ * base target count and damage-loss factor on its attack profile. Amgr is the
+ * independent (no-research) version, used by campaign units such as Naisha.
+ *
+ * This is invoked only after the primary attack passes evasion/miss checks.
+ * Damage has already been mitigated for the primary; like the other secondary
+ * attack effects, do not run G_AttackDamage again and double-apply armor.
+ * Secondary hits use T_Damage rather than retriggering primary attack procs. */
 void S_MoonGlaiveAttack(edict_t *attacker, edict_t *primary, int damage) {
-    uint32_t level = G_UnitAbilityLevel(attacker, ID_MOON_GLAIVE);
-    float data_a, range;
-    uint32_t total;
+    uint32_t level, code, total;
+    float range, loss, bounce_damage;
     edict_t *visited[8], *current;
-    uint32_t nvisited = 0;
-    if (!level) level = G_UnitAbilityLevel(attacker, ID_MOON_GLAIVER);
-    if (!level || !primary) return;
-    data_a = S_SpellData(ID_MOON_GLAIVE, level, 1);
-    total = data_a > 0.0f ? (uint32_t)data_a : 2; /* stock 0 → primary + 1 bounce */
-    range = S_SpellNumber(ID_MOON_GLAIVE, ABILITY_NUMBER_AREA, level);
-    if (range <= 0.0f) range = attacker->unit_state->attack1.range;
-    if (nvisited < 8) visited[nvisited++] = primary;
-    current = primary;
+    uint32_t nvisited = 1;
+    unitAttack_t const *profile;
+
+    if (!attacker || !attacker->inuse || !attacker->unit_state || !primary || damage <= 0) return;
+    code = ID_MOON_GLAIVE;
+    level = G_UnitAbilityLevel(attacker, code);
+    if (!level) { code = ID_MOON_GLAIVER; level = G_UnitAbilityLevel(attacker, code); }
+    if (!level) return;
+    profile = &attacker->unit_state->attack1;
+    /* DataA is only a fallback for custom ability/weapon combinations. The
+     * weapon's authored utc1 takes precedence when it is populated. */
+    total = profile->maxTargets;
+    if (!total) {
+        float const count = S_SpellData(code, level, 1);
+        total = count > 0.0f ? (uint32_t)count : 2;
+    }
+    if (code == ID_MOON_GLAIVE && G_MoonGlaiveResearchLevel(attacker) > 0) total++;
+    total = MIN(total, 8u);
+    if (total <= 1) return;
+
+    range = S_SpellNumber(code, ABILITY_NUMBER_AREA, level);
+    if (range <= 0.0f) range = 400.0f; /* Warcraft stock Moon Glaive bounce radius */
+    loss = profile->damageLoss > 0.0f ? profile->damageLoss : 0.5f;
+    loss = MAX(0.0f, MIN(loss, 1.0f));
+    bounce_damage = (float)damage;
+    visited[0] = current = primary;
+
     for (uint32_t i = 1; i < total; i++) {
         edict_t *next = NULL;
+        float best_distance = range;
+        bounce_damage *= 1.0f - loss;
+        if (bounce_damage < 1.0f) break;
         FILTER_EDICTS(other, other != attacker && S_SpellIsAliveTarget(other) &&
                       S_AttackHitAllowed(attacker, primary, other) &&
                       S_SpellIsEnemy(attacker, other) &&
-                      Vector2_distance(&other->s.origin2, &current->s.origin2) <= range) {
+                      !S_UnitIsHiddenFromPlayer(other, attacker->s.player) &&
+                      G_TargetFlagForType(G_UnitTargetType(other)) != WC3_TARGET_FLAG_WARD) {
             bool seen = false;
-            FOR_LOOP(j, nvisited) seen |= other == visited[j];
-            if (!seen) { next = other; break; }
+            float const distance = Vector2_distance(&other->s.origin2, &current->s.origin2);
+            FOR_LOOP(j, nvisited) if (other == visited[j]) { seen = true; break; }
+            if (seen || distance > best_distance) continue;
+            /* The secondary target must be legal for the primary weapon.
+             * A zero mask is retained for legacy/custom attack fixtures. */
+            if (profile->targetsAllowed &&
+                !(profile->targetsAllowed & G_TargetFlagForType(G_UnitTargetType(other)))) continue;
+            best_distance = distance;
+            next = other;
         }
         if (!next) break;
-        if (nvisited < 8) visited[nvisited++] = next;
-        T_Damage(next, attacker, damage);
+        visited[nvisited++] = next;
+        T_Damage(next, attacker, (int)bounce_damage);
         current = next;
     }
 }

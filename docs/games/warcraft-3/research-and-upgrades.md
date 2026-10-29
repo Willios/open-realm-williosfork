@@ -156,6 +156,11 @@ The Prologue02 tutorial depends on this contract at the War Mill lesson: its
 `EVENT_PLAYER_UNIT_RESEARCH_START` and advances only when clicking an upgrade
 produces the research-start callback.
 
+**Night Elf Moon Glaive (`Remg`)** is a weapon-chain upgrade rather than a stat modifier.
+The Huntress retains one pre-research bounce and gains a second when the owning
+player completes `Remg`; see [Moon Glaive](moon-glaive.md) for the weapon data,
+research ownership and remaining projectile-presentation limitations.
+
 ## Runtime stat effects
 
 This implementation intentionally enables only the upgrade effect codes whose

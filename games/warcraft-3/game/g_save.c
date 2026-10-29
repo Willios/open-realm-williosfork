@@ -2404,9 +2404,11 @@ static void RebindEntityModels(edict_t *ent) {
         ent->s.model = G_RegisterModel(model_filename);
     }
     if (!ent->unit_state) return;
-    if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY || ent->unit_state->attack1.weapon == WPN_MSPLASH)
+    if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY ||
+        ent->unit_state->attack1.weapon == WPN_MSPLASH || ent->unit_state->attack1.weapon == WPN_MBOUNCE)
         ent->unit_state->attack1.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[0].art);
-    if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY || ent->unit_state->attack2.weapon == WPN_MSPLASH)
+    if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY ||
+        ent->unit_state->attack2.weapon == WPN_MSPLASH || ent->unit_state->attack2.weapon == WPN_MBOUNCE)
         ent->unit_state->attack2.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[1].art);
 }
 
@@ -2857,6 +2859,29 @@ TEST(wc3_save, missile_attack_projectile_models_are_reregistered_after_load) {
     T_ASSERT(save_test_model_index(unit->data.UnitProfile->attack[1].art, false) > 0);
     T_EQ(unit->unit_state->attack1.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[0].art, false));
     T_EQ(unit->unit_state->attack2.projectile.model, save_test_model_index(unit->data.UnitProfile->attack[1].art, false));
+    G_SetProfileRows(old); free_slk_rows(rows);
+    remove(filename);
+}
+
+TEST(wc3_save, moon_glaive_mbounce_missile_art_survives_save_load) {
+    static char const profile_slk[] =
+        "C;Y1;X1;K\"id\"\nC;Y1;X2;K\"Missileart\"\n"
+        "C;Y2;X1;K\"hfoo\"\nC;Y2;X2;K\"TestUI\\\\Missiles\\\\glaive.mdx\"\nE\n";
+    cstring_t const filename = Test_TempPath("wc3-save-mbounce-art.bin");
+    slkTestData_t *rows = parse_slk_string(profile_slk), *old = G_SetProfileRows(rows);
+    edict_t *unit;
+
+    reset_entities();
+    setup_test_world();
+    unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0.0f, 0.0f);
+    unit->s.flags |= EF_UNIT;
+    unit->unit_state->attack1.weapon = WPN_MBOUNCE;
+    unit->unit_state->attack1.projectile.model = 99;
+    T_ASSERT(WriteGame(filename));
+    T_ASSERT(save_test_read_with_model_stub(filename));
+    T_ASSERT(save_test_model_index(unit->data.UnitProfile->attack[0].art, false) > 0);
+    T_EQ(unit->unit_state->attack1.projectile.model,
+         save_test_model_index(unit->data.UnitProfile->attack[0].art, false));
     G_SetProfileRows(old); free_slk_rows(rows);
     remove(filename);
 }

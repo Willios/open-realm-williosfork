@@ -7518,12 +7518,12 @@ TEST(wc3_spell, ethereal_secondary_targets_reject_physical_attacks) {
         unit_expirestatus(nearby, slot);
         S_ResolveAttackHit(attacker, primary, 50);
         T_FEQ(primary->health.value, 400, 0.001f);
-        T_FEQ(nearby->health.value, i == 1 ? 480 : 450, 0.001f);
+        T_FEQ(nearby->health.value, i == 0 ? 475 : (i == 1 ? 480 : 450), 0.001f);
         T_NOT_NULL(S_SpellApplyTimedStatus(nearby, "BHbn", 1, 10));
         attacker->unit_state->attack1.type = ATK_MAGIC;
         S_ResolveAttackHit(attacker, primary, 50);
         T_FEQ(primary->health.value, 350, 0.001f);
-        T_FEQ(nearby->health.value, i == 1 ? 460 : 400, 0.001f);
+        T_FEQ(nearby->health.value, i == 0 ? 450 : (i == 1 ? 460 : 400), 0.001f);
     }
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
@@ -7554,12 +7554,12 @@ TEST(wc3_spell, moon_glaive_bounces_attack_to_nearby_enemy) {
 	far_away->s.origin2.x = 5000; far_away->s.origin2.y = 0;
 	attacker->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','m','g','l'), .level = 1);
 	S_MoonGlaiveAttack(attacker, primary, 50);
-	T_FEQ(nearby->health.value, 450.0f, 0.001f);
+	T_FEQ(nearby->health.value, 475.0f, 0.001f);
 	T_FEQ(far_away->health.value, 500.0f, 0.001f);
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
-/* Stock Amgl DataA/Area are 0: bounce once inside attack range, same mitigated hit. */
+/* Stock Amgl DataA/Area are 0: one bounce without Remg, 50% damage loss. */
 TEST(wc3_spell, moon_glaive_stock_zeros_bounce_inside_attack_range) {
 	const char slk[] =
 		"ID;PWXL;N;EBB;Y2;X2\n"
@@ -7586,9 +7586,88 @@ TEST(wc3_spell, moon_glaive_stock_zeros_bounce_inside_attack_range) {
 	attacker->unit_state->attack1.range = 200;
 	attacker->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','m','g','l'), .level = 1);
 	S_MoonGlaiveAttack(attacker, primary, 50);
-	T_FEQ(nearby->health.value, 450.0f, 0.001f);
+	T_FEQ(nearby->health.value, 475.0f, 0.001f);
 	T_FEQ(far_away->health.value, 500.0f, 0.001f);
 	G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+}
+
+/* Remg adds a second bounce; the original is always active when the Huntress
+ * has Amgl. UnitBalance Upgrades Used and player tech ownership are required. */
+TEST(wc3_spell, moon_glaive_research_grants_and_revokes_second_bounce) {
+    UnitBalance_t huntress_balance = { .upgrades = "Remg" };
+    edict_t *huntress = make_hero(MAKEFOURCC('e','h','u','n'), 500, 0, 0, 0);
+    edict_t *primary = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    edict_t *first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 120, 0);
+    edict_t *second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 240, 0);
+    edict_t *out_of_range = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 1000, 0);
+    edict_t *targets[] = { primary, first, second, out_of_range };
+    huntress->data.UnitBalance = &huntress_balance;
+    huntress->s.player = 0;
+    huntress->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','m','g','l'), .level = 1);
+    huntress->unit_state->attack1.weapon = WPN_MBOUNCE;
+    huntress->unit_state->attack1.maxTargets = 2;
+    huntress->unit_state->attack1.damageLoss = 0.5f;
+    huntress->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+    memset(level.alliances, 0, sizeof(level.alliances));
+    FOR_LOOP(i, 4) {
+        targets[i]->s.player = 1;
+        targets[i]->svflags |= SVF_MONSTER;
+        targets[i]->targtype = TARG_GROUND;
+        targets[i]->health.value = targets[i]->health.max_value = 500;
+    }
+    /* Before research, attack 50 -> primary, first bounce 25. */
+    S_MoonGlaiveAttack(huntress, primary, 50);
+    T_FEQ(first->health.value, 475, 0.001f);
+    T_FEQ(second->health.value, 500, 0.001f);
+    T_FEQ(out_of_range->health.value, 500, 0.001f);
+
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','e','m','g'), 1);
+    T_EQ(G_MoonGlaiveResearchLevel(huntress), 1);
+    first->health.value = second->health.value = 500;
+    S_MoonGlaiveAttack(huntress, primary, 50);
+    T_FEQ(first->health.value, 475, 0.001f);
+    T_FEQ(second->health.value, 488, 0.001f); /* floor(50 * 0.5 * 0.5) */
+    T_FEQ(out_of_range->health.value, 500, 0.001f);
+
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','e','m','g'), 0);
+    T_EQ(G_MoonGlaiveResearchLevel(huntress), 0);
+    first->health.value = second->health.value = 500;
+    S_MoonGlaiveAttack(huntress, primary, 50);
+    T_FEQ(first->health.value, 475, 0.001f);
+    T_FEQ(second->health.value, 500, 0.001f);
+}
+
+/* Naisha's Amgr doesn't consume Remg; custom units opt out without the
+ * Upgrades Used entry. An authored utc1=1 means no bounce before research. */
+TEST(wc3_spell, moon_glaive_custom_targets_and_no_research_variant) {
+    UnitBalance_t huntress_balance = { .upgrades = "Remg" };
+    edict_t *huntress = make_hero(MAKEFOURCC('e','h','u','n'), 500, 0, 0, 0);
+    edict_t *primary = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    edict_t *secondary = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 50, 0);
+    huntress->data.UnitBalance = &huntress_balance;
+    huntress->s.player = 0;
+    primary->s.player = secondary->s.player = 1;
+    primary->svflags |= SVF_MONSTER; secondary->svflags |= SVF_MONSTER;
+    primary->targtype = secondary->targtype = TARG_GROUND;
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+    memset(level.alliances, 0, sizeof(level.alliances));
+    secondary->health.value = secondary->health.max_value = 500;
+    huntress->unit_state->attack1.maxTargets = 1;
+    huntress->unit_state->attack1.damageLoss = 0.25f;
+    huntress->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','m','g','l'), .level = 1);
+    S_MoonGlaiveAttack(huntress, primary, 40);
+    T_FEQ(secondary->health.value, 500, 0.001f);
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','e','m','g'), 1);
+    S_MoonGlaiveAttack(huntress, primary, 40);
+    T_FEQ(secondary->health.value, 470, 0.001f); /* 25% lost */
+    huntress->unit_state->ranks[0].code = MAKEFOURCC('A','m','g','r');
+    secondary->health.value = 500;
+    S_MoonGlaiveAttack(huntress, primary, 40);
+    T_FEQ(secondary->health.value, 500, 0.001f); /* Amgr ignores Remg */
+    G_SetPlayerTechResearched(&game.clients[0], MAKEFOURCC('R','e','m','g'), 0);
 }
 
 TEST(wc3_spell, healing_ward_records_concrete_summon_ability) {

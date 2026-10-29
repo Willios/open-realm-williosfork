@@ -942,13 +942,15 @@ static void ai_attack_walk(edict_t *ent) {
     } else {
         if (!cooldown_ready) {
             ent->wait = MAX(ent->wait, attack_cooldown_remaining(ent));
-            if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY || ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH)
+            if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY ||
+                ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE)
                 unit_setmove(ent, &attack_move_ranged_cooldown);
             else
                 unit_setmove(ent, &attack_move_melee_cooldown);
             return;
         }
-        if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY || ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH)
+        if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY ||
+            ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE)
             attack_ranged(ent);
         else
             attack_melee(ent);

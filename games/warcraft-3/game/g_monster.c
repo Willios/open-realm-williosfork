@@ -565,7 +565,8 @@ void SP_SpawnUnit(edict_t *self) {
     G_ApplyPlayerUpgradesToUnit(self);
     S_CargoInitUnit(self);
 
-    if (self->unit_state->attack1.weapon == WPN_MISSILE || self->unit_state->attack1.weapon == WPN_ARTILLERY || self->unit_state->attack1.weapon == WPN_MSPLASH) {
+    if (self->unit_state->attack1.weapon == WPN_MISSILE || self->unit_state->attack1.weapon == WPN_ARTILLERY ||
+        self->unit_state->attack1.weapon == WPN_MSPLASH || self->unit_state->attack1.weapon == WPN_MBOUNCE) {
         self->unit_state->attack1.origin.x = G_UnitAttack1LaunchX(self->class_id);
         self->unit_state->attack1.origin.y = G_UnitAttack1LaunchY(self->class_id);
         self->unit_state->attack1.origin.z = G_UnitAttack1LaunchZ(self->class_id);
@@ -573,7 +574,8 @@ void SP_SpawnUnit(edict_t *self) {
         self->unit_state->attack1.projectile.arc = G_UnitProfile(self->class_id)->attack[0].arc;
         self->unit_state->attack1.projectile.speed = G_UnitProfile(self->class_id)->attack[0].speed;
     }
-    if (self->unit_state->attack2.weapon == WPN_MISSILE || self->unit_state->attack2.weapon == WPN_ARTILLERY || self->unit_state->attack2.weapon == WPN_MSPLASH) {
+    if (self->unit_state->attack2.weapon == WPN_MISSILE || self->unit_state->attack2.weapon == WPN_ARTILLERY ||
+        self->unit_state->attack2.weapon == WPN_MSPLASH || self->unit_state->attack2.weapon == WPN_MBOUNCE) {
         self->unit_state->attack2.origin.x = G_UnitAttack1LaunchX(self->class_id);
         self->unit_state->attack2.origin.y = G_UnitAttack1LaunchY(self->class_id);
         self->unit_state->attack2.origin.z = G_UnitAttack1LaunchZ(self->class_id);
