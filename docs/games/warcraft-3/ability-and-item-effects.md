@@ -86,7 +86,12 @@ The following existing abilities now use the common resolver rather than owning 
   and stops the looping harvest sound through one lifecycle.
 - Moon Well (`Ambt`): persistent race-indexed `WC3_EFFECT_EFFECT` follows the
   well and uses `DataD * mana fraction` as its vertical offset; successful
-  replenish also emits temporary caster/special art.
+  replenish also emits temporary caster/special art. The authored `MoonWell`
+  model has no mana-level animation: `MoonWellTarget` supplies the water plane.
+  RoC stores the height as `Data14=30`, while TFT stores `DataD=30`; both
+  ability-function tables point to the same `MoonWellTarget.mdl` art (the MPQ
+  asset is `.mdx`). Its finite `Stand` sequence must remain visible at its last
+  frame, and its effect think must keep applying the mana-dependent offset.
 - Entangle Gold Mine (`Aent`): persistent `WC3_EFFECT_CASTER` follows the
   casting tree and is owned by the entangled overlay so mine teardown removes
   it deterministically. The overlay separately owns the caster/ability

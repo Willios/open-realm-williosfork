@@ -445,6 +445,14 @@ static void G_EffectLoopStand(edict_t *effect) {
         effect->s.frame = effect->animation->interval[1] > effect->animation->interval[0]
             ? effect->animation->interval[1] - 1 : effect->animation->interval[0];
         effect->aiflags |= AI_HOLD_FRAME;
+        /* Moon Well EffectArt is a static water plane with a finite Stand
+         * sequence. Its owner updates the water height continuously; keep the
+         * final authored frame visible and keep G_EffectThink running so the
+         * linked height offset is reapplied after MOVETYPE_LINK each tick. */
+        if (effect->summon_ability &&
+            (effect->summon_ability == MAKEFOURCC('A','m','b','t') ||
+             G_AbilityCode(effect->summon_ability) == MAKEFOURCC('A','m','b','t')))
+            return;
         effect->s.renderfx |= RF_HIDDEN;
         effect->think = NULL;
         return;

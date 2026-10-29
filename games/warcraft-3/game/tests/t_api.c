@@ -4931,6 +4931,34 @@ TEST(wc3_api, nonlooping_effect_stand_hides_without_invalidating_handle) {
     T_ASSERT(!effect->inuse);
 }
 
+/* MoonWellTarget's finite Stand is a persistent water surface. Unlike a
+ * one-shot attached effect, it stays visible at its final frame while its
+ * owner continues to update the mana-dependent height. */
+TEST(wc3_api, moon_well_water_effect_stays_visible_after_finite_stand) {
+    edict_t *well;
+    edict_t *water;
+
+    setup_test_world();
+    well = alloc_test_unit(MAKEFOURCC('e','m','o','w'), 32.0f, 48.0f);
+    well->s.origin.z = 12.0f;
+    water = G_SpawnModelEffect("TestUI\\Models\\anim_oneshot.mdx", NULL, well, NULL, false);
+    T_NOT_NULL(water);
+    if (!water) return;
+    water->owner = well;
+    water->summon_ability = MAKEFOURCC('A','m','b','t');
+    water->wait = 24.0f;
+
+    for (int i = 0; i < 24; i++) {
+        level.time += FRAMETIME;
+        G_RunEntities();
+    }
+
+    T_ASSERT(water->inuse);
+    T_ASSERT(!(water->s.renderfx & RF_HIDDEN));
+    T_ASSERT(water->think == G_EffectThink);
+    T_FEQ(water->s.origin.z, well->s.origin.z + water->wait, 0.001f);
+}
+
 TEST(wc3_api, jass_sound_runtime_tracks_one_shot_volume_and_attachment_safely) {
     /* Runtime sound handles point to gsound_t; integer storage corrupted the stack in release builds. */
     gsound_t handle_storage = { 0 };
