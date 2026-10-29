@@ -11,6 +11,7 @@ OpenRealm currently opts these statuses into the timed bar:
 | `Bmil` | Human `Amil` Call to Arms transform | `S_MilitiaExpire()` restores Peasant form |
 | `BTLF` | summoned-unit timed life | unit dies when the status expires; Dispel/Purge/Devour Magic cannot remove this lifecycle status |
 | `BHav` | Mountain King `AHav` Avatar | restores Avatar's stats, scale, and alternate model animation |
+| `BEme` | Demon Hunter `AEme` Metamorphosis | restores the original unit form and removes the temporary health bonus |
 
 Other timed statuses such as `Bstu` remain ordinary simulation statuses and do not claim the selected-unit countdown bar. `BTLF` is also
 classified as undispellable by `S_StatusIsUndispellable()`: removing it early would erase the simulation-owned expiration and turn a

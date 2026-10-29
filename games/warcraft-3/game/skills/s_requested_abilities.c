@@ -211,6 +211,10 @@ static void whirlwind_execute(edict_t *caster, spellTarget_t st, abilityitem_t c
 void morph_end(edict_t *thinker) {
     edict_t *owner = S_SpellChannelOwner(thinker);
     if (G_Time() < thinker->spawn_time) return;
+    if (owner && thinker->class_id == MAKEFOURCC('A','E','m','e')) {
+        heroabilitystatus_t *status = unit_findstatus(owner, MAKEFOURCC('B','E','m','e'));
+        if (status) unit_removestatus(owner, status, STATUS_REMOVE_EXPIRE);
+    }
     if (owner && G_TransformUnitType(owner, thinker->resources) &&
         thinker->class_id == MAKEFOURCC('A','E','m','e') && thinker->velocity > 0.0f)
         G_ApplyTemporaryMaxHealthBonus(owner, -thinker->velocity);
@@ -919,6 +923,14 @@ static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abil
     }
     if (!G_TransformUnitType(caster, form)) return;
     if (spell->code == MAKEFOURCC('A','E','m','e')) {
+        cstring_t buff = S_SpellBuffId(spell->code, level);
+        if (!buff || strlen(buff) < 4) buff = "BEme";
+        if (!S_SpellApplyTimedStatus(caster, buff, level, duration)) {
+            /* A timer status is part of the visible morph lifecycle. Avoid
+             * transforming or spending mana when its status slot is full. */
+            G_TransformUnitType(caster, original);
+            return;
+        }
         static uint32_t const metamorphosis_abilities[] = {
             MAKEFOURCC('A','E','m','b'), MAKEFOURCC('A','E','i','m'), MAKEFOURCC('A','E','e','v')
         };
@@ -950,6 +962,15 @@ static void AbilityMetamorphosis_Execute(edict_t *caster, spellTarget_t st, abil
 BZ_ABILITY_PROC(CAbilityMetamorphosis) {
     if (msg == A_TOGGLE_ON && call && call->item && call->item->code == ID_BEAR_FORM_ABILITY)
         return ent && ent->class_id == ID_BEAR_FORM_BEAR;
+    if (msg == A_VALIDATE && call && call->item && call->item->code == MAKEFOURCC('A','E','m','e')) {
+        uint32_t level = S_SpellLevel(ent, call->item->code);
+        cstring_t buff = S_SpellBuffId(call->item->code, level);
+        wc3_status_apply_check_t check;
+        if (!buff || strlen(buff) < 4) buff = "BEme";
+        check = unit_status_checkapplication(ent, &(status_application_t){ .buff = buff, .level = level });
+        return CAbilitySimpleSpell(ent, msg, call) &&
+               (check == WC3_STATUS_APPLY_REUSE || check == WC3_STATUS_APPLY_FREE_SLOT);
+    }
     if (msg == A_EXECUTE) {
         if (!call || !call->item) return false;
         AbilityMetamorphosis_Execute(ent, call->target ? *call->target : MAKE(spellTarget_t, .type = SPELL_TARGET_NONE), call->item);

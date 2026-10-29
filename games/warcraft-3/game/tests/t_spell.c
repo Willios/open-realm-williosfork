@@ -6293,10 +6293,11 @@ TEST(wc3_spell, roar_damage_bonus_is_shown_as_green_flat_damage_in_status_panel)
 
 TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bonus_health) {
     char const ability_data[] =
-        "ID;PWXL;N;EBB;Y5;X6\n"
+        "ID;PWXL;N;EBB;Y5;X7\n"
         "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
         "C;Y1;X4;K\"UnitID1\"\nC;Y1;X5;K\"DataE1\"\nC;Y1;X6;K\"HeroDur1\"\n"
-        "C;Y2;X1;K\"AEme\"\nC;Y2;X2;K\"AEme\"\nC;Y2;X3;K1\nC;Y2;X4;K\"Edmm\"\nC;Y2;X5;K500\nC;Y2;X6;K30\n"
+        "C;Y1;X7;K\"BuffID1\"\n"
+        "C;Y2;X1;K\"AEme\"\nC;Y2;X2;K\"AEme\"\nC;Y2;X3;K1\nC;Y2;X4;K\"Edmm\"\nC;Y2;X5;K500\nC;Y2;X6;K30\nC;Y2;X7;K\"BEme\"\n"
         "C;Y3;X1;K\"AEmb\"\nC;Y3;X2;K\"AEmb\"\nC;Y3;X3;K1\n"
         "C;Y4;X1;K\"AEim\"\nC;Y4;X2;K\"AEim\"\nC;Y4;X3;K1\n"
         "C;Y5;X1;K\"AEev\"\nC;Y5;X2;K\"AEev\"\nC;Y5;X3;K1\nE\n";
@@ -6341,6 +6342,9 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
     T_FEQ(demon->health.max_value, 1000.0f, 0.001f);
     T_FEQ(demon->unit_state->attack1.range, 600.0f, 0.001f);
     T_EQ(demon->unit_state->attack1.weapon, WPN_MISSILE);
+    T_ASSERT(unit_findstatus(demon, MAKEFOURCC('B','E','m','e')) != NULL);
+    T_ASSERT(unit_statusshowstimedbar(MAKEFOURCC('B','E','m','e')));
+    T_FEQ(unit_statusremainingfraction(unit_findstatus(demon, MAKEFOURCC('B','E','m','e'))), 1.0f, 0.001f);
     T_ASSERT(G_ActorHasSkill(demon, "AEmb"));
     T_ASSERT(G_ActorHasSkill(demon, "AEim"));
     T_ASSERT(G_ActorHasSkill(demon, "AEev"));
@@ -6355,6 +6359,7 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
     }
     T_EQ(demon->class_id, MAKEFOURCC('E','d','e','m'));
     T_FEQ(demon->health.max_value, 500.0f, 0.001f);
+    T_NULL(unit_findstatus(demon, MAKEFOURCC('B','E','m','e')));
 
     G_SetSLKRows("UnitWeapons", old_weapons); free_slk_rows(weapons_rows);
     G_SetSLKRows("UnitData", old_data); free_slk_rows(data_rows);
