@@ -103,6 +103,12 @@ void S_SummonAbilityUnits(edict_t *caster, uint32_t code, spellTarget_t const *t
     if (!caster || !code) return;
     level = S_SpellLevel(caster, code);
     unit_id = S_SpellUnitId(code, level);
+#if BZ_COMPAT_WORKAROUNDS
+    /* RoC 1.0 AEst describes the Owl Scout in its tooltip but leaves UnitID
+     * empty. The stock summoned unit is nowl; later data authors UnitID. */
+    if (!unit_id && code == MAKEFOURCC('A','E','s','t'))
+        unit_id = MAKEFOURCC('n','o','w','l');
+#endif
     count = (uint32_t)MAX(1.0f, S_SpellData(code, level, 1));
     duration = S_SpellDuration(code, level, false);
     if (WC3_MISHA_DEBUG_ENABLED() && code == MAKEFOURCC('A','r','s','g'))

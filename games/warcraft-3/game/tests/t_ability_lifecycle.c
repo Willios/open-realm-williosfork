@@ -587,7 +587,7 @@ TEST(wc3_ability_lifecycle, water_elemental_recovers_roc_dataa_unit_id) {
     G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
 }
 
-TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
+TEST(wc3_ability_lifecycle, priestess_scout_missing_unit_id_uses_roc_owl_fallback) {
     static UnitAbilities_t scout_abilities = { .abilList = "AEst" };
     static char const ability_slk[] =
         "ID;PWXL;N;EBB;Y2;X8\n"
@@ -596,7 +596,7 @@ TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
         "C;Y1;X7;K\"DataA1\"\nC;Y1;X8;K\"UnitID1\"\n"
         "C;Y2;X1;K\"AEst\"\nC;Y2;X2;K\"AEst\"\nC;Y2;X3;K\"_\"\n"
         "C;Y2;X4;K50\nC;Y2;X5;K200\nC;Y2;X6;K60\n"
-        "C;Y2;X7;K1\nC;Y2;X8;K\"nowl\"\nE\n";
+        "C;Y2;X7;K1\nE\n";
     static char const unit_ui_slk[] =
         "ID;PWXL;N;EBB;Y2;X4\n"
         "C;Y1;X1;K\"unitUIID\"\nC;Y1;X2;K\"file\"\n"
@@ -638,7 +638,11 @@ TEST(wc3_ability_lifecycle, priestess_scout_cast_summons_authored_owl_unit) {
         T_ASSERT(Vector2_distance(&unit->s.origin2, &caster->s.origin2) <= 128.0f);
         owl_count++;
     }
+#if BZ_COMPAT_WORKAROUNDS
     T_EQ(owl_count, 1);
+#else
+    T_EQ(owl_count, 0);
+#endif
 
     reset_entities();
     G_SetSLKRows("UnitBalance", old_balance); free_slk_rows(balance_rows);
