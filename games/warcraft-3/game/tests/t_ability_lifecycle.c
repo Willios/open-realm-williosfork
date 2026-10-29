@@ -480,6 +480,57 @@ TEST(wc3_ability_lifecycle, area_spell_presentation_resolves_authored_effect_obj
     G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
 }
 
+/* RoC 1.0 authors Tranquility's rain loop on XEtq without an AEtq EfctID. */
+TEST(wc3_ability_lifecycle, roc_tranquility_resolves_rain_effect_object) {
+    static char const ability_slk[] =
+        "ID;PWXL;N;E\nB;X8;Y2;D0\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+        "C;Y1;X4;K\"Dur1\"\nC;Y1;X5;K\"HeroDur1\"\nC;Y1;X6;K\"Area1\"\n"
+        "C;Y2;X1;K\"AEtq\"\nC;Y2;X2;K\"AEtq\"\nC;Y2;X3;K\"ground,friend,self\"\n"
+        "C;Y2;X4;K\"5\"\nC;Y2;X5;K\"5\"\nC;Y2;X6;K\"800\"\nE\n";
+    static char const effect_slk[] =
+        "ID;PWXL;N;E\nB;X3;Y2;D0\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"EffectArt\"\nC;Y1;X3;K\"Effectsoundlooped\"\n"
+        "C;Y2;X1;K\"XEtq\"\nC;Y2;X2;K\"TestUI\\Models\\tranquility-rain.mdx\"\n"
+        "C;Y2;X3;K\"TranquilityTestLoop\"\nE\n";
+    static char const sound_slk[] =
+        "ID;PWXL;N;E\nB;X4;Y2;D0\n"
+        "C;Y1;X1;K\"SoundLabel\"\nC;Y1;X2;K\"FileNames\"\n"
+        "C;Y1;X3;K\"DirectoryBase\"\nC;Y1;X4;K\"Volume\"\n"
+        "C;Y2;X1;K\"TranquilityTestLoop\"\nC;Y2;X2;K\"tranquility-loop.wav\"\n"
+        "C;Y2;X3;K\"TestUI\\Sounds\\\"\nC;Y2;X4;K\"127\"\nE\n";
+    UnitAbilities_t abilities = { .abilList = "AEtq" };
+    slkTestData_t *ability_rows = parse_slk_string(ability_slk);
+    slkTestData_t *effect_rows = parse_slk_string(effect_slk);
+    slkTestData_t *sound_rows = parse_slk_string(sound_slk);
+    slkTestData_t *old_ability = G_SetSLKRows("AbilityData", ability_rows);
+    slkTestData_t *old_effect = G_SetSLKRows("AbilityBuffData", effect_rows);
+    slkTestData_t *old_sound_rows = G_SetSLKRows("AbilitySounds", sound_rows);
+    int (*old_model_index)(cstring_t) = gi.ModelIndex;
+    int (*old_sound_index)(cstring_t) = gi.SoundIndex;
+    __typeof__(gi.SoundIndexAlias) old_sound_alias = gi.SoundIndexAlias;
+    edict_t *caster = review_setup();
+    edict_t *effect = NULL;
+
+    caster->data.UnitAbilities = &abilities;
+    blizzard_effect_model[0] = '\0'; blizzard_sound_path[0] = '\0';
+    gi.ModelIndex = review_capture_model;
+    gi.SoundIndex = review_capture_sound_index; gi.SoundIndexAlias = review_capture_sound_index_alias;
+    T_ASSERT(S_CastPointTargetSpell(caster, FS_SLKKey("AEtq"), &caster->s.origin2));
+    FILTER_EDICTS(candidate, candidate->owner && candidate->owner->owner == caster && candidate->s.model)
+        effect = candidate;
+    T_NOT_NULL(effect);
+    T_STREQ(blizzard_effect_model, "TestUI\\Models\\tranquility-rain.mdx");
+    T_ASSERT(effect->s.sound != 0);
+    T_STREQ(blizzard_sound_path, "TestUI\\Sounds\\tranquility-loop.wav");
+
+    gi.ModelIndex = old_model_index; gi.SoundIndex = old_sound_index; gi.SoundIndexAlias = old_sound_alias;
+    S_SpellCancelChannel(caster);
+    G_SetSLKRows("AbilitySounds", old_sound_rows); free_slk_rows(sound_rows);
+    G_SetSLKRows("AbilityBuffData", old_effect); free_slk_rows(effect_rows);
+    G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+}
+
 /* Warsmash shows a Blizzard shard wave first and resolves that wave's damage
  * 0.8 seconds later; Cast owns the delay before the first shard wave. */
 TEST(wc3_ability_lifecycle, blizzard_shards_precede_damage_by_eight_tenths) {

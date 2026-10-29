@@ -217,6 +217,16 @@ uint32_t G_AbilityEffectCode(uint32_t ability_id, uint32_t level) {
         }
         return MAKEFOURCC('X','U','d','d');
     }
+    /* RoC 1.0's AEtq Tranquility row omits EfctID. The looping rain model
+     * and sound are authored on XEtq in NightElfAbilityFunc.txt. */
+    if (G_AbilityCode(ability_id) == MAKEFOURCC('A','E','t','q')) {
+        static bool warned_roc_tranquility;
+        if (!warned_roc_tranquility) {
+            fprintf(stderr, "WC3 compatibility: RoC AEtq has no EfctID column; using XEtq effect art\n");
+            warned_roc_tranquility = true;
+        }
+        return MAKEFOURCC('X','E','t','q');
+    }
 #endif
     return ability_id;
 }
