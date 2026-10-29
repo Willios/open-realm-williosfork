@@ -987,6 +987,15 @@ that content while reading. A save must not depend on the old string arena survi
 Version 102 rejects older layouts. The network protocol is unchanged.
 See [entity and player state](state-review.md) for ownership and regression tests.
 
+## Trained Hero proper names (version 121)
+
+The selected `Propernames` value is stored in `unit_state.proper_name` and survives
+save/load independently of the unit profile's comma-separated name list. The field
+uses `F_ANIMSTRING`; pool records write and restore nested string values after their
+fixed-size record, in schema order. Version 121 rejects saves written with the
+incomplete version 120 pool-string layout. `wc3_save.field_trained_hero_proper_name_round_trip`
+checks the actual `WriteGame`/`ReadGame` path in Classic and TFT.
+
 ## Optional Soul Trap relationships (version 103)
 
 The carrier/target Soul Trap fields now live in the optional `soultrap` pool,

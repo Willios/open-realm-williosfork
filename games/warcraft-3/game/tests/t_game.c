@@ -5348,6 +5348,21 @@ SAVE_FLOAT_FIELD_TEST(field_temporary_health_bonus_round_trip, unit_state->tempo
 SAVE_FLOAT_FIELD_TEST(field_temporary_mana_bonus_round_trip, unit_state->temporary_mana_bonus, 125.0f)
 SAVE_FLOAT_FIELD_TEST(field_animation_speed_round_trip, animation_speed, 0.5f)
 
+TEST(wc3_save, field_trained_hero_proper_name_round_trip) {
+    cstring_t filename = Test_TempPath("wc3-save-trained-hero-proper-name.bin");
+    field_t const *desc = find_save_field("unit_state->proper_name");
+    reset_entities();
+    edict_t *hero = alloc_test_unit(MAKEFOURCC('H', 'p', 'a', 'l'), 0.0f, 0.0f);
+    T_NOT_NULL(desc);
+    if (desc) T_EQ(desc->type, F_ANIMSTRING);
+    hero->unit_state->proper_name = G_InternAnimationName("TestHeroProperName");
+    T_ASSERT(WriteGame(filename));
+    hero->unit_state->proper_name = NULL;
+    T_ASSERT(ReadGame(filename));
+    T_STREQ(hero->unit_state->proper_name, "TestHeroProperName");
+    remove(filename);
+}
+
 TEST(wc3_save, field_hero_shortcut_alert_is_runtime_only) {
     cstring_t filename = Test_TempPath("wc3-save-hero-shortcut-alert.bin");
     field_t const *desc = find_save_field("unit_state->shortcut_alert_until");

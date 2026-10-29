@@ -150,8 +150,9 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 117 persists target-owned per-player Pillage damage and resource remainders. */
 /* Version 118 persists basic-attack missile owner incarnation identities. */
 /* Version 119 snapshots line-projectile spill geometry in artillery components. */
-/* Version 120 persists the selected runtime proper name of each trained Hero. */
-static uint32_t const save_version = 120;
+/* Version 120 introduced trained Hero names; version 121 writes nested pool strings. */
+/* Version 121 persists F_ANIMSTRING values in component pools. */
+static uint32_t const save_version = 121;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -1585,6 +1586,47 @@ static bool WriteField1(field_t const *field, uint8_t *base) {
     return true;
 }
 
+/* Edict strings follow the fixed-size record on disk. Traverse nested field
+ * schemas too, because WriteField1 clears every F_ANIMSTRING pointer in the
+ * raw record before the corresponding text is written. */
+static bool WriteFieldStrings(FILE *f, field_t const *field, uint8_t *base) {
+    uint32_t count = field->count_ofs != UINT32_MAX ? *(uint32_t *)(base + field->count_ofs) :
+        field->array_size ? field->array_size : 1;
+    size_t size = field->array_size ? field->size / field->array_size : field->size;
+    if (field->type == F_STRUCT) {
+        FOR_LOOP(i, count) {
+            for (field_t const *child = (field_t const *)field->flags; child->name; child++)
+                if (!WriteFieldStrings(f, child, base + field->ofs + i * size)) return false;
+        }
+        return true;
+    }
+    if (field->type != F_ANIMSTRING) return true;
+    FOR_LOOP(i, count)
+        if (!WriteString(f, *(cstring_t *)(base + field->ofs + i * size))) return false;
+    return true;
+}
+
+static bool ReadFieldStrings(FILE *f, field_t const *field, uint8_t *base) {
+    uint32_t count = field->count_ofs != UINT32_MAX ? *(uint32_t *)(base + field->count_ofs) :
+        field->array_size ? field->array_size : 1;
+    size_t size = field->array_size ? field->size / field->array_size : field->size;
+    if (field->type == F_STRUCT) {
+        FOR_LOOP(i, count) {
+            for (field_t const *child = (field_t const *)field->flags; child->name; child++)
+                if (!ReadFieldStrings(f, child, base + field->ofs + i * size)) return false;
+        }
+        return true;
+    }
+    if (field->type != F_ANIMSTRING) return true;
+    FOR_LOOP(i, count) {
+        char *text = NULL;
+        if (!ReadString(f, &text)) return false;
+        *(cstring_t *)(base + field->ofs + i * size) = G_InternAnimationName(text);
+        free(text);
+    }
+    return true;
+}
+
 /* Restore entity and client pointers after the raw edict block is read. */
 static bool ReadField(field_t const *field, uint8_t *base) {
     uint32_t count = field->count_ofs != UINT32_MAX ? *(uint32_t *)(base + field->count_ofs) :
@@ -1998,7 +2040,7 @@ static bool WriteEdict(FILE *f, edict_t const *ent) {
         if (!WriteField1(field, (uint8_t *)&temp)) return false;
     if (!SaveBytes(f, &temp, sizeof(temp))) return false;
     for (field = edict_fields; field->name; field++)
-        if (field->type == F_ANIMSTRING && !WriteString(f, *(cstring_t *)((uint8_t const *)ent + field->ofs))) return false;
+        if (!WriteFieldStrings(f, field, (uint8_t *)ent)) return false;
     return true;
 }
 
@@ -2153,13 +2195,8 @@ static bool ReadEdict(FILE *f, edict_t *ent) {
     ClearRuntimeFields(ent, edict_fields, FIELD_RUNTIME);
     for (field = edict_fields; field->name; field++)
         if (!ReadField(field, (uint8_t *)ent)) return false;
-    for (field = edict_fields; field->name; field++) {
-        if (field->type != F_ANIMSTRING) continue;
-        char *text = NULL;
-        if (!ReadString(f, &text)) return false;
-        *(cstring_t *)((uint8_t *)ent + field->ofs) = G_InternAnimationName(text);
-        free(text);
-    }
+    for (field = edict_fields; field->name; field++)
+        if (!ReadFieldStrings(f, field, (uint8_t *)ent)) return false;
     /* Table rows are process-owned; C callbacks already came back through F_CFUNCTION. */
     if (ent->class_id) {
         G_BindEntityData(ent);
@@ -2250,6 +2287,8 @@ static bool WritePool(FILE *f, savePool_t const *pool) {
         for (field_t const *field = pool->fields; ok && field->name; field++)
             ok = WriteField1(field, temp);
         ok = ok && SaveBytes(f, &index, sizeof(index)) && SaveBytes(f, temp, pool->size);
+        for (field_t const *field = pool->fields; ok && field->name; field++)
+            ok = WriteFieldStrings(f, field, slot);
     }
     free(temp);
     return ok;
@@ -2268,6 +2307,8 @@ static bool ReadPool(FILE *f, savePool_t const *pool) {
         ClearRuntimeFields(slot, pool->fields, FIELD_RUNTIME);
         for (field_t const *field = pool->fields; field->name; field++)
             if (!ReadField(field, slot)) return false;
+        for (field_t const *field = pool->fields; field->name; field++)
+            if (!ReadFieldStrings(f, field, slot)) return false;
         if (pool->component && ((component_t *)slot)->id != pool->component) return false;
         AttachPoolSlot(g_edicts + index, pool, slot);
     }

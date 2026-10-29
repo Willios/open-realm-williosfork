@@ -1458,12 +1458,27 @@ TEST(wc3_unit, hero_dissipation_marks_same_hero_revivable_and_hidden) {
     T_ASSERT(hero->s.renderfx & RF_HIDDEN);
 }
 
+TEST(wc3_unit, hero_death_invalidates_owner_shortcut_roster) {
+    reset_test_entities();
+    setup_test_world();
+    game.clients[0].ps.number = 0;
+    game.clients[0].shortcuts.dirty = false;
+    edict_t *hero = make_inventory_unit(0, 0);
+    hero->s.player = 0;
+    hero->svflags |= SVF_MONSTER;
+
+    unit_die(hero, NULL);
+
+    T_ASSERT(game.clients[0].shortcuts.dirty);
+}
+
 TEST(wc3_unit, scripted_revive_clears_altar_revival_state_on_same_hero) {
     reset_test_entities();
     gameClient_t *client = &game.clients[0];
     edict_t *altar = make_unit(0, 0);
     edict_t *hero = make_inventory_unit(0, 0);
     altar->s.player = hero->s.player = client->ps.number;
+    hero->svflags |= SVF_MONSTER;
     altar->build = hero;
     hero->health.max_value = 500.0f;
     hero->health.value = 0.0f;
@@ -1480,6 +1495,7 @@ TEST(wc3_unit, scripted_revive_clears_altar_revival_state_on_same_hero) {
     revival->lumber = 50;
     client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 0;
     client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 0;
+    client->shortcuts.dirty = false;
 
     T_ASSERT(G_ReviveHero(hero, 64.0f, 96.0f));
 
@@ -1498,6 +1514,7 @@ TEST(wc3_unit, scripted_revive_clears_altar_revival_state_on_same_hero) {
     T_FEQ(hero->s.origin.x, 64.0f, 0.001f);
     T_FEQ(hero->s.origin.y, 96.0f, 0.001f);
     T_ASSERT(hero->health.value > 0.0f);
+    T_ASSERT(client->shortcuts.dirty);
     G_SelectEntity(client, hero);
     T_ASSERT(G_IsEntitySelected(client, hero));
 }
