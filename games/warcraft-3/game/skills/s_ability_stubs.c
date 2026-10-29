@@ -7,10 +7,10 @@
  */
 
 /* Immolation's DataA is damage per second, DataB is mana drain per second,
- * and Area is its self-centered radius. Mana is spent in one-point steps
- * distributed evenly through each second; damage remains a one-second pulse. */
-#define IMMOLATION_TICK_MS 1000
-#define IMMOLATION_MANA_RATE 7
+ * and Area is its self-centered radius. Mana drain is distributed over seven substeps per second
+ * (one point each for stock DataB=7); damage remains a one-second pulse. */
+#define IMMOLATION_TICK_MS 1000 // milliseconds; authored damage is per second
+#define IMMOLATION_MANA_RATE 7 // substeps/second; preserves stock one-point mana drain cadence
 #define ID_IMMOLATION_STATUS MAKEFOURCC('B','E','i','m')
 BZ_ABILITY_PROC(CAbilityImmolation) {
     heroabilitystatus_t *status;
@@ -39,15 +39,15 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
                     S_SpellDamage(target, ent, (int)damage);
                 }
             }
+            /* Damage timing must not depend on DataB. The old variable step
+             * count changed DPS for custom rates and never ticked at DataB=0. */
+            uint32_t const step = status->duration_ms + 1;
+            uint32_t const elapsed_ms = (uint32_t)(((uint64_t)step * IMMOLATION_TICK_MS + IMMOLATION_MANA_RATE - 1) / IMMOLATION_MANA_RATE);
+            uint32_t const next_ms = (uint32_t)(((uint64_t)(step + 1) * IMMOLATION_TICK_MS + IMMOLATION_MANA_RATE - 1) / IMMOLATION_MANA_RATE);
+            status->duration_ms = step;
+            status->next_tick += next_ms - elapsed_ms;
             if (mana_drain > 0.0f) {
-                uint32_t const steps_per_second = MAX(1u, (uint32_t)ceilf(mana_drain));
-                uint32_t const step = status->duration_ms + 1;
-                uint32_t const elapsed_ms = (uint32_t)(((uint64_t)step * IMMOLATION_TICK_MS + steps_per_second - 1) / steps_per_second);
-                uint32_t const next_elapsed_ms = (uint32_t)(((uint64_t)(step + 1) * IMMOLATION_TICK_MS + steps_per_second - 1) / steps_per_second);
-                uint32_t const activation_time = status->next_tick - elapsed_ms;
-                status->duration_ms = step;
-                status->next_tick = activation_time + next_elapsed_ms;
-                ent->mana.value = MAX(0.0f, ent->mana.value - 1.0f);
+                ent->mana.value = MAX(0.0f, ent->mana.value - mana_drain / IMMOLATION_MANA_RATE);
                 G_InvalidateUnitInfoPanel(ent);
                 if (ent->mana.value <= 0.0f) {
                     unit_removestatus(ent, status, STATUS_REMOVE_SCRIPT);
@@ -55,7 +55,7 @@ BZ_ABILITY_PROC(CAbilityImmolation) {
                     G_InvalidateUnitCommands(ent);
                     return true;
                 }
-            } else status->next_tick += IMMOLATION_TICK_MS;
+            }
         }
         return true;
     }

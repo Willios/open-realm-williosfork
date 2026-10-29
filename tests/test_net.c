@@ -5114,3 +5114,23 @@ TEST(net, eos_addresses_round_trip_and_compare_complete_identity) {
     T_ASSERT(!NET_StringToAdr("eos:123", 0, &copy));
     T_ASSERT(!NET_StringToAdr("eos:0123456789abcdef0123456789abcdeg", 0, &copy));
 }
+
+/* Point-only targeting reuses the existing stats delta, including clearing it. */
+TEST(net, location_cursor_flags_round_trip_and_clear) {
+    uint8_t buf[256];
+    sizeBuf_t sb = make_msg_buf(buf, sizeof(buf));
+    player_t from = {0}, to = { .number = 1 }, out = {0};
+    uint32_t bits;
+    to.stats[UI_PLAYERSTAT_CURSOR_FLAGS] = CURSOR_INPUT_LOCATION_POINT | CURSOR_INPUT_MINIMAP_POINT;
+    MSG_WriteDeltaPlayerState(&sb, &from, &to);
+    int number = MSG_ReadPlayerBits(&sb, &bits);
+    MSG_ReadDeltaPlayerState(&sb, &out, number, bits);
+    T_EQ(out.stats[UI_PLAYERSTAT_CURSOR_FLAGS], to.stats[UI_PLAYERSTAT_CURSOR_FLAGS]);
+    from = out;
+    to.stats[UI_PLAYERSTAT_CURSOR_FLAGS] = 0;
+    SZ_Init(&sb, buf, sizeof(buf));
+    MSG_WriteDeltaPlayerState(&sb, &from, &to);
+    number = MSG_ReadPlayerBits(&sb, &bits);
+    MSG_ReadDeltaPlayerState(&sb, &out, number, bits);
+    T_EQ(out.stats[UI_PLAYERSTAT_CURSOR_FLAGS], 0);
+}

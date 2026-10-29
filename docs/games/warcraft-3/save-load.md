@@ -987,6 +987,28 @@ that content while reading. A save must not depend on the old string arena survi
 Version 102 rejects older layouts. The network protocol is unchanged.
 See [entity and player state](state-review.md) for ownership and regression tests.
 
+## Impact callbacks and Immolation timing (version 122)
+
+Version 122 appends `possession_projectile_death_think` to the callback roster.
+Possession's missile remains an edict while its Death sequence plays; saving in
+that interval must restore its callback and finish the effect without repeating
+ownership transfer. `wc3_spell.possession_apos_takes_over_and_consumes_caster`
+round-trips at impact and checks that the missile is freed afterward.
+
+Immolation uses seven substeps per second, independently of authored DataB.
+Its persistent status stores the elapsed substep count in `duration_ms` and the
+next deadline in `next_tick`; each substep drains DataB/7 mana and every seventh
+substep applies DataA damage. Zero drain still advances damage timing. Version
+121's variable-rate substep meaning is incompatible and is rejected. The custom
+rate regression covers RoC Data11/Data12 and TFT DataA1/DataB1, zero/fractional
+rates, toggle-off and continuation after save/load.
+
+`RebindEntityModels` also registers `WPN_ALINE` attack art for both weapon slots,
+matching spawn initialization. Numeric model handles from the saving process
+must never survive as projectile-model identities in the restored process.
+The network wire layout is unchanged; location cursor flags use the existing
+player stats delta (`net.location_cursor_flags_round_trip_and_clear`).
+
 ## Trained Hero proper names (version 121)
 
 The selected `Propernames` value is stored in `unit_state.proper_name` and survives

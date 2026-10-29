@@ -645,4 +645,6 @@ void S_SpellEndChannel(edict_t *thinker);
 void spell_cmd(edict_t *clent);
 void spell_run_frame(edict_t *ent);
 
+void possession_projectile_death_think(edict_t *missile);
+
 #endif

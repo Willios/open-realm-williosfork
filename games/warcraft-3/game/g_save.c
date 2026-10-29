@@ -152,7 +152,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 119 snapshots line-projectile spill geometry in artillery components. */
 /* Version 120 introduced trained Hero names; version 121 writes nested pool strings. */
 /* Version 121 persists F_ANIMSTRING values in component pools. */
-static uint32_t const save_version = 121;
+/* Version 122 rosters Possession impact callbacks and fixes Immolation substep semantics. */
+static uint32_t const save_version = 122;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -229,6 +230,7 @@ static saveCFunction_t const save_cfunctions[] = {
     SAVE_CFUNCTION(acid_bomb_think),
     SAVE_CFUNCTION(morph_end),
     SAVE_CFUNCTION(sentinel_owl_think),
+    SAVE_CFUNCTION(possession_projectile_death_think),
 };
 
 static int SaveCFunctionIndex(void *func) {
@@ -2453,10 +2455,12 @@ static void RebindEntityModels(edict_t *ent) {
     }
     if (!ent->unit_state) return;
     if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY ||
-        ent->unit_state->attack1.weapon == WPN_MSPLASH || ent->unit_state->attack1.weapon == WPN_MBOUNCE)
+        ent->unit_state->attack1.weapon == WPN_MSPLASH || ent->unit_state->attack1.weapon == WPN_MBOUNCE ||
+        ent->unit_state->attack1.weapon == WPN_ALINE)
         ent->unit_state->attack1.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[0].art);
     if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY ||
-        ent->unit_state->attack2.weapon == WPN_MSPLASH || ent->unit_state->attack2.weapon == WPN_MBOUNCE)
+        ent->unit_state->attack2.weapon == WPN_MSPLASH || ent->unit_state->attack2.weapon == WPN_MBOUNCE ||
+        ent->unit_state->attack2.weapon == WPN_ALINE)
         ent->unit_state->attack2.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[1].art);
 }
 
@@ -2924,6 +2928,29 @@ TEST(wc3_save, moon_glaive_mbounce_missile_art_survives_save_load) {
     unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0.0f, 0.0f);
     unit->s.flags |= EF_UNIT;
     unit->unit_state->attack1.weapon = WPN_MBOUNCE;
+    unit->unit_state->attack1.projectile.model = 99;
+    T_ASSERT(WriteGame(filename));
+    T_ASSERT(save_test_read_with_model_stub(filename));
+    T_ASSERT(save_test_model_index(unit->data.UnitProfile->attack[0].art, false) > 0);
+    T_EQ(unit->unit_state->attack1.projectile.model,
+         save_test_model_index(unit->data.UnitProfile->attack[0].art, false));
+    G_SetProfileRows(old); free_slk_rows(rows);
+    remove(filename);
+}
+
+TEST(wc3_save, impaling_bolt_aline_missile_art_survives_save_load) {
+    static char const profile_slk[] =
+        "C;Y1;X1;K\"id\"\nC;Y1;X2;K\"Missileart\"\n"
+        "C;Y2;X1;K\"hfoo\"\nC;Y2;X2;K\"TestUI\\\\Missiles\\\\glaive.mdx\"\nE\n";
+    cstring_t const filename = Test_TempPath("wc3-save-aline-art.bin");
+    slkTestData_t *rows = parse_slk_string(profile_slk), *old = G_SetProfileRows(rows);
+    edict_t *unit;
+
+    reset_entities();
+    setup_test_world();
+    unit = alloc_test_unit(MAKEFOURCC('h', 'f', 'o', 'o'), 0.0f, 0.0f);
+    unit->s.flags |= EF_UNIT;
+    unit->unit_state->attack1.weapon = WPN_ALINE;
     unit->unit_state->attack1.projectile.model = 99;
     T_ASSERT(WriteGame(filename));
     T_ASSERT(save_test_read_with_model_stub(filename));

@@ -161,8 +161,13 @@ TEST(wc3_spell, possession_apos_takes_over_and_consumes_caster) {
     T_ASSERT(pos_has_attached_effect(fix.enemy, target_effect));
     T_ASSERT(G_IsEntitySelected(client, fix.enemy));
     T_ASSERT(!G_IsEntitySelected(client, fix.caster));
+    cstring_t const filename = Test_TempPath("possession-impact-save.bin");
+    T_ASSERT(WriteGame(filename));
+    T_ASSERT(ReadGame(filename));
+    T_NOT_NULL(missile->think);
     pos_finish_missile(missile);
     T_ASSERT(!missile->inuse);
+    remove(filename);
     pos_done(fix);
 }
 

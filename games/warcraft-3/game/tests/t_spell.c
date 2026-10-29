@@ -1027,6 +1027,55 @@ TEST(wc3_spell, immolation_command_toggle_damages_enemy_land_units_until_mana_or
     free_slk_rows(rows);
 }
 
+/* Both schemas must honor fractional and zero DataB without changing DPS. */
+TEST(wc3_spell, immolation_custom_mana_rate_keeps_one_second_damage_pulses) {
+    float const rates[] = { 3.5f, 0.0f, 14.0f };
+    for (uint32_t roc = 0; roc < 2; roc++) {
+        FOR_LOOP(i, sizeof(rates) / sizeof(rates[0])) {
+            char slk[1024];
+            snprintf(slk, sizeof(slk),
+                "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
+                "C;Y1;X4;K\"%s\"\nC;Y1;X5;K\"%s\"\nC;Y1;X6;K\"%s\"\n"
+                "C;Y2;X1;K\"AEim\"\nC;Y2;X2;K\"AEim\"\nC;Y2;X3;K1\n"
+                "C;Y2;X4;K160\nC;Y2;X5;K13\nC;Y2;X6;K%g\nE\n",
+                "Area1", roc ? "Data11" : "DataA1", roc ? "Data12" : "DataB1", rates[i]);
+            slkTestData_t *rows = parse_slk_string(slk), *old = G_SetSLKRows("AbilityData", rows);
+            reset_entities(); setup_test_world(); level.time = 0;
+            edict_t *caster = make_hero(MAKEFOURCC('E','d','e','m'), 1000, 100, 0, 0);
+            edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 50, 0);
+            static UnitAbilities_t const abilities = { .abilList = "AEim" };
+            caster->data.UnitAbilities = &abilities;
+            caster->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','i','m'), .level = 1);
+            caster->s.player = 0; enemy->s.player = 1;
+            enemy->svflags |= SVF_MONSTER;
+            enemy->targtype = TARG_GROUND;
+            enemy->health.value = enemy->health.max_value = 100;
+            memset(level.alliances, 0, sizeof(level.alliances));
+            ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+            ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeHuman;
+            abilityitem_t const item = S_AbilityItem(MAKEFOURCC('A','E','i','m'));
+            abilityCall_t const call = MAKE(abilityCall_t, .item = &item);
+            T_ASSERT(S_AbilityMessage(caster, A_EXECUTE, &call));
+            level.time = 999; S_RunAbilityUpdates(caster);
+            T_FEQ(enemy->health.value, 100, 0.001f);
+            level.time = 1000; S_RunAbilityUpdates(caster);
+            T_FEQ(enemy->health.value, 87, 0.001f);
+            T_FEQ(caster->mana.value, 100 - rates[i], 0.001f);
+            cstring_t const filename = Test_TempPath("immolation-substeps.bin");
+            T_ASSERT(WriteGame(filename));
+            T_ASSERT(ReadGame(filename));
+            remove(filename);
+            level.time = 2000; S_RunAbilityUpdates(caster);
+            T_FEQ(enemy->health.value, 74, 0.001f);
+            T_FEQ(caster->mana.value, 100 - 2 * rates[i], 0.001f);
+            T_ASSERT(S_AbilityMessage(caster, A_EXECUTE, &call));
+            level.time = 3000; S_RunAbilityUpdates(caster);
+            T_FEQ(enemy->health.value, 74, 0.001f);
+            G_SetSLKRows("AbilityData", old); free_slk_rows(rows);
+        }
+    }
+}
+
 /* ---- Spell helpers ---- */
 
 TEST(wc3_spell, spell_code_to_string) {

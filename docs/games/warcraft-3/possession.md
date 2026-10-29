@@ -87,3 +87,8 @@ Possession now plays `Birth`, transitions to `Stand` during longer flights, and
 plays `Death` on impact. Check basic attacks and each spell-missile family for
 authored launch/impact sequences and implement the appropriate lifecycle where
 needed; do not assume every projectile should use both sequences.
+
+Saving during the instant Possession missile's Death animation is covered by
+`wc3_spell.possession_apos_takes_over_and_consumes_caster`. The impact thinker is
+rostered in save version 122; restoration finishes the animation without
+repeating the takeover. See [save/load](save-load.md#impact-callbacks-and-immolation-timing-version-122).

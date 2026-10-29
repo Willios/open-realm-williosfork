@@ -689,7 +689,8 @@ static void possession_takeover(edict_t *caster, edict_t *target) {
     possession_select_target(target);
 }
 
-static void possession_projectile_death_think(edict_t *missile) {
+/* Persist this callback while the impact animation is still playing. */
+void possession_projectile_death_think(edict_t *missile) {
     M_MoveFrame(missile);
 }
 
