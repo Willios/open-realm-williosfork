@@ -264,6 +264,20 @@ BZ_ABILITY_PROC(CAbilityLandMine) {
 
 static bool sentinel_owl_active(edict_t const *owl);
 
+static edict_t *sentinel_tree_at_point(vec2_t const *point) {
+	edict_t *nearest = NULL;
+	float nearest_distance = 1.0f;
+	if (!point) return NULL;
+	FILTER_EDICTS(tree, tree->targtype == TARG_TREE && G_DestructableIsAttackable(tree)) {
+		float const distance = Vector2_distance(&tree->s.origin2, point);
+		if (distance <= nearest_distance) {
+			nearest = tree;
+			nearest_distance = distance;
+		}
+	}
+	return nearest;
+}
+
 static bool ward_is_sentry(edict_t const *ward) {
 	return ward && ward->inuse && G_AbilityCode(ward->summon_ability) == ID_AEYE;
 }
@@ -531,7 +545,10 @@ static bool sentinel_owl_active(edict_t const *owl) {
  * g_fow.c's normal owner/shared-vision pass, not by a private fog modifier. */
 void sentinel_owl_think(edict_t *owl) {
     animation_t const *anim;
-    if (!sentinel_owl_active(owl)) { G_FreeEdict(owl); return; }
+    if (!sentinel_owl_active(owl)) {
+        G_FreeEdict(owl);
+        return;
+    }
     /* An owl is a lightweight entity without a unit currentmove.  Advance
      * its stand sequence directly, not through M_MoveFrame (which expects an
      * allocated unit move and invokes its callbacks). */
@@ -562,14 +579,27 @@ uint32_t S_SentinelDispelAt(vec2_t const *point, float radius) {
  * radius and Dur for lifetime.  The caster must target a living tree, and
  * the one-shot command is removed only after the owl is created. */
 BZ_ABILITY_PROC(CAbilitySentinel) {
-    edict_t *tree = call && call->target && call->target->type == SPELL_TARGET_UNIT ?
-        call->target->entity : NULL;
+	spellTarget_t const *target;
+	edict_t *tree;
     uint32_t code = call && call->item ? call->item->code : ID_AESN;
     uint32_t level;
     float radius, duration;
     edict_t *owl;
 
     switch (msg) {
+	case A_SPELL_TARGET_MODE:
+		if (call) ((abilityCall_t *)call)->spell_entity_target_mode = true;
+		return true;
+	case A_SPELL_APPROACH_RANGE:
+		/* This query carries the range in the call payload, not a target. */
+		return true;
+	default:
+		break;
+	}
+	target = call ? call->target : NULL;
+	tree = target && target->type == SPELL_TARGET_UNIT ? target->entity :
+		target && target->type == SPELL_TARGET_POINT ? sentinel_tree_at_point(&target->point) : NULL;
+	switch (msg) {
     case A_VALIDATE:
         return ent && tree && G_UnitAbilityLevel(ent, code) &&
                G_UnitAbilityResearchAvailable(ent, code) &&
@@ -580,7 +610,12 @@ BZ_ABILITY_PROC(CAbilitySentinel) {
             !G_UnitAbilityResearchAvailable(ent, code) ||
             tree->targtype != TARG_TREE || !G_DestructableIsAttackable(tree)) return false;
         level = S_SpellLevel(ent, code);
-        radius = S_SpellNumber(code, ABILITY_NUMBER_AREA, level);
+        /* Aesn's object-data fields are ability-specific: DataB is the
+         * hovering owl's sight radius and DataC is its hovering height.
+         * Area and Dur are zero in stock Warcraft data. */
+        radius = S_SpellData(code, level, 2);
+        float hover_height = S_SpellData(code, level, 3);
+        if (hover_height <= 0.0f) hover_height = 64.0f;
         duration = S_SpellDuration(code, level, false);
         if (radius <= 0.0f) return false;
         owl = G_Spawn();
@@ -590,7 +625,7 @@ BZ_ABILITY_PROC(CAbilitySentinel) {
         owl->s.flags |= EF_NOT_SELECTABLE;
         owl->s.origin = tree->s.origin;
         owl->s.origin2 = tree->s.origin2;
-        owl->s.origin.z += MAX(tree->s.radius, 64.0f);
+        owl->s.origin.z += hover_height;
         owl->s.model = G_RegisterModel(SENTINEL_OWL_MODEL);
         owl->s.scale = 1.0f;
         owl->health.value = owl->health.max_value = 1.0f;
@@ -604,6 +639,8 @@ BZ_ABILITY_PROC(CAbilitySentinel) {
             G_Time() + (uint32_t)(duration * 1000.0f) : 0;
         owl->think = sentinel_owl_think;
         G_SetUnitAnimation(owl, "stand");
+        /* Publish the persistent model at the tree's fixed world position. */
+        gi.LinkEntity(owl);
         if (!G_ActorRemoveSkill(ent, code)) {
             G_FreeEdict(owl);
             return false;

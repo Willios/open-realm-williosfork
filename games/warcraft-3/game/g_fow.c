@@ -854,9 +854,21 @@ static void G_FowRebuildBlockers(void) {
 
 /* Reveal directly into connected viewer grids; source-owner grids are irrelevant when nobody consumes them. */
 static void G_FowRevealForViewers(edict_t const *ent, float radius, uint32_t viewers) {
-    FOR_LOOP(viewer, MAX_PLAYERS)
-        if (viewers & (1u << viewer))
+    FOR_LOOP(viewer, MAX_PLAYERS) {
+        if (!(viewers & (1u << viewer))) continue;
+        /* Sentinel's hovering owl provides an authored remote sight disk. Its
+         * perch is attached to a tree, but that tree must not occlude the
+         * owl's own sight around the source point. */
+        if (ent->summon_ability == MAKEFOURCC('A', 'e', 's', 'n')) {
+            fowPlayerGrid_t *grid = &level.fow.players[viewer];
+            uint32_t cx = G_FowWorldToCellX(ent->s.origin.x);
+            uint32_t cy = G_FowWorldToCellY(ent->s.origin.y);
+            if (cx != FOW_INVALID_CELL && cy != FOW_INVALID_CELL)
+                G_FowRevealDisk(grid, cx, cy, G_FowRadiusCells(radius));
+        } else {
             G_FowRevealCircle(viewer, ent, radius);
+        }
+    }
 }
 
 /* --- Fog modifiers ------------------------------------------------------- *

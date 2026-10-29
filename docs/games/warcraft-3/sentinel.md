@@ -9,8 +9,11 @@ tech system and responds to completion and `SetPlayerTechResearched`.
   `Aesn` ability is removed, including from the command card. Re-granting the
   ability explicitly by JASS is supported, but expiry/dispel does not refund it.
 - The owl retains the caster's player ownership, even after caster death, and
-  uses `Aesn` **Area** as day/night vision and true-sight radius, and **Dur**
-  as its lifetime. Normal fog sight blockers and shared-vision rules apply.
+  uses `Aesn` **DataB** (Hovering Sight Radius) for day/night vision and
+  true-sight radius and **DataC** (Hovering Height) for its perch height.
+  Stock `Dur` is zero, so it remains until its tree is destroyed or damaged.
+  Shared-vision rules apply. The owl reveals its authored circular radius
+  without terrain occlusion from the tree it is perched on.
 - The owl is unselectable; presentation uses the standard Owl model. Its
   thinker cleans up after expiry, destruction/replacement of the attachment
   tree, **damage to that tree**, or a spell-area dispel. The owl does not

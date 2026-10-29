@@ -33,7 +33,7 @@ void free_slk_rows(slkTestData_t *rows);
 void G_RunEntities(void);
 
 static char const wards_slk[] =
-	"ID;PWXL;N;EBB;Y14;X16\n"
+    "ID;PWXL;N;EBB;Y14;X16\n"
 	"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
 	"C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Cost1\"\nC;Y1;X6;K\"Cool1\"\n"
 	"C;Y1;X7;K\"Rng1\"\nC;Y1;X8;K\"Dur1\"\nC;Y1;X9;K\"HeroDur1\"\n"
@@ -74,7 +74,8 @@ static char const wards_slk[] =
 	"C;Y13;X4;K\"vuln,invu\"\nC;Y13;X7;K\"900\"\n"
 	"C;Y14;X1;K\"Aesn\"\nC;Y14;X2;K\"Aesn\"\nC;Y14;X3;K\"1\"\n"
 	"C;Y14;X4;K\"tree\"\nC;Y14;X5;K\"0\"\nC;Y14;X6;K\"0\"\n"
-	"C;Y14;X7;K\"800\"\nC;Y14;X8;K\"2\"\nC;Y14;X16;K\"350\"\nE\n";
+	"C;Y14;X7;K\"800\"\nC;Y14;X8;K\"2\"\n"
+	"C;Y14;X11;K\"350\"\nC;Y14;X12;K\"96\"\nE\n";
 
 typedef struct {
 	slkTestData_t *rows, *old;
@@ -344,6 +345,22 @@ static edict_t *sentinel_find_owl(void) {
     return NULL;
 }
 
+/* Sentinel uses the same point-cursor/entity-hit route as Force of Nature.
+ * Destructables are edicts but not unit targets, so dispatching them through
+ * the generic unit-target order path can dereference unit-only state. */
+static bool sentinel_select_tree(edict_t *caster, edict_t *tree) {
+	edict_t *clent = &g_edicts[0];
+	gameClient_t *client = &game.clients[0];
+	if (!caster || !tree) return false;
+	clent->client = client;
+	clent->inuse = true;
+	client->connected = true;
+	client->ps.number = 0;
+	G_SelectEntity(client, caster);
+	client->menu.ability_code = MAKEFOURCC('A','e','s','n');
+	return S_SpellEntityTargetMode(clent) && S_SpellEntityTarget(clent, tree);
+}
+
 TEST(wc3_spell, sentinel_registry_tree_target_and_research_unlock) {
     uint32_t const code = MAKEFOURCC('A','e','s','n');
     uint32_t const research = MAKEFOURCC('R','e','s','c');
@@ -362,12 +379,12 @@ TEST(wc3_spell, sentinel_registry_tree_target_and_research_unlock) {
     debris = mine_destructable(200, 100, 0, TARG_DEBRIS);
     T_NOT_NULL(item.ability);
     T_EQ(item.ability->proc, CAbilitySentinel);
-    T_EQ(item.ability->target_type, SPELL_TARGET_UNIT);
+    T_EQ(item.ability->target_type, SPELL_TARGET_POINT);
     T_EQ(G_UnitAbilityLevel(caster, code), 1);
     T_ASSERT(!G_UnitAbilityResearchAvailable(caster, code));
     target.entity = tree;
     T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
-    T_ASSERT(!S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(!sentinel_select_tree(caster, tree));
 
     G_SetPlayerTechResearched(&game.clients[0], research, 1);
     T_ASSERT(G_UnitAbilityResearchAvailable(caster, code));
@@ -396,6 +413,8 @@ TEST(wc3_spell, sentinel_owl_provides_shared_day_night_vision_and_one_charge) {
     edict_t *tree, *owl, *caster;
 
     ward_setup(&fix);
+    G_FowInit();
+    G_FowConnectPlayer(0);
     rows = parse_slk_string(sentinel_upgrade_slk);
     old = G_SetSLKRows("UpgradeData", rows);
     caster = sentinel_fixture(&fix);
@@ -405,16 +424,30 @@ TEST(wc3_spell, sentinel_owl_provides_shared_day_night_vision_and_one_charge) {
     T_ASSERT(unit_addtimedstatus(fix.enemy, "Binv", 1, 5.0f));
     T_ASSERT(!S_UnitIsDetectedByPlayer(fix.enemy, 0));
     G_SetPlayerTechResearched(&game.clients[0], research, 1);
-    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(sentinel_select_tree(caster, tree));
     owl = sentinel_find_owl();
     T_NOT_NULL(owl);
     T_EQ(owl->s.player, 0);
     T_EQ(owl->goalentity, tree);
     T_ASSERT(owl->s.flags & EF_NOT_SELECTABLE);
+    T_ASSERT(owl->s.model != 0);
     T_FEQ(owl->runtime.sight_radius.day, 350.0f, .001f);
     T_FEQ(owl->runtime.sight_radius.night, 350.0f, .001f);
+    T_FEQ(owl->s.origin.x, tree->s.origin.x, .001f);
+    T_FEQ(owl->s.origin.y, tree->s.origin.y, .001f);
+    T_FEQ(owl->s.origin.z - tree->s.origin.z, 96.0f, .001f);
+    {
+        vec2_t const revealed = { 320.0f, 0.0f };
+        vec2_t const near_radius_edge = { 390.0f, 0.0f };
+        vec2_t const beyond_radius = { 500.0f, 0.0f };
+        G_FowUpdate();
+        T_ASSERT(G_FowPointIsVisible(0, &revealed));
+        /* The tree at the source cell cannot occlude the owl's authored disk. */
+        T_ASSERT(G_FowPointIsVisible(0, &near_radius_edge));
+        T_ASSERT(!G_FowPointIsVisible(0, &beyond_radius));
+    }
     T_ASSERT(!G_UnitAbilityLevel(caster, code));
-    T_ASSERT(!S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(!sentinel_select_tree(caster, tree));
     T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 0));
     caster->health.value = 0.0f;
     T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 0)); /* caster death does not retire owl */
@@ -430,6 +463,7 @@ TEST(wc3_spell, sentinel_owl_provides_shared_day_night_vision_and_one_charge) {
     G_SetSLKRows("UpgradeData", old);
     free_slk_rows(rows);
     ward_done(&fix);
+    G_FowShutdown();
 }
 
 TEST(wc3_spell, sentinel_owl_ends_on_tree_damage_or_area_dispel) {
@@ -445,14 +479,14 @@ TEST(wc3_spell, sentinel_owl_ends_on_tree_damage_or_area_dispel) {
     caster = sentinel_fixture(&fix);
     G_SetPlayerTechResearched(&game.clients[0], research, 1);
     tree = mine_destructable(200, 50, 0, TARG_TREE);
-    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(sentinel_select_tree(caster, tree));
     owl = sentinel_find_owl(); T_NOT_NULL(owl);
     T_ASSERT(!G_DestructableApplyDamage(tree, fix.enemy, 1.0f));
     sentinel_owl_think(owl);
     T_ASSERT(!owl->inuse);
 
     T_ASSERT(G_ActorAddSkill(caster, code));
-    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(sentinel_select_tree(caster, tree));
     owl = sentinel_find_owl(); T_NOT_NULL(owl);
     T_EQ(S_SentinelDispelAt(&tree->s.origin2, 150.0f), 1);
     T_ASSERT(!owl->inuse);
@@ -464,7 +498,6 @@ TEST(wc3_spell, sentinel_owl_ends_on_tree_damage_or_area_dispel) {
 
 TEST(wc3_save, sentinel_owl_survives_round_trip_with_tree_and_expiry) {
     cstring_t save = Test_TempPath("sentinel-save.bin");
-    uint32_t const code = MAKEFOURCC('A','e','s','n');
     uint32_t const research = MAKEFOURCC('R','e','s','c');
     wardFix_t fix;
     slkTestData_t *rows, *old;
@@ -477,7 +510,7 @@ TEST(wc3_save, sentinel_owl_survives_round_trip_with_tree_and_expiry) {
     caster = sentinel_fixture(&fix);
     G_SetPlayerTechResearched(&game.clients[0], research, 1);
     tree = mine_destructable(200, 50, 0, TARG_TREE);
-    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(sentinel_select_tree(caster, tree));
     owl = sentinel_find_owl(); T_NOT_NULL(owl);
     tree_num = tree->s.number;
     owl_num = owl->s.number;
