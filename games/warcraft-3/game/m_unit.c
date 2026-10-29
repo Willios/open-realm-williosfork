@@ -672,6 +672,7 @@ static unitOrderDef_t const unit_order_defs[] = {
     { "stomp", 852127, MAKEFOURCC('A','O','w','s') },
     { "whirlwind", 852128, MAKEFOURCC('A','O','w','w') },
     { "windwalk", 852129, MAKEFOURCC('A','O','w','k') },
+    { "detonate", 852145, MAKEFOURCC('A','d','t','n') },
     { "eattree", 852146, MAKEFOURCC('A','e','a','t') },
     { "entangle", 852147, 0 },
     { "entangleinstant", 852148, 0 },

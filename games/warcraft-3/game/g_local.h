@@ -3051,6 +3051,7 @@ void G_BlightShutdown(void);
 bool G_IsPointBlighted(vec2_t const *point);
 void G_SetBlightPoint(vec2_t const *point, bool add);
 void G_SetBlightRadius(vec2_t const *point, float radius, bool add);
+void G_DispelBlightRadius(vec2_t const *point, float radius);
 void G_SetBlightRect(box2_t const *rect, bool add);
 void G_BlightInitializeDestructable(edict_t *ent);
 void G_BlightUpdateDestructables(box2_t const *region);

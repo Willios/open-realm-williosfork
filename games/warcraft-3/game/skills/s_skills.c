@@ -474,7 +474,7 @@ static ability_t abilitylist[] = {
     { "Ashm", CAbilityShadowMeld, AB_PASSIVE | AB_UPDATE | AB_INNATE | AB_SPELL, SPELL_TARGET_NONE, hide_orders },  /* Shadow Meld */
     { "Ahid", CAbilityShadowMeldAkama, AB_PASSIVE | AB_UPDATE | AB_INNATE | AB_SPELL, SPELL_TARGET_NONE, hide_orders },  /* Shadow Meld (Akama) */
     { "Aesn", CAbilityEvilEye, AB_SPELL, SPELL_TARGET_POINT },  /* Sentinel */
-    { "Adtn", CAbilitySelfDestruct, AB_SPELL, SPELL_TARGET_NONE },  /* Detonate */
+    { "Adtn", CAbilityDetonate, AB_SPELL, SPELL_TARGET_POINT },  /* Detonate */
     { "Abrf", CAbilityMetamorphosis, AB_SPELL },  /* Bear Form */
 
     { "Aadm", CAbilityAbolishMagic, AB_SPELL | AB_AUTOCAST, SPELL_TARGET_POINT },  /* Abolish Magic */

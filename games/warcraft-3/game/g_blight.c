@@ -1,4 +1,5 @@
 #include "g_local.h"
+#include "skills/s_skills.h"
 
 #define WC3_BLIGHT_PATH_CELL 32.0f // world units; authoritative Blight cell width; used by simulation and network mask
 #define WC3_BLIGHT_TERRAIN_CELL 128.0f // world units; authored terrain-corner spacing; used by Blight rasterization
@@ -186,6 +187,42 @@ void G_SetBlightRadius(vec2_t const *point, float radius, bool add) {
                         { point->x + radius, point->y + radius } };
         G_BlightUpdateDestructables(&region);
     }
+}
+
+/* Magical dispel clears loose Blight. Unlike a blind G_SetBlightRadius(false),
+ * preserve corners still maintained by a living Abli source. The raster has no
+ * source provenance, so unmaintained pre-placed Blight shares the loose-blight
+ * rule; strict Sacrificial Skull-only removal needs authored source tracking. */
+void G_DispelBlightRadius(vec2_t const *point, float radius) {
+    float min_x, min_y, max_x, max_y;
+    uint32_t mask;
+    if (!point || !level.blight.cells || !(radius >= 0.0f)) return;
+    mask = G_BlightConnectedMask();
+    min_x = G_SnapBlightCorner(point->x - radius, level.blight.bounds.min.x);
+    min_y = G_SnapBlightCorner(point->y - radius, level.blight.bounds.min.y);
+    max_x = point->x + radius; max_y = point->y + radius;
+    for (float y = min_y; y <= max_y; y += WC3_BLIGHT_TERRAIN_CELL)
+        for (float x = min_x; x <= max_x; x += WC3_BLIGHT_TERRAIN_CELL) {
+            float dx = x - point->x, dy = y - point->y;
+            bool maintained = false;
+            if (dx * dx + dy * dy > radius * radius) continue;
+            FILTER_EDICTS(source, source->inuse && !M_IsDead(source)) {
+                blightGrowth_t const *growth = G_GetBlightGrowth(source);
+                if (!growth || !growth->ability || growth->radius <= 0.0f ||
+                    !G_IsUnitAbilityAvailable(source, growth->ability) ||
+                    S_SpellData(growth->ability, MAX(1u, G_UnitAbilityLevel(source, growth->ability)), 1) == 0.0f)
+                    continue;
+                dx = x - source->s.origin2.x; dy = y - source->s.origin2.y;
+                /* Corner rasterisation can extend up to two pathing cells
+                 * beyond the author's radial centre. Fail closed nearby. */
+                if (dx * dx + dy * dy <= (growth->radius + WC3_BLIGHT_PATH_CELL * 2.0f) *
+                                      (growth->radius + WC3_BLIGHT_PATH_CELL * 2.0f)) {
+                    maintained = true;
+                    break;
+                }
+            }
+            if (!maintained) G_SetBlightCorner(x, y, false, mask);
+        }
 }
 
 void G_SetBlightRect(box2_t const *rect, bool add) {

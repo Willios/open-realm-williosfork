@@ -643,8 +643,28 @@ BZ_HUMAN_AUTOCAST_SPELL(AbilityInnerFire, inner_fire_validate(ent, target, call 
 /* Dispel Magic family (Adis/Adch/Advm): area timed-status clear; Advm also heals per buff.
  * Adis/Adch author summoned damage in DataB; Advm authors heals in DataA/DataB and damage in DataE.
  * Summons are marked with owner (S_SummonAt), and optionally summon_ability / AI_ILLUSION. */
-static bool dispel_is_summoned(edict_t const *unit) {
-    return unit && (unit->owner || unit->summon_ability || (unit->aiflags & AI_ILLUSION));
+bool S_DispelIsSummoned(edict_t const *unit) {
+    return unit && (unit->owner || unit->summon_ability || (unit->aiflags & AI_ILLUSION) ||
+                    unit->targtype == TARG_WARD);
+}
+
+/* Dispel each status through its owning ability's inverse lifecycle.  Reuse
+ * this for Priest/Spirit Walker dispels and Wisp Detonate so the latter cannot
+ * silently clear timed life or leave speed/armor/flight state behind. */
+uint32_t S_DispelUnitMagic(edict_t *target) {
+    uint32_t removed = 0;
+    if (!target || !target->unit_state) return 0;
+    FOR_LOOP(i, MAX_UNIT_STATUSES) {
+        heroabilitystatus_t *status = &target->unit_state->statuses[i];
+        if (!unit_status_can_magic_dispel(status)) continue;
+        unit_removestatus_deferred(target, status, STATUS_REMOVE_DISPEL);
+        removed++;
+    }
+    if (removed) {
+        unit_refreshstatusflags(target);
+        G_InvalidateUnitInfoPanel(target);
+    }
+    return removed;
 }
 
 /* Shared point-area dispel for ordinary spells and item power-ups.  Use the
@@ -662,26 +682,19 @@ void S_DispelMagicArea(edict_t *caster, uint32_t code, uint32_t level, vec2_t co
     if (!caster || !point || !(area >= 0.0f)) return;
     FILTER_EDICTS(target, S_SpellIsAliveTarget(target) &&
                   Vector2_distance(&target->s.origin2, point) <= area) {
-        uint32_t target_removed = 0;
-        bool affected;
-        FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0) {
-            if (target->unit_state->statuses[i].level && target->unit_state->statuses[i].timestamp) {
-                if (!unit_status_can_magic_dispel(&target->unit_state->statuses[i])) continue;
-                unit_removestatus_deferred(target, target->unit_state->statuses + i, STATUS_REMOVE_DISPEL);
-                removed++; target_removed++;
-            }
-        }
-        if (target_removed) {
-            unit_refreshstatusflags(target);
-            G_InvalidateUnitInfoPanel(target);
-        }
+        uint32_t const target_removed = S_DispelUnitMagic(target);
+        bool affected = target_removed > 0;
+        removed += target_removed;
         /* Retail dispel damages hostile summons, not friendly summons. */
-        affected = target_removed > 0;
-        if (!S_SpellIsFriend(caster, target) && dispel_is_summoned(target) &&
+        if (!S_SpellIsFriend(caster, target) && S_DispelIsSummoned(target) &&
             !S_SummonIsDispelImmune(target) && summon_dmg > 0.0f)
             affected |= S_SpellDamage(target, caster, (int)summon_dmg);
         if (affected) G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
     }
+    /* Only Dispel Magic / Disenchant remove loose terrain Blight.  Devour Magic
+     * has its own buff-healing contract and does not paint the terrain. */
+    if (S_AbilityItem(code).ability && S_AbilityItem(code).ability->proc == CAbilityDispelMagic)
+        G_DispelBlightRadius(point, area);
     if (removed && heal_hp > 0.0f) S_SpellHeal(caster, heal_hp * (float)removed);
     if (removed && heal_mana > 0.0f)
         caster->mana.value = MIN(caster->mana.max_value, caster->mana.value + heal_mana * (float)removed);

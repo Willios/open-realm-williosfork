@@ -472,7 +472,8 @@ bool S_SpellAllowsAreaTarget(uint32_t code, edict_t *caster, edict_t *target) {
     if ((strstr(targets, "air") || strstr(targets, "ground") || strstr(targets, "structure")) &&
         !(strstr(targets, "air") && G_UnitTargetType(target) == TARG_AIR) &&
         !(strstr(targets, "ground") && G_UnitTargetType(target) == TARG_GROUND) &&
-        !(strstr(targets, "structure") && structure)) {
+        !(strstr(targets, "structure") && structure) &&
+        !(S_SpellTargetHasToken(targets, "ward", NULL) && target->targtype == TARG_WARD)) {
         return false;
     }
     /* organic/mechanical are targtype tokens, not air/ground; TFT Cyclone authors organic. */
@@ -608,7 +609,13 @@ bool S_SpellIsChanneling(edict_t *caster) {
  * procedure so AbilityData aliases inherit the same Animate Dead behavior. */
 bool S_SummonIsDispelImmune(edict_t const *unit) {
     abilityitem_t item;
-    if (!unit || !unit->summon_ability) return false;
+    if (!unit) return false;
+    /* Resistant Skin protects exceptional summons from dispel damage, not
+     * just direct single-target spell selection. */
+    if (G_UnitAbilityLevel(unit, MAKEFOURCC('A','r','s','k')) ||
+        G_UnitAbilityLevel(unit, MAKEFOURCC('A','C','r','k')) ||
+        G_UnitAbilityLevel(unit, MAKEFOURCC('A','C','s','k'))) return true;
+    if (!unit->summon_ability) return false;
     item = S_AbilityItem(unit->summon_ability);
     return item.ability && item.ability->proc == CAbilityAnimateDead;
 }

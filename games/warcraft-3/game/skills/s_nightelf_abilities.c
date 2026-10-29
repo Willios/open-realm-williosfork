@@ -2,6 +2,64 @@
 
 /* Night Elf passive attack abilities: Moon Glaive (Amgl/Amgr) and Slow Poison (Aspo). */
 
+/* Detonate (Adtn) has none of Kaboom's physical area-damage or death-triggered
+ * behavior.  The point order controls approach; the caster's position when it
+ * completes is the epicentre. DataA is mana loss, DataB hostile summon damage. */
+BZ_ABILITY_PROC(CAbilityDetonate) {
+    uint32_t const code = call && call->item ? call->item->code : 0;
+    uint32_t level;
+    float radius, mana_loss, summon_damage;
+    vec2_t origin;
+    if (msg != A_EXECUTE) {
+        if (msg == A_VALIDATE)
+            return ent && call && call->target && call->target->type == SPELL_TARGET_POINT &&
+                S_SpellIsAliveTarget(ent);
+        return CAbilitySimpleSpell(ent, msg, call);
+    }
+    if (!ent || !code || !S_SpellIsAliveTarget(ent) || !call || !call->target ||
+        call->target->type != SPELL_TARGET_POINT) return false;
+
+    level = S_SpellLevel(ent, code);
+    radius = S_SpellNumber(code, ABILITY_NUMBER_AREA, level);
+    mana_loss = MAX(0.0f, S_SpellData(code, level, 1));
+    summon_damage = MAX(0.0f, S_SpellData(code, level, 2));
+    origin = ent->s.origin2;
+    if (radius >= 0.0f) {
+        /* A completed cast works even if the target area is empty. The normal
+         * point-approach thinker still cancels an interrupted Move order. */
+        FILTER_EDICTS(target, target != ent && S_SpellIsAliveTarget(target) &&
+                      Vector2_distance(&target->s.origin2, &origin) <= radius &&
+                      S_SpellAllowsAreaTarget(code, ent, target)) {
+            bool affected = S_DispelUnitMagic(target) != 0;
+            /* Invulnerable units still lose magical buffs, but not mana or HP. */
+            if (!G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE)) {
+                if (mana_loss > 0.0f && target->mana.value > 0.0f) {
+                    target->mana.value = MAX(0.0f, target->mana.value - mana_loss);
+                    G_InvalidateUnitInfoPanel(target);
+                    affected = true;
+                }
+                if (summon_damage > 0.0f && S_SpellIsEnemy(ent, target) &&
+                    S_DispelIsSummoned(target) && !S_SummonIsDispelImmune(target))
+                    affected |= S_SpellDamage(target, ent, (int)summon_damage);
+            }
+            if (affected && target->inuse)
+                G_SpawnAbilityEffectTarget(code, WC3_EFFECT_TARGET, 0, target, NULL, true);
+        }
+        /* Loose terrain Blight (including Sacrificial Skull paint) can be
+         * dispelled; do not erase currently maintained building-growth areas. */
+        G_DispelBlightRadius(&origin, radius);
+    }
+    /* Die through the ordinary worker lifecycle (food, harvest, queues, death
+     * events). Script explosion uses the unit's authored SpecialArt, not the
+     * Sapper's damage effect. Death alone must never trigger Adtn. */
+    ent->aiflags |= AI_SCRIPT_EXPLODED;
+    G_SetHealth(ent, 0);
+    if (ent->die) ent->die(ent, ent);
+    else unit_die(ent, ent);
+    return true;
+}
+
+
 #define ID_MOON_GLAIVE  MAKEFOURCC('A','m','g','l')
 #define ID_MOON_GLAIVER MAKEFOURCC('A','m','g','r')
 #define ID_SLOW_POISON  MAKEFOURCC('A','s','p','o')
