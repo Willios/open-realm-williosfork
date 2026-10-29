@@ -520,11 +520,16 @@ TEST(wc3_ability_lifecycle, roc_tranquility_resolves_rain_effect_object) {
     FILTER_EDICTS(candidate, candidate->inuse && candidate->owner && candidate->owner->inuse &&
                   candidate->owner->owner == caster && candidate->s.model)
         effect = candidate;
+#if BZ_COMPAT_WORKAROUNDS
     T_NOT_NULL(effect);
     T_STREQ(blizzard_effect_model, "TestUI\\Models\\tranquility-rain.mdx");
-    T_ASSERT(effect->s.sound != 0);
+    if (effect) T_ASSERT(effect->s.sound != 0);
     T_STREQ(blizzard_sound_path, "TestUI\\Sounds\\tranquility-loop.wav");
 
+#else
+    /* Strict mode deliberately does not infer a missing EfctID. */
+    T_NULL(effect);
+#endif
     gi.ModelIndex = old_model_index; gi.SoundIndex = old_sound_index; gi.SoundIndexAlias = old_sound_alias;
     S_SpellCancelChannel(caster);
     G_SetSLKRows("AbilitySounds", old_sound_rows); free_slk_rows(sound_rows);
@@ -561,9 +566,14 @@ TEST(wc3_ability_lifecycle, roc_starfall_resolves_rain_effect_object) {
     T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AEsf")));
     FILTER_EDICTS(candidate, candidate->owner && candidate->owner->owner == caster && candidate->s.model)
         effect = candidate;
+#if BZ_COMPAT_WORKAROUNDS
     T_NOT_NULL(effect);
     T_STREQ(blizzard_effect_model, "TestUI\\Models\\starfall-rain.mdx");
 
+#else
+    /* Strict mode deliberately does not infer a missing EfctID. */
+    T_NULL(effect);
+#endif
     gi.ModelIndex = old_model_index;
     S_SpellCancelChannel(caster);
     G_SetSLKRows("AbilityBuffData", old_effect); free_slk_rows(effect_rows);

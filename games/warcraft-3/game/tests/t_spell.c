@@ -4795,6 +4795,13 @@ TEST(wc3_spell, force_of_nature_consumes_required_area_trees_for_treants) {
 		T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
 		trees[counts[rank - 1] - 1] = force_nature_test_tree(center_x + areas[rank - 1] * 0.5f, 0.0f);
 		outside = force_nature_test_tree(center_x + areas[rank - 1] + 32.0f, 0.0f);
+#if !BZ_COMPAT_WORKAROUNDS
+        /* Without the omitted RoC UnitID fallback, no tree may be consumed. */
+        T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+        S_AbilityMessage(caster, A_EXECUTE, &call);
+        for (i = 0; i < counts[rank - 1]; i++) T_ASSERT(!G_GetDestructable(trees[i])->dead);
+        continue;
+#endif
 		T_ASSERT(S_AbilityMessage(caster, A_VALIDATE, &call));
 		tree_target = MAKE(spellTarget_t, .type = SPELL_TARGET_UNIT, .entity = trees[0]);
 		tree_call = MAKE(abilityCall_t, .item = &spell, .target = &tree_target);

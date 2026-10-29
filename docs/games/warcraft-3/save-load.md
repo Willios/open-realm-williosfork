@@ -1009,6 +1009,12 @@ must never survive as projectile-model identities in the restored process.
 The network wire layout is unchanged; location cursor flags use the existing
 player stats delta (`net.location_cursor_flags_round_trip_and_clear`).
 
+The RoC effect and Force of Nature tests explicitly expect missing metadata to
+remain unresolved with `COMPAT_WORKAROUNDS=0`; effect assertions never dereference
+a missing presentation entity. Endurance Aura likewise expects no inferred
+BuffID in strict mode. Run `make test-wc3-engine COMPAT_WORKAROUNDS=0` to verify
+both archive variants with those compatibility fallbacks disabled.
+
 ## Trained Hero proper names (version 121)
 
 The selected `Propernames` value is stored in `unit_state.proper_name` and survives
