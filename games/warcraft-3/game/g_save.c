@@ -150,7 +150,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 117 persists target-owned per-player Pillage damage and resource remainders. */
 /* Version 118 persists basic-attack missile owner incarnation identities. */
 /* Version 119 snapshots line-projectile spill geometry in artillery components. */
-static uint32_t const save_version = 119;
+/* Version 120 persists the selected runtime proper name of each trained Hero. */
+static uint32_t const save_version = 120;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -963,6 +964,7 @@ static field_t const unit_state_fields[] = {
     TF(unitState_t, temporary_health_bonus, F_FLOAT),
     TF(unitState_t, temporary_mana_bonus, F_FLOAT),
     TF(unitState_t, mana_regen_bonus, F_FLOAT),
+    TF(unitState_t, proper_name, F_ANIMSTRING),
 
     TF(unitState_t, attack_cooldown_end_time, F_INT),
     TF(unitState_t, attack_backswing_end_time, F_INT),

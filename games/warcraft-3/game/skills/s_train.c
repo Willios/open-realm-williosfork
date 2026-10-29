@@ -83,6 +83,54 @@ static void RefundTrainingCost(edict_t *item) {
     player->stats[PLAYERSTATE_RESOURCE_LUMBER] = (uint16_t)MIN(lumber, USHRT_MAX);
 }
 
+/* A hero trained from an altar receives one runtime name from the authored
+ * Propernames list. Store the choice on the hero so simultaneous heroes of
+ * the same type can keep different names for the duration of the game. */
+static cstring_t SelectTrainedHeroProperName(edict_t const *hero) {
+    cstring_t names;
+    cstring_t cursor;
+    uint32_t count = 0, selected, index = 0;
+    char chosen[128];
+
+    if (!hero || !hero->data.UnitProfile || !hero->data.UnitProfile->properNames) return NULL;
+    names = G_LevelString(hero->data.UnitProfile->properNames);
+    if (!names || !*names) return NULL;
+
+    /* Count non-empty comma-delimited entries first, then select uniformly. */
+    cursor = names;
+    while (*cursor) {
+        cstring_t start = cursor;
+        while (*cursor && *cursor != ',') cursor++;
+        cstring_t end = cursor;
+        while (start < end && isspace((unsigned char)*start)) start++;
+        while (end > start && isspace((unsigned char)end[-1])) end--;
+        if (end > start) count++;
+        if (*cursor == ',') cursor++;
+    }
+    if (!count) return NULL;
+    selected = (uint32_t)rand() % count;
+
+    cursor = names;
+    while (*cursor) {
+        cstring_t start = cursor;
+        while (*cursor && *cursor != ',') cursor++;
+        cstring_t end = cursor;
+        while (start < end && isspace((unsigned char)*start)) start++;
+        while (end > start && isspace((unsigned char)end[-1])) end--;
+        if (end > start) {
+            if (index++ == selected) {
+                size_t length = MIN((size_t)(end - start), sizeof(chosen) - 1);
+                memcpy(chosen, start, length);
+                chosen[length] = '\0';
+                cstring_t resolved = G_LevelString(chosen);
+                return resolved && *resolved ? G_InternAnimationName(resolved) : NULL;
+            }
+        }
+        if (*cursor == ',') cursor++;
+    }
+    return NULL;
+}
+
 
 static void RefundResearchCost(edict_t *item) {
     research_t *study = G_GetResearch(item);
@@ -608,6 +656,13 @@ void unit_build(edict_t *self, uint32_t class_id) {
 
     was_empty = self->build == NULL;
     ent = SP_SpawnAtLocation(class_id, self->s.player, &self->s.origin2);
+    if (G_UnitIsHero(ent)) {
+        cstring_t proper_name = SelectTrainedHeroProperName(ent);
+        if (proper_name) {
+            G_InitUnitState(ent);
+            ent->unit_state->proper_name = proper_name;
+        }
+    }
     G_SetUnitFlag(ent, UNIT_FLAG_TRAINING, true);
     G_SetUnitFlag(ent, UNIT_FLAG_TRAINING_FOOD_WAIT_NOTIFIED, false);
     G_SetHealth(ent, 0);

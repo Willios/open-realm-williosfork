@@ -872,7 +872,9 @@ void UI_WriteSingleInfo(edict_t *ent, gameClient_t *viewer) {
     cargo_t *hold = G_GetCargo(ent);
     UnitBalance_t const *balance = ent->data.UnitBalance;
     UnitWeapons_t const *weapons = ent->data.UnitWeapons;
-    cstring_t name = G_LevelString(G_UnitProfile(ent->class_id)->properNames);
+    cstring_t name = ent->unit_state && ent->unit_state->proper_name && *ent->unit_state->proper_name
+        ? ent->unit_state->proper_name
+        : G_LevelString(G_UnitProfile(ent->class_id)->properNames);
     cstring_t unit_name = G_UnitName(ent->class_id);
     bool const is_hero = balance->strength > 0 || balance->agility > 0 || balance->intelligence > 0;
     uint32_t level = is_hero && ent->unit_state->hero.level > 0 ? ent->unit_state->hero.level

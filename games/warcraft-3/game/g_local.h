@@ -2246,6 +2246,7 @@ typedef struct {
     float temporary_mana_bonus; /* item/temporary maximum-mana modifiers preserved across hero recompute */
     float mana_regen_bonus; /* research/permanent mana regeneration modifiers */
     doodadHero_t hero; /* authored/native Hero progression; zero for ordinary units */
+    cstring_t proper_name; /* selected runtime Hero name; persists independently of the unit type's name list */
     uint32_t score_level_xp; /* scripted XP retained across ownership changes */
     uint32_t shortcut_alert_until; /* transient Hero-button damage pulse */
     heroability_t ranks[MAX_HERO_ABILITIES];
