@@ -485,7 +485,6 @@ void unit_die(edict_t *self, edict_t *attacker) {
      * death, but retire the reversible morph contract immediately. */
     G_FreePolymorph(self);
     G_ClearUnitOrderQueue(self);
-    G_InvalidateUnitShortcutsForUnit(self);
     G_SetHealth(self, 0.0f);
     /* Marks belong to their applying abilities, even when another unit lands the killing blow. */
     unit_statusdeath(self);
@@ -585,6 +584,8 @@ void unit_die(edict_t *self, edict_t *attacker) {
         self->aiflags |= AI_CORPSE_UNRAISABLE | AI_CORPSE_NO_DECAY;
         self->wait = FRAMETIME / 1000.0f;
     }
+    /* Rebuild from the final death state, including any hidden death effect. */
+    G_InvalidateUnitShortcutsForUnit(self);
 }
 
 void unit_birth(edict_t *self) {
