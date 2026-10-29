@@ -531,6 +531,12 @@ edict_t *G_SpawnModelEffect(cstring_t model, vec2_t const *point, edict_t *targe
 
     if (target) {
         if (target->svflags & SVF_MONSTER) G_InheritUnitTeamColor(effect, target);
+        /* Ability target art can author tier-specific sequences through the
+         * target unit's Attachmentanimprops (for example Atol's Tree of Ages
+         * and Tree of Eternity glows). */
+        if (target->data.UnitProfile && target->data.UnitProfile->attachmentAnimProps &&
+            *target->data.UnitProfile->attachmentAnimProps)
+            effect->animation_props = G_InternAnimationName(target->data.UnitProfile->attachmentAnimProps);
         effect->s.origin = target->s.origin;
         effect->s.origin2 = target->s.origin2;
         effect->s.angle = target->s.angle;
@@ -596,7 +602,11 @@ edict_t *G_SpawnStatusEffectTarget(uint32_t status_id, edict_t *target, cstring_
         authored_attach = FindConfigValue(classname, key);
         if (authored_attach && *authored_attach) selected_attach = authored_attach;
         {
-            edict_t *attached = G_SpawnAbilityEffectTarget(art_id, WC3_EFFECT_TARGET, 0,
+            /* WC3 ability rows can pair one TargetArt model with each target
+             * attachment (Atol has a tree emitter followed by left/right hand
+             * glows). The art resolver repeats the final model when fewer
+             * entries than attachments are authored. */
+            edict_t *attached = G_SpawnAbilityEffectTarget(art_id, WC3_EFFECT_TARGET, i,
                                                             target, selected_attach, false);
             if (!effect) effect = attached;
             if (attached) attached->status_effect_code = status_id;

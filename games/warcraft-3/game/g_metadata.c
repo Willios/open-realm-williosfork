@@ -2582,6 +2582,22 @@ cstring_t FindConfigValue(cstring_t category, cstring_t field) {
     return NULL;
 }
 
+#ifdef BZ_TESTS
+bool G_TestPushAbilityConfig(cstring_t text) {
+    stbIniCache_t *cache;
+    if (!text || abilityConfigTableCount >= sizeof(abilityConfigTables) / sizeof(abilityConfigTables[0])) return false;
+    cache = abilityConfigTables + abilityConfigTableCount;
+    if (!Stb_IniCacheLoadBuffer(cache, text)) return false;
+    abilityConfigTableCount++;
+    return true;
+}
+
+void G_TestPopAbilityConfig(void) {
+    if (!abilityConfigTableCount) return;
+    Stb_IniCacheFree(abilityConfigTables + --abilityConfigTableCount);
+}
+#endif
+
 cstring_t GetClassName(uint32_t class_id) {
     static char classname[5] = { 0 };
     memcpy(classname, &class_id, 4);

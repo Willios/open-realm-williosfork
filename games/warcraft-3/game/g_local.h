@@ -3492,6 +3492,10 @@ bool G_TryUnitAutocast(edict_t *ent);
 
 // g_metadata.c
 cstring_t FindConfigValue(cstring_t, cstring_t);
+#ifdef BZ_TESTS
+bool G_TestPushAbilityConfig(cstring_t);
+void G_TestPopAbilityConfig(void);
+#endif
 cstring_t GetClassName(uint32_t);
 
 // g_effects.c

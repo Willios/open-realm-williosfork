@@ -2150,6 +2150,72 @@ TEST(wc3_building, town_hall_and_tree_of_life_show_train_and_upgrade_buttons) {
     free_slk_rows(profile_rows);
 }
 
+static void building_assert_tree_attachment_art(edict_t *tree, cstring_t animation_props) {
+    uint32_t const atol = MAKEFOURCC('A','t','o','l');
+    uint32_t const expected[3] = {
+        G_RegisterModel("TestUI\\Models\\anim_pulse.mdx"),
+        G_RegisterModel("TestUI\\Models\\anim_projectile.mdx"),
+        G_RegisterModel("Buildings\\Other\\ElvenFishVillageBuildingRuined2\\ElvenFishVillageBuildingRuined2.mdx")
+    };
+    uint32_t found[3] = {0};
+    T_ASSERT(expected[0] && expected[1] && expected[2]);
+    FILTER_EDICTS(effect, effect->status_effect_code == atol && effect->goalentity == tree) {
+        bool matched = false;
+        T_STREQ(effect->animation_props, animation_props);
+        T_STREQ(effect->animation_request, "birth");
+        FOR_LOOP(i, 3) if (effect->s.model == expected[i]) { found[i]++; matched = true; }
+        T_ASSERT(matched);
+    }
+    T_EQ(found[0], 1);
+    T_EQ(found[1], 1);
+    T_EQ(found[2], 1);
+}
+
+TEST(wc3_building, tree_of_life_attachments_refresh_with_upgrade_animation_properties) {
+    static cstring_t const ability_config =
+        "[Atol]\n"
+        "Targetart=TestUI\\Models\\anim_pulse.mdx,TestUI\\Models\\anim_projectile.mdx,Buildings\\Other\\ElvenFishVillageBuildingRuined2\\ElvenFishVillageBuildingRuined2.mdx\n"
+        "Targetattachcount=3\nTargetattach=origin\n"
+        "Targetattach1=hand,left\nTargetattach2=hand,right\n";
+    static UnitAbilities_t const abilities = { .abilList = "Atol" };
+    static UnitProfile_t const life = { .attachmentAnimProps = "large" };
+    static UnitProfile_t const ages = { .attachmentAnimProps = "upgrade,first,large" };
+    static UnitProfile_t const eternity = { .attachmentAnimProps = "upgrade,second,large" };
+    uint32_t const atol = MAKEFOURCC('A','t','o','l');
+    edict_t *tree;
+
+    reset_entities();
+    setup_test_world();
+    T_ASSERT(G_TestPushAbilityConfig(ability_config));
+    tree = alloc_test_unit(MAKEFOURCC('e','t','o','l'), 64.0f, 64.0f);
+    tree->svflags |= SVF_MONSTER;
+    tree->data.UnitAbilities = &abilities;
+    tree->data.UnitProfile = &life;
+    globals.num_edicts = MAX(globals.num_edicts, (uint32_t)(tree - globals.edicts + 1));
+
+    S_UnitAbilityEvent(tree, A_UNIT_INIT);
+    building_assert_tree_attachment_art(tree, "large");
+
+    /* G_TransformUnitType dispatches A_UNIT_INIT after rebinding to the new
+     * UnitProfile. The passive must replace old art so attached models select
+     * the authored tier-specific Birth/Stand sequence family. */
+    tree->data.UnitProfile = &ages;
+    S_UnitAbilityEvent(tree, A_UNIT_INIT);
+    building_assert_tree_attachment_art(tree, "upgrade,first,large");
+
+    tree->data.UnitProfile = &eternity;
+    S_UnitAbilityEvent(tree, A_UNIT_INIT);
+    building_assert_tree_attachment_art(tree, "upgrade,second,large");
+
+    S_DisableAbility(tree, atol);
+    {
+        uint32_t count = 0;
+        FILTER_EDICTS(effect, effect->status_effect_code == atol && effect->goalentity == tree) count++;
+        T_EQ(count, 0);
+    }
+    G_TestPopAbilityConfig();
+}
+
 TEST(wc3_building, gate_only_dependency_disables_cannibalize_until_researched) {
     gameClient_t *client;
     edict_t *unit;

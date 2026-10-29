@@ -332,7 +332,26 @@ void S_PillageOnAttackDamage(edict_t *attacker, edict_t *target, float health_re
 }
 
 BZ_ABILITY_PROC(CAbilitySalvage) { return CAbilityPassive(ent, msg, call); }
-BZ_ABILITY_PROC(CAbilityTreeOfLife) { return CAbilityPassive(ent, msg, call); }
+BZ_ABILITY_PROC(CAbilityTreeOfLife) {
+    uint32_t const ability = MAKEFOURCC('A','t','o','l');
+    switch (msg) {
+    case A_UNIT_INIT:
+    case A_ENABLE:
+        /* Type transforms re-run A_UNIT_INIT on the retained edict. Rebuild
+         * the three authored attachments so their animation properties match
+         * the new Tree tier. */
+        G_DestroyStatusEffectTarget(ability, ent);
+        G_SpawnStatusEffectTarget(ability, ent, "origin");
+        return true;
+    case A_DISABLE:
+    case A_DEATH:
+    case A_UNIT_REMOVE:
+        G_DestroyStatusEffectTarget(ability, ent);
+        return true;
+    default:
+        return CAbilityPassive(ent, msg, call);
+    }
+}
 BZ_ABILITY_PROC(CAbilityGrabTree) { return CAbilityPassive(ent, msg, call); }
 BZ_ABILITY_PROC(CAbilityDetector) { return CAbilityPassive(ent, msg, call); }
 BZ_ABILITY_PROC(CAbilityMagicSentry) {
