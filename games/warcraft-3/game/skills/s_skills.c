@@ -565,7 +565,7 @@ static ability_t abilitylist[] = {
     // TODO: AIrg a_unknown  /* Potion of Life Regen — CAbility [ITEM] other */
     { "ANsu", CAbilitySubmergeMyrmidon, AB_SPELL | AB_TOGGLE, SPELL_TARGET_NONE, submerge_orders },  /* Submerge (Myrmidon) */
     { "AOwd", CAbilitySerpentWard, AB_SPELL, SPELL_TARGET_POINT },  /* Shadow Hunter - Serpent Ward */
-    { "Aimp", CAbilityImpale, AB_SPELL, SPELL_TARGET_POINT },  /* Impaling Bolt */
+    { "Aimp", CAbilityPassive, AB_PASSIVE },  /* Impaling Bolt / Vorpal Blades (Repb) */
     { "Ansp", CAbilityNeutralSpell, AB_PASSIVE },  /* Neutral Spies */
 
     /* Extra AbilityData aliases of registered parents; poll code= before mapping. */

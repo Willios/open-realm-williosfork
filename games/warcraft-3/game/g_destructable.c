@@ -156,9 +156,17 @@ bool G_DestructableCanBeAttackedBy(edict_t const *attacker, edict_t const *targe
     /* Retail lets the explicit Attack command cut down trees even though
      * standard UnitWeapons.slk melee target lists usually omit "tree".
      * Smart handling is still separate and workers keep Harvest precedence. */
-    if (target->targtype == TARG_TREE)
-        return (attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0)) ||
-               (attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1));
+    if (target->targtype == TARG_TREE) {
+        bool const researched = G_ImpalingBoltResearchLevel(attacker) > 0;
+        unitAttack_t const *one = &attacker->unit_state->attack1;
+        unitAttack_t const *two = &attacker->unit_state->attack2;
+        /* Ballista Aline attacks cannot directly attack trees until Repb.
+         * Preserve normal explicit tree attacks for other weapon types. */
+        return (one->type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) &&
+                (one->weapon != WPN_ALINE || researched)) ||
+               (two->type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) &&
+                (two->weapon != WPN_ALINE || researched));
+    }
     flag = G_TargetFlagForType(target->targtype);
     return flag && ((attacker->unit_state->attack1.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 0) && (attacker->unit_state->attack1.targetsAllowed & flag)) ||
                     (attacker->unit_state->attack2.type != ATK_NONE && S_UnitAttackSlotEnabled(attacker, 1) && (attacker->unit_state->attack2.targetsAllowed & flag)));

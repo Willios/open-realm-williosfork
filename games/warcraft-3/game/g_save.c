@@ -149,7 +149,8 @@ static uint32_t const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
 /* Version 116 writes component pools in component-ID order, generated from G_COMPONENTS. */
 /* Version 117 persists target-owned per-player Pillage damage and resource remainders. */
 /* Version 118 persists basic-attack missile owner incarnation identities. */
-static uint32_t const save_version = 118;
+/* Version 119 snapshots line-projectile spill geometry in artillery components. */
+static uint32_t const save_version = 119;
 #define SAVE_STREAM_BUFFER (1u << 20) // bytes; save files are several MB of field writes, so a large stdio buffer avoids per-4 KB syscalls
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
@@ -633,7 +634,10 @@ static field_t const artillery_fields[] = {
     TF(artillery_t, targets_allowed, F_INT),
     TF(artillery_t, area_full, F_FLOAT), TF(artillery_t, area_medium, F_FLOAT),
     TF(artillery_t, area_small, F_FLOAT), TF(artillery_t, factor_medium, F_FLOAT),
-    TF(artillery_t, factor_small, F_FLOAT), { NULL, 0, 0, 0, 0, 0 }
+    TF(artillery_t, factor_small, F_FLOAT),
+    TF(artillery_t, spill_distance, F_FLOAT), TF(artillery_t, spill_radius, F_FLOAT),
+    TF(artillery_t, line_origin, F_VECTOR),
+    TF(artillery_t, tree_attack_allowed, F_INT), { NULL, 0, 0, 0, 0, 0 }
 };
 
 static field_t const link_fields[] = {
@@ -3370,6 +3374,10 @@ TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     G_GetRaven(unit)->rise_state = RAVEN_RISE_ACTIVE;
     G_GetEnsnare(unit)->phase = ENSNARE_HEIGHT_RISE;
     G_GetArtillery(unit)->area_full = 40.0f;
+    G_GetArtillery(unit)->spill_distance = 320.0f;
+    G_GetArtillery(unit)->spill_radius = 60.0f;
+    G_GetArtillery(unit)->line_origin = (vec2_t){12.0f, 34.0f};
+    G_GetArtillery(unit)->tree_attack_allowed = true;
     G_GetCargo(unit)->count = 1;
     G_GetCargo(unit)->units[0] = target;
     G_GetAncientRoot(unit)->mode = ANCIENT_ROOTING;
@@ -3438,6 +3446,11 @@ TEST(wc3_save, all_sparse_pools_restore_records_and_entity_references) {
     T_EQ(G_GetRaven(unit)->rise_state, RAVEN_RISE_ACTIVE);
     T_EQ(G_GetEnsnare(unit)->phase, ENSNARE_HEIGHT_RISE);
     T_FEQ(G_GetArtillery(unit)->area_full, 40.0f, 0.001f);
+    T_FEQ(G_GetArtillery(unit)->spill_distance, 320.0f, 0.001f);
+    T_FEQ(G_GetArtillery(unit)->spill_radius, 60.0f, 0.001f);
+    T_FEQ(G_GetArtillery(unit)->line_origin.x, 12.0f, 0.001f);
+    T_FEQ(G_GetArtillery(unit)->line_origin.y, 34.0f, 0.001f);
+    T_ASSERT(G_GetArtillery(unit)->tree_attack_allowed);
     T_FEQ(G_GetWaygate(unit)->destination.x, 128, 0.001f);
     T_FEQ(G_GetWaygate(unit)->destination.y, 256, 0.001f);
     T_EQ(G_GetCargo(unit)->count, 1);

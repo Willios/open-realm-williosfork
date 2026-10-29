@@ -1773,6 +1773,11 @@ typedef struct artillery_s {
     component_t component;
     uint32_t attack_type, area_targets, targets_allowed;
     float area_full, area_medium, area_small, factor_medium, factor_small;
+    /* Snapshotted Aline follow-through (not Attack Ground). A zero distance
+     * disables piercing even if player technology later changes in flight. */
+    float spill_distance, spill_radius;
+    vec2_t line_origin;
+    bool tree_attack_allowed;
 } artillery_t;
 
 /* Ancient root/unroot lifecycle including reversible transition phases. */
@@ -3596,6 +3601,7 @@ void G_SetPlayerTechResearched(gameClient_t *client, uint32_t techid, int32_t le
 void G_AddPlayerTechResearched(gameClient_t *client, uint32_t techid, int32_t levels);
 int32_t G_GetPlayerTechResearchedLevel(gameClient_t *client, uint32_t techid);
 bool G_UnitUsesUpgrade(edict_t const *unit, uint32_t upgrade_id);
+int32_t G_ImpalingBoltResearchLevel(edict_t const *unit);
 int32_t G_SpikedBarricadesResearchLevel(edict_t const *unit);
 bool G_SpikedBarricadesModernEnabled(void);
 int32_t G_PlayerRequirementCount(gameClient_t *client, uint32_t techid);

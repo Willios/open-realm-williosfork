@@ -90,6 +90,10 @@ typedef struct {
     uint32_t attack_type;
     unitAttack_t const *attack;
     uint32_t area_targets;
+    /* Aline's researched follow-through is snapshotted only for normal
+     * attacks. Explicit Attack Ground must never inherit it. */
+    bool impaling_line;
+    bool tree_attack_allowed;
 }  rocketDesc_t;
 
 bool S_UnitAttackSlotEnabled(edict_t const *attacker, uint32_t slot) {
@@ -176,6 +180,25 @@ void fire_rocket(edict_t *ent, rocketDesc_t const *desc) {
          * only when that same unit is still inside the splash bands. */
         rocket->goalentity = desc->target;
         cast->target_spawn_time = desc->target ? desc->target->spawn_time : 0;
+        if (desc->attack) {
+            artillery_t *splash = G_AddArtillery(rocket);
+            splash->attack_type = desc->attack->type;
+            splash->area_targets = desc->area_targets;
+            splash->targets_allowed = desc->attack->targetsAllowed;
+            splash->area_full = desc->attack->areaFull;
+            splash->area_medium = desc->attack->areaMedium;
+            splash->area_small = desc->attack->areaSmall;
+            splash->factor_medium = desc->attack->factorMedium;
+            splash->factor_small = desc->attack->factorSmall;
+            splash->tree_attack_allowed = desc->tree_attack_allowed;
+            if (desc->impaling_line && ent->data.UnitWeapons) {
+                UnitWeapon_t const *weapon = desc->attack == &ent->unit_state->attack2 ?
+                    &ent->data.UnitWeapons->attack2 : &ent->data.UnitWeapons->attack1;
+                splash->spill_distance = MAX(0.0f, weapon->spillDistance);
+                splash->spill_radius = MAX(0.0f, weapon->spillRadius);
+                splash->line_origin = ent->s.origin2;
+            }
+        }
     } else {
         rocket->goalentity = desc->target;
     }
@@ -620,6 +643,39 @@ static void resolve_splash_point_hit(edict_t *attacker, edict_t *primary, vec2_t
         int const damage = attack_damage_type(attacker, primary, raw_damage, profile->attack_type);
         S_ResolveAttackHit(attacker, primary, damage);
     }
+    /* A direct, researched tree attack is legal even if the weapon's splash
+     * target mask omits TREE. Follow-through never damages trees. */
+    if (!primary_hit && primary && G_DestructableIsAttackable(primary) &&
+        primary->targtype == TARG_TREE && profile->tree_attack_allowed) {
+        S_ResolveAttackHit(attacker, primary,
+            attack_damage_type(attacker, primary, raw_damage, profile->attack_type));
+    }
+    /* Impaling Bolt is a separate band extending *behind* the original unit
+     * target, along the projectile's captured launch direction. Do not apply
+     * splash and penetration twice to the same victim. */
+    if (profile->spill_distance > 0.0f && profile->spill_radius > 0.0f &&
+        primary && !G_IsDestructable(primary)) {
+        float const dx = impact->x - profile->line_origin.x;
+        float const dy = impact->y - profile->line_origin.y;
+        float const length = sqrtf(dx * dx + dy * dy);
+        if (length > 0.001f) {
+            float const nx = dx / length, ny = dy / length;
+            float const splash = MAX(profile->area_full, MAX(profile->area_medium, profile->area_small));
+            FILTER_EDICTS(other, artillery_splash_target_allowed(attacker, other, profile->area_targets, profile->targets_allowed) &&
+                          other != primary && !G_IsDestructable(other)) {
+                float const ox = other->s.origin2.x - impact->x;
+                float const oy = other->s.origin2.y - impact->y;
+                float const along = ox * nx + oy * ny;
+                float const lateral = fabsf(ox * ny - oy * nx);
+                float const collision = MAX(0.0f, other->collision);
+                if (along <= 0.0f || along > profile->spill_distance + collision ||
+                    lateral > profile->spill_radius + collision ||
+                    Vector2_distance(&other->s.origin2, impact) - collision <= splash) continue;
+                T_Damage(other, attacker,
+                    attack_damage_type(attacker, other, raw_damage, profile->attack_type));
+            }
+        }
+    }
 }
 
 void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
@@ -704,12 +760,16 @@ static void throw_missile(edict_t *ent) {
     fire_rocket(ent, &(rocketDesc_t) {
         .start = origin,
         .target = other,
-        .fixed_target = atk->weapon == WPN_ARTILLERY ? &impact : NULL,
+        .fixed_target = (atk->weapon == WPN_ARTILLERY || atk->weapon == WPN_ALINE) ? &impact : NULL,
         .speed = atk->projectile.speed,
         .model = missile_art ? G_RegisterModel(missile_art) : atk->projectile.model,
         .damage = damage,
         .attack_type = atk->type,
         .attack = atk,
+        .impaling_line = atk->weapon == WPN_ALINE && G_ImpalingBoltResearchLevel(ent) > 0 &&
+                         !G_IsDestructable(other),
+        .tree_attack_allowed = atk->weapon == WPN_ALINE &&
+                               G_ImpalingBoltResearchLevel(ent) > 0 && G_IsDestructable(other),
         .area_targets = ent->data.UnitWeapons ? (atk == &ent->unit_state->attack2 ? ent->data.UnitWeapons->attack2.areaTargets : ent->data.UnitWeapons->attack1.areaTargets) : 0,
     });
     /* See damage_target(): if the model has no finite attack sequence there
@@ -943,14 +1003,16 @@ static void ai_attack_walk(edict_t *ent) {
         if (!cooldown_ready) {
             ent->wait = MAX(ent->wait, attack_cooldown_remaining(ent));
             if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY ||
-                ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE)
+                ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE ||
+                ACTIVE_ATTACK(ent)->weapon == WPN_ALINE)
                 unit_setmove(ent, &attack_move_ranged_cooldown);
             else
                 unit_setmove(ent, &attack_move_melee_cooldown);
             return;
         }
         if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY ||
-            ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE)
+            ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH || ACTIVE_ATTACK(ent)->weapon == WPN_MBOUNCE ||
+            ACTIVE_ATTACK(ent)->weapon == WPN_ALINE)
             attack_ranged(ent);
         else
             attack_melee(ent);
@@ -1100,7 +1162,7 @@ void attack_ranged(edict_t *self) {
 static bool attack_ground_valid(edict_t const *ent) {
     return ent && ent->inuse && !M_IsDead((edict_t *)ent) &&
            S_UnitAttackSlotEnabled(ent, 0) && ent->unit_state->attack1.type != ATK_NONE &&
-           ent->unit_state->attack1.weapon == WPN_ARTILLERY && !S_UnitIsCycloned(ent) &&
+           (ent->unit_state->attack1.weapon == WPN_ARTILLERY || ent->unit_state->attack1.weapon == WPN_ALINE) && !S_UnitIsCycloned(ent) &&
            S_HumanCanAttack(ent) && S_CargoAttacksEnabled(ent);
 }
 
@@ -1340,7 +1402,7 @@ static bool attack_ground_selectlocation(edict_t *clent, vec2_t const *location)
 
     if (!clent || !clent->client || !location) return false;
     FOR_CONTROLLABLE_SELECTED_UNITS(clent->client, ent) {
-        if (ent->unit_state->attack1.weapon != WPN_ARTILLERY) continue;
+        if (ent->unit_state->attack1.weapon != WPN_ARTILLERY && ent->unit_state->attack1.weapon != WPN_ALINE) continue;
         if (G_IssueUnitPointOrder(ent, "attackground", location,
                                   clent->client->menu.order_queued,
                                   clent->client->ps.number, 0.0f)) any = true;

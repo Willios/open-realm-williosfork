@@ -3181,6 +3181,160 @@ TEST(wc3_combat, attack_ground_accepts_artillery_point_and_launches_fixed_projec
     }
 }
 
+/* Impaling Bolt / Vorpal Blades: the authoring upgrade is player tech,
+ * while Aline always launches a ranged siege projectile. These tests use
+ * synthetic UnitBalance and weapon fields, not the developer's MPQ. */
+TEST(wc3_combat, impaling_bolt_research_unlocks_tree_attacks_and_reverts) {
+    uint32_t const tech = MAKEFOURCC('R','e','p','b');
+    UnitBalance_t balance = { .upgrades = "Repb" };
+    UnitWeapons_t weapons = { .attacksEnabled = 1 };
+    edict_t *ballista, *other, *tree;
+
+    setup_test_world(); reset_entities();
+    ballista = make_combat_unit(MAKEFOURCC('e','b','a','l'), 300.0f, 0.0f, 0.0f);
+    other = make_combat_unit(MAKEFOURCC('h','f','o','o'), 300.0f, 0.0f, 20.0f);
+    tree = G_Spawn();
+    tree->class_id = MAKEFOURCC('B','0','0','X');
+    G_BindEntityData(tree);
+    tree->health.value = tree->health.max_value = 200.0f;
+    tree->targtype = TARG_TREE;
+    G_AddDestructable(tree);
+    ballista->data.UnitBalance = &balance;
+    ballista->data.UnitWeapons = &weapons;
+    ballista->unit_state->attack1.type = ATK_SIEGE;
+    ballista->unit_state->attack1.weapon = WPN_ALINE;
+    other->unit_state->attack1.type = ATK_NORMAL;
+    other->unit_state->attack1.weapon = WPN_NORMAL;
+    other->data.UnitWeapons = &weapons;
+    G_SetPlayerTechResearched(&game.clients[0], tech, 0);
+
+    T_EQ(G_ImpalingBoltResearchLevel(ballista), 0);
+    T_ASSERT(!G_DestructableCanBeAttackedBy(ballista, tree));
+    T_ASSERT(G_DestructableCanBeAttackedBy(other, tree));
+    G_SetPlayerTechResearched(&game.clients[0], tech, 1);
+    T_EQ(G_ImpalingBoltResearchLevel(ballista), 1);
+    T_ASSERT(G_DestructableCanBeAttackedBy(ballista, tree));
+    G_SetPlayerTechResearched(&game.clients[0], tech, 0);
+    T_ASSERT(!G_DestructableCanBeAttackedBy(ballista, tree));
+}
+
+TEST(wc3_combat, aline_impaling_bolt_snapshots_spill_at_launch_not_attack_ground) {
+    uint32_t const tech = MAKEFOURCC('R','e','p','b');
+    UnitBalance_t balance = { .upgrades = "Repb" };
+    UnitWeapons_t weapons = { .attacksEnabled = 3,
+        .attack1 = { .areaTargets = WC3_TARGET_FLAG_GROUND,
+                     .spillDistance = 250.0f, .spillRadius = 45.0f } };
+    edict_t *attacker, *target, *missile = NULL;
+    vec2_t point = { 200.0f, 0.0f };
+
+    setup_test_world(); reset_entities();
+    attacker = make_combat_unit(MAKEFOURCC('e','b','a','l'), 400.0f, 0.0f, 0.0f);
+    target = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 200.0f, 0.0f);
+    attacker->data.UnitBalance = &balance;
+    attacker->data.UnitWeapons = &weapons;
+    attacker->unit_state->attack1.type = ATK_SIEGE;
+    attacker->unit_state->attack1.weapon = WPN_ALINE;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.range = 500.0f;
+    attacker->unit_state->attack1.damageBase = 70;
+    attacker->unit_state->attack1.damagePoint = 0.1f;
+    attacker->unit_state->attack1.cooldown = 3.5f;
+    attacker->unit_state->attack1.projectile.speed = 900;
+    target->targtype = TARG_GROUND;
+
+    G_SetPlayerTechResearched(&game.clients[0], tech, 1);
+    attacker->goalentity = target;
+    attack_ranged(attacker);
+    attacker->wait = 0.01f;
+    attacker->currentmove->think(attacker);
+    FILTER_EDICTS(ent, ent->owner == attacker && ent->movetype == MOVETYPE_FLYMISSILE) {
+        missile = ent; break;
+    }
+    T_NOT_NULL(missile);
+    if (missile) {
+        artillery_t const *profile = G_GetArtillery(missile);
+        T_ASSERT(missile->aiflags & AI_PROJECTILE_FIXED_TARGET);
+        T_NOT_NULL(profile);
+        if (profile) {
+            T_FEQ(profile->spill_distance, 250.0f, 0.001f);
+            T_FEQ(profile->spill_radius, 45.0f, 0.001f);
+            T_FEQ(profile->line_origin.x, 0.0f, 0.001f);
+        }
+        G_SetPlayerTechResearched(&game.clients[0], tech, 0);
+        T_FEQ(G_GetArtillery(missile)->spill_distance, 250.0f, 0.001f);
+    }
+    G_SetPlayerTechResearched(&game.clients[0], tech, 1);
+    T_ASSERT(S_OrderAttackGround(attacker, &point));
+    /* Attack Ground uses the same art and splash, but never the line bonus. */
+    attacker->currentmove->think(attacker);
+    attacker->wait = 0.01f;
+    attacker->currentmove->think(attacker);
+    FILTER_EDICTS(ent, ent->owner == attacker && ent->movetype == MOVETYPE_FLYMISSILE && ent != missile) {
+        artillery_t const *profile = G_GetArtillery(ent);
+        T_NOT_NULL(profile);
+        if (profile) T_FEQ(profile->spill_distance, 0.0f, 0.001f);
+    }
+    G_SetPlayerTechResearched(&game.clients[0], tech, 0);
+}
+
+TEST(wc3_combat, impaling_bolt_direct_tree_impact_survives_research_revocation) {
+    edict_t *attacker, *tree;
+    artillery_t profile = { .attack_type = ATK_SIEGE,
+        .area_targets = WC3_TARGET_FLAG_GROUND, .targets_allowed = WC3_TARGET_FLAG_GROUND,
+        .tree_attack_allowed = true };
+    vec2_t impact = {200.0f, 0.0f};
+
+    setup_test_world(); reset_entities();
+    attacker = make_combat_unit(MAKEFOURCC('e','b','a','l'), 400.0f, 0.0f, 0.0f);
+    tree = G_Spawn();
+    tree->class_id = MAKEFOURCC('B','0','0','X');
+    G_BindEntityData(tree);
+    tree->health.value = tree->health.max_value = 500.0f;
+    tree->targtype = TARG_TREE;
+    tree->s.origin2 = impact;
+    G_AddDestructable(tree);
+    attacker->unit_state->attack1.type = ATK_SIEGE;
+    attacker->unit_state->attack1.weapon = WPN_ALINE;
+    S_ResolveArtilleryPointHit(attacker, tree, &impact, 100, &profile);
+    T_ASSERT(tree->health.value < 500.0f);
+}
+
+TEST(wc3_combat, impaling_bolt_hits_behind_primary_only_once_without_tree_followthrough) {
+    edict_t *attacker, *primary, *splash, *behind, *off_line, *ahead, *tree;
+    artillery_t profile = { .attack_type = ATK_NORMAL, .area_targets = WC3_TARGET_FLAG_GROUND,
+        .targets_allowed = WC3_TARGET_FLAG_GROUND, .area_full = 35.0f,
+        .spill_distance = 250.0f, .spill_radius = 40.0f,
+        .line_origin = {0.0f, 0.0f} };
+    vec2_t impact = {200.0f, 0.0f};
+
+    setup_test_world(); reset_entities();
+    attacker = make_combat_unit(MAKEFOURCC('e','b','a','l'), 500.0f, 0.0f, 0.0f);
+    primary = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 200.0f, 0.0f);
+    splash = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 225.0f, 0.0f);
+    behind = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 360.0f, 0.0f);
+    off_line = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 360.0f, 90.0f);
+    ahead = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 90.0f, 0.0f);
+    tree = G_Spawn(); tree->targtype = TARG_TREE; tree->s.origin2 = (vec2_t){340, 0};
+    tree->health.value = tree->health.max_value = 500.0f;
+    G_AddDestructable(tree);
+    edict_t *units[] = {primary, splash, behind, off_line, ahead};
+    FOR_LOOP(i, sizeof(units) / sizeof(units[0])) {
+        units[i]->targtype = TARG_GROUND;
+        units[i]->unit_state->defense_type = 7;
+        units[i]->unit_state->armor_value = 0.0f;
+    }
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.weapon = WPN_ALINE;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    S_ResolveArtilleryPointHit(attacker, primary, &impact, 100, &profile);
+    T_FEQ(primary->health.value, 400.0f, 0.001f);
+    T_FEQ(splash->health.value, 400.0f, 0.001f); /* not also pierced */
+    T_FEQ(behind->health.value, 400.0f, 0.001f);
+    T_FEQ(off_line->health.value, 500.0f, 0.001f);
+    T_FEQ(ahead->health.value, 500.0f, 0.001f);
+    T_FEQ(tree->health.value, 500.0f, 0.001f);
+}
+
 /* A hero's Agility increases attack speed (+2%/point), dividing the windup and
  * recovery so the whole cycle speeds up. */
 TEST(wc3_combat, attack_speed_scales_with_agility) {

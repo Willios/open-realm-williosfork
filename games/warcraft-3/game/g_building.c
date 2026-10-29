@@ -229,6 +229,19 @@ int32_t G_MoonGlaiveResearchLevel(edict_t const *unit) {
     return G_GetPlayerTechResearchedLevel(owner, upgrade);
 }
 
+/* Aline weapons on units listing Repb acquire piercing follow-through and
+ * tree attacks when their owner researches Impaling Bolt / Vorpal Blades.
+ * Look up current technology instead of caching it: campaign JASS, Charm and
+ * save restoration can all change the owner/research while a unit is alive. */
+int32_t G_ImpalingBoltResearchLevel(edict_t const *unit) {
+    gameClient_t *owner;
+    uint32_t const upgrade = MAKEFOURCC('R','e','p','b');
+    if (!unit || !unit->inuse || !unit->unit_state || !G_UnitUsesUpgrade(unit, upgrade)) return 0;
+    owner = G_GetPlayerClientByNumber(unit->s.player);
+    return owner && owner->ps.number == unit->s.player ?
+        G_GetPlayerTechResearchedLevel(owner, upgrade) : 0;
+}
+
 /* -1 means this is not a research-controlled barricade holder. In
  * particular, a custom unit with a directly granted Aspi and no Rosp entry
  * retains the standalone passive's authored damage values. Never cache the

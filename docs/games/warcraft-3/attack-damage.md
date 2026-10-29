@@ -232,6 +232,39 @@ This is important for Warcraft missile MDX files whose visible geosets/emitters 
 
 The current implementation still moves the simulation entity on a straight three-dimensional line toward the target. Authored projectile arc/pitch and a post-impact `Death` presentation are separate fidelity gaps; they are not approximated here because the current `entityState_t` Warcraft path has only yaw orientation and frees basic attack missiles immediately when damage resolves.
 
+## Night Elf Impaling Bolt / Vorpal Blades (`Repb`)
+
+ROC Ballistae use the `aline` (Artillery Line) weapon type. These are
+**ranged siege missiles**: the normal targeted attack snapshots a fixed
+impact point at its damage point and retains authored three-ring splash.
+Before `Repb`, the normal siege attack still works, but a Ballista cannot
+explicitly attack a tree. After the owner's `Repb` research finishes, the
+Ballista can target a living tree and ordinary attacks against unit targets
+also pierce targets directly behind the original impact. The TFT label is
+Vorpal Blades; its player-tech rawcode and effect contract are shared.
+
+- Eligible units are determined from `UnitBalance.upgrades` (Upgrades Used).
+  Research is read from the **current** owner on each new attack; changing
+  player ownership or setting tech by JASS does not require cached unit state.
+- A penetrating projectile snapshots the weapon's `spillDistance` and
+  `spillRadius` fields, the launch point, attack type and splash target mask
+  at launch. An in-flight bolt (including a targeted tree attack) is unaffected
+  by research revocation.
+- A primary hit and nearby full/medium/small splash are resolved once.
+  Further valid units in the cylinder behind the impact receive physical
+  damage of the same attack type, with target armor/defense applied at impact.
+  No secondary target is hit twice, and penetration does **not** damage trees.
+- Tree attacks damage the selected tree directly; the normal splash mask may
+  omit `tree`, but `Repb` authorizes the selected tree itself.
+- `Attack Ground` is supported for `aline` siege weapons but never inherits
+  Impaling Bolt penetration, matching Blizzard's documented post-1.04 rule.
+- The line profile is serialized with the existing artillery component;
+  save format 119 adds its spill geometry and launch point.
+
+The current penetration is applied at the original missile's impact rather
+than animating an additional travelling follow-through missile. Unusual map
+object data and edge-of-splash overlap remain useful retail comparison tests.
+
 ## Weapon Target Legality And Acquisition
 
 Attack 1 target legality is owned by `skills/s_attack.c`, not by the generic AI scanner. `UnitWeapons.slk` `targs1` (or map-object `ua1g`) is decoded to the runtime `attack1.targetsAllowed` Warcraft `targetflag` mask. `G_TargetFlagForType()` is the shared `TARGTYPE` -> targetflag conversion used by ordinary units and destructables.
