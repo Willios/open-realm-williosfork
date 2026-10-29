@@ -531,6 +531,44 @@ TEST(wc3_ability_lifecycle, roc_tranquility_resolves_rain_effect_object) {
     G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
 }
 
+/* RoC 1.0 authors Starfall's persistent rain art on XEsf without AEsf EfctID. */
+TEST(wc3_ability_lifecycle, roc_starfall_resolves_rain_effect_object) {
+    static char const ability_slk[] =
+        "ID;PWXL;N;E\nB;X9;Y2;D0\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+        "C;Y1;X4;K\"Dur1\"\nC;Y1;X5;K\"HeroDur1\"\nC;Y1;X6;K\"Area1\"\n"
+        "C;Y1;X7;K\"DataA1\"\nC;Y1;X8;K\"DataB1\"\nC;Y1;X9;K\"BuffID1\"\n"
+        "C;Y2;X1;K\"AEsf\"\nC;Y2;X2;K\"AEsf\"\nC;Y2;X3;K\"air,ground,enemy\"\n"
+        "C;Y2;X4;K\"5\"\nC;Y2;X5;K\"5\"\nC;Y2;X6;K\"800\"\n"
+        "C;Y2;X7;K\"30\"\nC;Y2;X8;K\"1\"\nC;Y2;X9;K\"AEsd\"\nE\n";
+    static char const effect_slk[] =
+        "ID;PWXL;N;E\nB;X2;Y2;D0\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"EffectArt\"\n"
+        "C;Y2;X1;K\"XEsf\"\nC;Y2;X2;K\"TestUI\\Models\\starfall-rain.mdx\"\nE\n";
+    UnitAbilities_t abilities = { .abilList = "AEsf" };
+    slkTestData_t *ability_rows = parse_slk_string(ability_slk);
+    slkTestData_t *effect_rows = parse_slk_string(effect_slk);
+    slkTestData_t *old_ability = G_SetSLKRows("AbilityData", ability_rows);
+    slkTestData_t *old_effect = G_SetSLKRows("AbilityBuffData", effect_rows);
+    int (*old_model_index)(cstring_t) = gi.ModelIndex;
+    edict_t *caster = review_setup();
+    edict_t *effect = NULL;
+
+    caster->data.UnitAbilities = &abilities;
+    blizzard_effect_model[0] = '\0';
+    gi.ModelIndex = review_capture_model;
+    T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AEsf")));
+    FILTER_EDICTS(candidate, candidate->owner && candidate->owner->owner == caster && candidate->s.model)
+        effect = candidate;
+    T_NOT_NULL(effect);
+    T_STREQ(blizzard_effect_model, "TestUI\\Models\\starfall-rain.mdx");
+
+    gi.ModelIndex = old_model_index;
+    S_SpellCancelChannel(caster);
+    G_SetSLKRows("AbilityBuffData", old_effect); free_slk_rows(effect_rows);
+    G_SetSLKRows("AbilityData", old_ability); free_slk_rows(ability_rows);
+}
+
 /* Warsmash shows a Blizzard shard wave first and resolves that wave's damage
  * 0.8 seconds later; Cast owns the delay before the first shard wave. */
 TEST(wc3_ability_lifecycle, blizzard_shards_precede_damage_by_eight_tenths) {

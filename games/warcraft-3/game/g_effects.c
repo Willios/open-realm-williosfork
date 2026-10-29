@@ -227,6 +227,16 @@ uint32_t G_AbilityEffectCode(uint32_t ability_id, uint32_t level) {
         }
         return MAKEFOURCC('X','E','t','q');
     }
+    /* RoC 1.0's AEsf row also omits EfctID. Its persistent starfall rain is
+     * authored as XEsf.EffectArt; later data links it through EfctID. */
+    if (G_AbilityCode(ability_id) == MAKEFOURCC('A','E','s','f')) {
+        static bool warned_roc_starfall;
+        if (!warned_roc_starfall) {
+            fprintf(stderr, "WC3 compatibility: RoC AEsf has no EfctID column; using XEsf effect art\n");
+            warned_roc_starfall = true;
+        }
+        return MAKEFOURCC('X','E','s','f');
+    }
 #endif
     return ability_id;
 }
