@@ -78,12 +78,12 @@ TEST(wc3_cursor, signal_preserves_underlying_target_and_uses_skin_color) {
     T_ASSERT(client->menu.on_location_selected == CursorTestTarget);
     G_ClientCommand(ent, 1, cancel);
     T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_INTERACTION], WC3_POINTER_TARGETING);
-    T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_FLAGS], 0);
+    T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_FLAGS], CURSOR_INPUT_LOCATION_POINT);
     T_ASSERT(client->menu.on_location_selected == CursorTestTarget);
     G_ClientCommand(ent, 1, signal);
     G_ClientCommand(ent, 3, point);
     T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_INTERACTION], WC3_POINTER_TARGETING);
-    T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_FLAGS], 0);
+    T_EQ(client->ps.stats[UI_PLAYERSTAT_CURSOR_FLAGS], CURSOR_INPUT_LOCATION_POINT);
     T_ASSERT(client->menu.on_location_selected == CursorTestTarget);
     T_ASSERT(Stb_IniCacheLoadBuffer(&game.config.misc,
         "[TeamColorFilter]\nColorIndexPlayer=4\n"));
