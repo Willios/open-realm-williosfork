@@ -516,8 +516,9 @@ TEST(wc3_ability_lifecycle, roc_tranquility_resolves_rain_effect_object) {
     blizzard_effect_model[0] = '\0'; blizzard_sound_path[0] = '\0';
     gi.ModelIndex = review_capture_model;
     gi.SoundIndex = review_capture_sound_index; gi.SoundIndexAlias = review_capture_sound_index_alias;
-    T_ASSERT(S_CastPointTargetSpell(caster, FS_SLKKey("AEtq"), &caster->s.origin2));
-    FILTER_EDICTS(candidate, candidate->owner && candidate->owner->owner == caster && candidate->s.model)
+    T_ASSERT(S_CastNoTargetSpell(caster, FS_SLKKey("AEtq")));
+    FILTER_EDICTS(candidate, candidate->inuse && candidate->owner && candidate->owner->inuse &&
+                  candidate->owner->owner == caster && candidate->s.model)
         effect = candidate;
     T_NOT_NULL(effect);
     T_STREQ(blizzard_effect_model, "TestUI\\Models\\tranquility-rain.mdx");
