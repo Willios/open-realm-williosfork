@@ -33,7 +33,7 @@ void free_slk_rows(slkTestData_t *rows);
 void G_RunEntities(void);
 
 static char const wards_slk[] =
-	"ID;PWXL;N;EBB;Y13;X16\n"
+	"ID;PWXL;N;EBB;Y14;X16\n"
 	"C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"levels\"\n"
 	"C;Y1;X4;K\"targs\"\nC;Y1;X5;K\"Cost1\"\nC;Y1;X6;K\"Cool1\"\n"
 	"C;Y1;X7;K\"Rng1\"\nC;Y1;X8;K\"Dur1\"\nC;Y1;X9;K\"HeroDur1\"\n"
@@ -71,7 +71,10 @@ static char const wards_slk[] =
 	"C;Y12;X1;K\"APwt\"\nC;Y12;X2;K\"Aeye\"\nC;Y12;X3;K\"1\"\n"
 	"C;Y12;X8;K\"13\"\nC;Y12;X14;K\"ogru\"\n"
 	"C;Y13;X1;K\"Adts\"\nC;Y13;X2;K\"Adts\"\nC;Y13;X3;K\"1\"\n"
-	"C;Y13;X4;K\"vuln,invu\"\nC;Y13;X7;K\"900\"\nE\n";
+	"C;Y13;X4;K\"vuln,invu\"\nC;Y13;X7;K\"900\"\n"
+	"C;Y14;X1;K\"Aesn\"\nC;Y14;X2;K\"Aesn\"\nC;Y14;X3;K\"1\"\n"
+	"C;Y14;X4;K\"tree\"\nC;Y14;X5;K\"0\"\nC;Y14;X6;K\"0\"\n"
+	"C;Y14;X7;K\"800\"\nC;Y14;X8;K\"2\"\nC;Y14;X16;K\"350\"\nE\n";
 
 typedef struct {
 	slkTestData_t *rows, *old;
@@ -311,6 +314,189 @@ static edict_t *mine_destructable(float life, float x, float y, TARGTYPE type) {
 	G_AddDestructable(ent);
 	G_GetDestructable(ent)->item_table = (uint32_t)-1;
 	return ent;
+}
+
+
+/* The synthetic Warcraft archive omits Resc. Model only its stock research
+ * unlock rule; the ability's area, range, duration and targeting are in the
+ * shared AbilityData fixture above. */
+static char const sentinel_upgrade_slk[] =
+    "ID;PWXL;N;E\nB;X3;Y2;D0\n"
+    "C;X1;Y1;K\"upgradeid\"\nC;X3;K\"maxlevel\"\n"
+    "C;X1;Y2;K\"Resc\"\nC;X3;K1\nE\n";
+
+static edict_t *sentinel_fixture(wardFix_t *fix) {
+    static UnitAbilities_t const huntress_abilities = { .abilList = "Aesn" };
+    static UnitBalance_t const huntress_balance = { .maxHealth = 500, .upgrades = "Resc" };
+    edict_t *caster = fix->caster;
+    game.clients[0].ps.number = 0;
+    caster->data.UnitAbilities = (UnitAbilities_t *)&huntress_abilities;
+    caster->data.UnitBalance = (UnitBalance_t *)&huntress_balance;
+    caster->health.value = caster->health.max_value = 500;
+    caster->s.player = 0;
+    return caster;
+}
+
+static edict_t *sentinel_find_owl(void) {
+    uint32_t const code = MAKEFOURCC('A','e','s','n');
+    FILTER_EDICTS(owl, owl->inuse && owl->summon_ability == code &&
+                  owl->think == sentinel_owl_think) return owl;
+    return NULL;
+}
+
+TEST(wc3_spell, sentinel_registry_tree_target_and_research_unlock) {
+    uint32_t const code = MAKEFOURCC('A','e','s','n');
+    uint32_t const research = MAKEFOURCC('R','e','s','c');
+    wardFix_t fix;
+    slkTestData_t *rows, *old;
+    edict_t *tree, *debris, *caster;
+    abilityitem_t item = S_AbilityItem(code);
+    spellTarget_t target = { .type = SPELL_TARGET_UNIT };
+    abilityCall_t call = MAKE(abilityCall_t, .item = &item, .target = &target);
+
+    ward_setup(&fix);
+    rows = parse_slk_string(sentinel_upgrade_slk);
+    old = G_SetSLKRows("UpgradeData", rows);
+    caster = sentinel_fixture(&fix);
+    tree = mine_destructable(200, 50, 0, TARG_TREE);
+    debris = mine_destructable(200, 100, 0, TARG_DEBRIS);
+    T_NOT_NULL(item.ability);
+    T_EQ(item.ability->proc, CAbilitySentinel);
+    T_EQ(item.ability->target_type, SPELL_TARGET_UNIT);
+    T_EQ(G_UnitAbilityLevel(caster, code), 1);
+    T_ASSERT(!G_UnitAbilityResearchAvailable(caster, code));
+    target.entity = tree;
+    T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+    T_ASSERT(!S_CastUnitTargetSpell(caster, code, tree));
+
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    T_ASSERT(G_UnitAbilityResearchAvailable(caster, code));
+    T_ASSERT(S_AbilityMessage(caster, A_VALIDATE, &call));
+    target.entity = debris;
+    T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+    T_ASSERT(!S_SpellAllowsTarget(code, caster, debris));
+    target.entity = fix.enemy;
+    T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+    target.entity = tree;
+    G_SetPlayerTechResearched(&game.clients[0], research, 0);
+    T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call));
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    tree->health.value = 0.0f;
+    T_ASSERT(!S_AbilityMessage(caster, A_VALIDATE, &call)); /* dead tree */
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
+    ward_done(&fix);
+}
+
+TEST(wc3_spell, sentinel_owl_provides_shared_day_night_vision_and_one_charge) {
+    uint32_t const code = MAKEFOURCC('A','e','s','n');
+    uint32_t const research = MAKEFOURCC('R','e','s','c');
+    wardFix_t fix;
+    slkTestData_t *rows, *old;
+    edict_t *tree, *owl, *caster;
+
+    ward_setup(&fix);
+    rows = parse_slk_string(sentinel_upgrade_slk);
+    old = G_SetSLKRows("UpgradeData", rows);
+    caster = sentinel_fixture(&fix);
+    tree = mine_destructable(200, 50, 0, TARG_TREE);
+    fix.enemy->s.origin2 = MAKE(vec2_t, 70, 0);
+    fix.enemy->s.renderfx |= RF_HIDDEN;
+    T_ASSERT(unit_addtimedstatus(fix.enemy, "Binv", 1, 5.0f));
+    T_ASSERT(!S_UnitIsDetectedByPlayer(fix.enemy, 0));
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    owl = sentinel_find_owl();
+    T_NOT_NULL(owl);
+    T_EQ(owl->s.player, 0);
+    T_EQ(owl->goalentity, tree);
+    T_ASSERT(owl->s.flags & EF_NOT_SELECTABLE);
+    T_FEQ(owl->runtime.sight_radius.day, 350.0f, .001f);
+    T_FEQ(owl->runtime.sight_radius.night, 350.0f, .001f);
+    T_ASSERT(!G_UnitAbilityLevel(caster, code));
+    T_ASSERT(!S_CastUnitTargetSpell(caster, code, tree));
+    T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 0));
+    caster->health.value = 0.0f;
+    T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 0)); /* caster death does not retire owl */
+    T_ASSERT(!S_UnitIsDetectedByPlayer(fix.enemy, 2));
+    level.alliances[0][2] |= 1 << ALLIANCE_SHARED_VISION;
+    T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 2));
+    level.alliances[0][2] &= ~(1 << ALLIANCE_SHARED_VISION);
+    G_SetPlayerTechResearched(&game.clients[0], research, 0);
+    T_ASSERT(S_UnitIsDetectedByPlayer(fix.enemy, 0)); /* persists */
+    ward_tick(2001);
+    T_ASSERT(!owl->inuse);
+    T_ASSERT(!S_UnitIsDetectedByPlayer(fix.enemy, 0));
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
+    ward_done(&fix);
+}
+
+TEST(wc3_spell, sentinel_owl_ends_on_tree_damage_or_area_dispel) {
+    uint32_t const code = MAKEFOURCC('A','e','s','n');
+    uint32_t const research = MAKEFOURCC('R','e','s','c');
+    wardFix_t fix;
+    slkTestData_t *rows, *old;
+    edict_t *tree, *owl, *caster;
+
+    ward_setup(&fix);
+    rows = parse_slk_string(sentinel_upgrade_slk);
+    old = G_SetSLKRows("UpgradeData", rows);
+    caster = sentinel_fixture(&fix);
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    tree = mine_destructable(200, 50, 0, TARG_TREE);
+    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    owl = sentinel_find_owl(); T_NOT_NULL(owl);
+    T_ASSERT(!G_DestructableApplyDamage(tree, fix.enemy, 1.0f));
+    sentinel_owl_think(owl);
+    T_ASSERT(!owl->inuse);
+
+    T_ASSERT(G_ActorAddSkill(caster, code));
+    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    owl = sentinel_find_owl(); T_NOT_NULL(owl);
+    T_EQ(S_SentinelDispelAt(&tree->s.origin2, 150.0f), 1);
+    T_ASSERT(!owl->inuse);
+    T_EQ(S_SentinelDispelAt(&tree->s.origin2, 150.0f), 0);
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
+    ward_done(&fix);
+}
+
+TEST(wc3_save, sentinel_owl_survives_round_trip_with_tree_and_expiry) {
+    cstring_t save = Test_TempPath("sentinel-save.bin");
+    uint32_t const code = MAKEFOURCC('A','e','s','n');
+    uint32_t const research = MAKEFOURCC('R','e','s','c');
+    wardFix_t fix;
+    slkTestData_t *rows, *old;
+    edict_t *tree, *owl, *caster;
+    uint32_t tree_num, owl_num;
+
+    ward_setup(&fix);
+    rows = parse_slk_string(sentinel_upgrade_slk);
+    old = G_SetSLKRows("UpgradeData", rows);
+    caster = sentinel_fixture(&fix);
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    tree = mine_destructable(200, 50, 0, TARG_TREE);
+    T_ASSERT(S_CastUnitTargetSpell(caster, code, tree));
+    owl = sentinel_find_owl(); T_NOT_NULL(owl);
+    tree_num = tree->s.number;
+    owl_num = owl->s.number;
+    T_ASSERT(WriteGame(save));
+    T_ASSERT(ReadGame(save));
+    tree = g_edicts + tree_num;
+    owl = g_edicts + owl_num;
+    T_ASSERT(owl->inuse);
+    T_EQ(owl->think, sentinel_owl_think);
+    T_EQ(owl->goalentity, tree);
+    T_FEQ(owl->runtime.sight_radius.day, 350.0f, .001f);
+    sentinel_owl_think(owl);
+    T_ASSERT(owl->inuse);
+    ward_tick(2001);
+    T_ASSERT(!owl->inuse);
+    remove(save);
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
+    ward_done(&fix);
 }
 
 TEST(wc3_spell, goblin_land_mine_registry_uses_separate_place_and_intrinsic_handlers) {

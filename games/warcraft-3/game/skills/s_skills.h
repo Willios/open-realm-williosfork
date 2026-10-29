@@ -346,6 +346,9 @@ uint32_t S_TinyStructureUnitId(edict_t const *caster, uint32_t code, uint32_t le
 BZ_ABILITY_PROC(CAbilityTinyStructure);
 BZ_ABILITY_PROC(CAbilityLandMine);
 BZ_ABILITY_PROC(CAbilityEvilEye);
+BZ_ABILITY_PROC(CAbilitySentinel);
+void sentinel_owl_think(edict_t *owl);
+uint32_t S_SentinelDispelAt(vec2_t const *point, float radius);
 BZ_ABILITY_PROC(CAbilityItemWatcherWard);
 BZ_ABILITY_PROC(CAbilityItemRebirth);
 BZ_ABILITY_PROC(CAbilityItemSpiritLink);

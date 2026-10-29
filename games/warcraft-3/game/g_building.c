@@ -309,6 +309,7 @@ static stockAbilityUpgradeRequirement_t const stock_ability_requirements[] = {
     { MAKEFOURCC('R', 'e', 'd', 'c'), MAKEFOURCC('A', 'r', 'e', 'j'), 1 },
     { MAKEFOURCC('R', 'e', 'd', 'c'), MAKEFOURCC('A', 'b', 'r', 'f'), 2 },
     { MAKEFOURCC('R', 'e', 's', 'i'), MAKEFOURCC('A', 'a', 'd', 'm'), 1 },
+    { MAKEFOURCC('R', 'e', 's', 'c'), MAKEFOURCC('A', 'e', 's', 'n'), 1 }, /* Sentinel */
 };
 
 static abilityUpgradeRequirement_t G_GetAbilityUpgradeRequirement(
@@ -329,12 +330,15 @@ static abilityUpgradeRequirement_t G_GetAbilityUpgradeRequirement(
         }
     }
 
-    FOR_LOOP(i, (uint32_t)(sizeof(stock_ability_requirements) / sizeof(stock_ability_requirements[0]))) {
-        stockAbilityUpgradeRequirement_t const *stock = stock_ability_requirements + i;
-        if (upgrade->id != stock->upgrade_id || ability->id != stock->ability_id) continue;
-        result.matched = true;
-        result.required_level = stock->required_level;
-        return result;
+    if (ability->checkDep || ability->id == MAKEFOURCC('A', 's', 'a', 'l') ||
+        ability->id == MAKEFOURCC('A', 'e', 's', 'n')) {
+        FOR_LOOP(i, (uint32_t)(sizeof(stock_ability_requirements) / sizeof(stock_ability_requirements[0]))) {
+            stockAbilityUpgradeRequirement_t const *stock = stock_ability_requirements + i;
+            if (upgrade->id != stock->upgrade_id || ability->id != stock->ability_id) continue;
+            result.matched = true;
+            result.required_level = stock->required_level;
+            return result;
+        }
     }
     return result;
 }

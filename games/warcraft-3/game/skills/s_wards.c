@@ -262,6 +262,8 @@ BZ_ABILITY_PROC(CAbilityLandMine) {
 	}
 }
 
+static bool sentinel_owl_active(edict_t const *owl);
+
 static bool ward_is_sentry(edict_t const *ward) {
 	return ward && ward->inuse && G_AbilityCode(ward->summon_ability) == ID_AEYE;
 }
@@ -466,13 +468,14 @@ bool S_UnitIsDetectedByPlayer(edict_t const *unit, uint32_t player) {
 		if (Vector2_distance(&sight->s.origin2, &unit->s.origin2) <= sight->collision) return true;
 	}
 
-	/* Sentry wards are active hidden detectors whose fixture/unit data may not
-	 * carry authored monster health; their summon lifecycle is authoritative. */
+	/* Sentry wards and Sentinel owls are independent detector entities, not
+	 * combat monsters; their respective lifecycles are authoritative. */
 	FILTER_EDICTS(detector, detector != unit &&
-	              (ward_is_sentry(detector) || S_SpellIsAliveTarget(detector)) &&
+	              (ward_is_sentry(detector) || sentinel_owl_active(detector) || S_SpellIsAliveTarget(detector)) &&
 	              detector_shared_with_player(detector, player) &&
 	              S_SpellIsEnemy(detector, (edict_t *)unit)) {
-		float range = ward_is_sentry(detector) ? detector->wait : unit_detector_range(detector);
+		float range = (ward_is_sentry(detector) || detector->think == sentinel_owl_think) ?
+			detector->wait : unit_detector_range(detector);
 		if (range > 0.0f && Vector2_distance(&detector->s.origin2, &unit->s.origin2) <= range) return true;
 	}
 	return false;
@@ -504,6 +507,110 @@ bool S_UnitIsDetected(edict_t const *unit) {
 	FOR_LOOP(player, MAX_PLAYERS)
 		if (S_UnitIsDetectedByPlayer(unit, player)) return true;
 	return false;
+}
+
+#define ID_AESN MAKEFOURCC('A', 'e', 's', 'n') /* Sentinel (Huntress) */
+#define SENTINEL_OWL_MODEL "Units\\NightElf\\Owl\\Owl.mdx"
+
+/* Do not keep the caster as an owner: an owl belongs to its player and remains
+ * stationed even if the Huntress dies.  The target incarnation and health
+ * recorded at placement are the tree's attachment/removal contract. */
+static bool sentinel_owl_active(edict_t const *owl) {
+    edict_t *tree;
+    if (!owl || !owl->inuse || owl->summon_ability != ID_AESN ||
+        owl->think != sentinel_owl_think ||
+        (owl->freetime && G_Time() >= owl->freetime)) return false;
+    tree = owl->goalentity;
+    return tree && tree->inuse && tree->spawn_time == owl->damage &&
+           tree->targtype == TARG_TREE && G_IsDestructable(tree) &&
+           !G_GetDestructable(tree)->dead && tree->health.value > 0.0f &&
+           tree->health.value >= owl->mana.value;
+}
+
+/* The thinker is saved as an edict callback.  Its runtime sight is consumed by
+ * g_fow.c's normal owner/shared-vision pass, not by a private fog modifier. */
+void sentinel_owl_think(edict_t *owl) {
+    animation_t const *anim;
+    if (!sentinel_owl_active(owl)) { G_FreeEdict(owl); return; }
+    /* An owl is a lightweight entity without a unit currentmove.  Advance
+     * its stand sequence directly, not through M_MoveFrame (which expects an
+     * allocated unit move and invokes its callbacks). */
+    anim = owl->animation;
+    if (anim && anim->interval[1] > anim->interval[0]) {
+        if (owl->s.frame < anim->interval[0] || owl->s.frame + 1 >= anim->interval[1])
+            owl->s.frame = anim->interval[0];
+        else
+            owl->s.frame++;
+    }
+}
+
+/* Dispel is an independent removal path; a dispelled owl cannot restore the
+ * spent Sentinel charge to its Huntress. */
+uint32_t S_SentinelDispelAt(vec2_t const *point, float radius) {
+    uint32_t removed = 0;
+    if (!point || radius < 0.0f) return 0;
+    FILTER_EDICTS(owl, owl->inuse && owl->summon_ability == ID_AESN &&
+                  owl->think == sentinel_owl_think &&
+                  Vector2_distance(&owl->s.origin2, point) <= radius) {
+        G_FreeEdict(owl);
+        removed++;
+    }
+    return removed;
+}
+
+/* The stock Sentinel owl uses AbilityData Area for the revealed/detected
+ * radius and Dur for lifetime.  The caster must target a living tree, and
+ * the one-shot command is removed only after the owl is created. */
+BZ_ABILITY_PROC(CAbilitySentinel) {
+    edict_t *tree = call && call->target && call->target->type == SPELL_TARGET_UNIT ?
+        call->target->entity : NULL;
+    uint32_t code = call && call->item ? call->item->code : ID_AESN;
+    uint32_t level;
+    float radius, duration;
+    edict_t *owl;
+
+    switch (msg) {
+    case A_VALIDATE:
+        return ent && tree && G_UnitAbilityLevel(ent, code) &&
+               G_UnitAbilityResearchAvailable(ent, code) &&
+               tree->targtype == TARG_TREE && G_DestructableIsAttackable(tree) &&
+               S_SpellAllowsTarget(code, ent, tree);
+    case A_EXECUTE:
+        if (!ent || !tree || !G_UnitAbilityLevel(ent, code) ||
+            !G_UnitAbilityResearchAvailable(ent, code) ||
+            tree->targtype != TARG_TREE || !G_DestructableIsAttackable(tree)) return false;
+        level = S_SpellLevel(ent, code);
+        radius = S_SpellNumber(code, ABILITY_NUMBER_AREA, level);
+        duration = S_SpellDuration(code, level, false);
+        if (radius <= 0.0f) return false;
+        owl = G_Spawn();
+        if (!owl) return false;
+        owl->summon_ability = ID_AESN;
+        owl->s.player = ent->s.player;
+        owl->s.flags |= EF_NOT_SELECTABLE;
+        owl->s.origin = tree->s.origin;
+        owl->s.origin2 = tree->s.origin2;
+        owl->s.origin.z += MAX(tree->s.radius, 64.0f);
+        owl->s.model = G_RegisterModel(SENTINEL_OWL_MODEL);
+        owl->s.scale = 1.0f;
+        owl->health.value = owl->health.max_value = 1.0f;
+        owl->mana.value = tree->health.value; /* original tree HP */
+        owl->damage = tree->spawn_time; /* target incarnation */
+        owl->goalentity = tree;
+        owl->wait = radius; /* true-sight radius */
+        owl->runtime.sight_radius.day = radius;
+        owl->runtime.sight_radius.night = radius;
+        owl->freetime = duration > 0.0f ?
+            G_Time() + (uint32_t)(duration * 1000.0f) : 0;
+        owl->think = sentinel_owl_think;
+        G_SetUnitAnimation(owl, "stand");
+        if (!G_ActorRemoveSkill(ent, code)) {
+            G_FreeEdict(owl);
+            return false;
+        }
+        return true;
+    default: return CAbilitySimpleSpell(ent, msg, call);
+    }
 }
 
 /* Name=Sentry Ward; UnitID + Dur summon; detect radius from Adt1 Rng stored on ward.wait. */

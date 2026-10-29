@@ -473,7 +473,7 @@ static ability_t abilitylist[] = {
     { "Aspo", CAbilitySlowPoison, AB_PASSIVE | AB_INNATE },  /* Slow Poison */
     { "Ashm", CAbilityShadowMeld, AB_PASSIVE | AB_UPDATE | AB_INNATE | AB_SPELL, SPELL_TARGET_NONE, hide_orders },  /* Shadow Meld */
     { "Ahid", CAbilityShadowMeldAkama, AB_PASSIVE | AB_UPDATE | AB_INNATE | AB_SPELL, SPELL_TARGET_NONE, hide_orders },  /* Shadow Meld (Akama) */
-    { "Aesn", CAbilityEvilEye, AB_SPELL, SPELL_TARGET_POINT },  /* Sentinel */
+    { "Aesn", CAbilitySentinel, AB_SPELL, SPELL_TARGET_UNIT },  /* Sentinel: one owl per Huntress, on a tree */
     { "Adtn", CAbilityDetonate, AB_SPELL, SPELL_TARGET_POINT },  /* Detonate */
     { "Abrf", CAbilityMetamorphosis, AB_SPELL },  /* Bear Form */
 

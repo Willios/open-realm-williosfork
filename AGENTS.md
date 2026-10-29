@@ -176,6 +176,7 @@ This codebase is inspired by **Quake 2** (id Software). The developer is deeply 
 | WC3 Mana Flare Amfl channel, Bmfl armor/DataE, enemy-cast flare hook | [docs/games/warcraft-3/mana-flare.md](docs/games/warcraft-3/mana-flare.md) |
 | WC3 Stasis Trap Asta arm/detect/detonate, DataA–D and Bsta stun | [docs/games/warcraft-3/stasis-trap.md](docs/games/warcraft-3/stasis-trap.md) |
 | WC3 Sentry Ward Aeye/AIsw, Adt1 Rng detect via S_UnitIsDetected | [docs/games/warcraft-3/sentry-ward.md](docs/games/warcraft-3/sentry-ward.md) |
+| WC3 Night Elf Sentinel (`Resc`/`Aesn`) one-use tree-target owl, independent fog/detection and dispel | [docs/games/warcraft-3/sentinel.md](docs/games/warcraft-3/sentinel.md) |
 | WC3 Ancestral Spirit target rules, authored data, and same-edict corpse revival | [docs/games/warcraft-3/ancestral-spirit.md](docs/games/warcraft-3/ancestral-spirit.md) |
 | WC3 Mana Shield toggle, authored damage/mana ratio, buff and order lifecycle | [docs/games/warcraft-3/mana-shield.md](docs/games/warcraft-3/mana-shield.md) |
 | WC3 Gargoyle Stone Form AbilityData endpoints and reversible unit rebind | [docs/games/warcraft-3/stone-form.md](docs/games/warcraft-3/stone-form.md) |

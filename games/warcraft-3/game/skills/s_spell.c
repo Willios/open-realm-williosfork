@@ -409,6 +409,11 @@ bool S_SpellTargetHasToken(cstring_t targets, cstring_t full, cstring_t short_na
 }
 
 bool S_SpellAllowsTarget(uint32_t code, edict_t *caster, edict_t *target) {
+    /* Sentinel is a tree-target spell. Ordinary unit-target masks are not
+     * authoritative for destructables (which have no unit relationship). */
+    if (G_AbilityCode(code) == MAKEFOURCC('A','e','s','n'))
+        return target && target->targtype == TARG_TREE &&
+               G_DestructableIsAttackable(target);
     if (!S_SpellAllowsAreaTarget(code, caster, target)) return false;
     return !(caster && caster->s.player < MAX_PLAYERS &&
              S_UnitIsInvisibleToPlayer(target, caster->s.player));

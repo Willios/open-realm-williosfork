@@ -225,6 +225,7 @@ static saveCFunction_t const save_cfunctions[] = {
     SAVE_CFUNCTION(reincarnation_think),
     SAVE_CFUNCTION(acid_bomb_think),
     SAVE_CFUNCTION(morph_end),
+    SAVE_CFUNCTION(sentinel_owl_think),
 };
 
 static int SaveCFunctionIndex(void *func) {
