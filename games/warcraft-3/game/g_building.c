@@ -204,7 +204,7 @@ static int32_t G_FindTechSlot(gameClient_t *client, uint32_t techid, bool create
     return free_slot;
 }
 
-static bool G_UnitUsesUpgrade(edict_t const *unit, uint32_t upgrade_id) {
+bool G_UnitUsesUpgrade(edict_t const *unit, uint32_t upgrade_id) {
     char token[64];
     cstring_t upgrades;
 

@@ -620,10 +620,22 @@ static float G_FowEntitySightRadius(edict_t const *ent) {
     }
     day = ent->runtime.sight_radius.day;
     night = ent->runtime.sight_radius.night;
-    /* Use the day or night sight radius based on time of day, rather than
-     * always taking the larger of the two. */
+    /* Ultravision (Reuv) removes the nighttime sight penalty for eligible
+     * units, but does not improve structures or grant true sight. Read the
+     * owner's completed tech each time: research, JASS grants/revocation,
+     * ownership changes and loaded games then share the same fog path.
+     * Upgrades Used on UnitBalance controls which units benefit, including
+     * custom units, instead of applying it to every unit owned by an Elf. */
     if (night <= 0.0f) night = day;
     if (day <= 0.0f) day = night;
+    if (G_IsNight() && day > night && ent->s.player < MAX_PLAYERS &&
+        !G_UnitIsBuilding(ent->class_id) &&
+        !(ent->runtime.flags & UNIT_BALANCE_BUILDING) &&
+        G_UnitUsesUpgrade(ent, MAKEFOURCC('R', 'e', 'u', 'v'))) {
+        gameClient_t *owner = G_GetPlayerClientByNumber(ent->s.player);
+        if (owner && G_GetPlayerTechResearchedLevel(owner, MAKEFOURCC('R', 'e', 'u', 'v')) > 0)
+            return day;
+    }
     return G_IsNight() ? night : day;
 }
 

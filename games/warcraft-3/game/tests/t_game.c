@@ -3727,6 +3727,118 @@ TEST(wc3_game, fow_revealer_marks_visible_and_explored) {
     G_FowShutdown();
 }
 
+/* Ultravision is a player-owned research effect consumed by the normal fog
+ * rasterizer, not a permanent mutation of the unit's authored night sight. */
+static bool fow_ultravision_probe(uint32_t player) {
+    uint32_t const x = G_FowWorldToCellX(320.0f);
+    uint32_t const y = G_FowWorldToCellY(128.0f);
+    return level.fow.players[player].visible[y * level.fow.width + x] != 0;
+}
+
+static void fow_ultravision_clock(bool night) {
+    game.constants.gameDayHours = 24.0f;
+    game.constants.gameDayLength = 480.0f;
+    game.constants.dawnTimeGameHours = 6.0f;
+    game.constants.duskTimeGameHours = 18.0f;
+    level.timeofday = (timeOfDay_t){ 0 };
+    level.timeofday.elapsed = night ? 0.0f : 240.0f;
+}
+
+TEST(wc3_game, fow_ultravision_research_expands_only_night_sight) {
+    static UnitBalance_t const ultravision_unit = { .upgrades = "Reuv" };
+    uint32_t const research = MAKEFOURCC('R', 'e', 'u', 'v');
+    edict_t *scout;
+
+    reset_entities(); setup_test_world();
+    fow_ultravision_clock(true);
+    G_FowInit(); G_FowConnectPlayer(0);
+    G_SetPlayerTechResearched(&game.clients[0], research, 0);
+    scout = alloc_test_unit(MAKEFOURCC('e', 'a', 'r', 'c'), 128.0f, 128.0f);
+    scout->s.player = 0;
+    scout->data.UnitBalance = &ultravision_unit;
+    scout->runtime.sight_radius.day = 192.0f;
+    scout->runtime.sight_radius.night = 64.0f;
+
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(0));
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    G_FowUpdate();
+    T_ASSERT(fow_ultravision_probe(0));
+
+    G_SetPlayerTechResearched(&game.clients[0], research, 0);
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(0));
+    T_ASSERT(level.fow.players[0].explored[
+        G_FowWorldToCellY(128.0f) * level.fow.width + G_FowWorldToCellX(320.0f)]);
+
+    fow_ultravision_clock(false);
+    G_FowUpdate();
+    T_ASSERT(fow_ultravision_probe(0));
+    G_FowShutdown();
+}
+
+TEST(wc3_game, fow_ultravision_requires_unit_upgrade_and_excludes_buildings) {
+    static UnitBalance_t const eligible = { .upgrades = "Reuv" };
+    static UnitBalance_t const not_eligible = { .upgrades = "" };
+    uint32_t const research = MAKEFOURCC('R', 'e', 'u', 'v');
+    edict_t *scout;
+
+    reset_entities(); setup_test_world();
+    fow_ultravision_clock(true);
+    G_FowInit(); G_FowConnectPlayer(0);
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    scout = alloc_test_unit(MAKEFOURCC('e', 'a', 'r', 'c'), 128.0f, 128.0f);
+    scout->s.player = 0;
+    scout->runtime.sight_radius.day = 192.0f;
+    scout->runtime.sight_radius.night = 64.0f;
+
+    scout->data.UnitBalance = &not_eligible;
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(0));
+    scout->data.UnitBalance = &eligible;
+    scout->runtime.flags |= UNIT_BALANCE_BUILDING;
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(0));
+    scout->runtime.flags &= ~UNIT_BALANCE_BUILDING;
+    G_FowUpdate();
+    T_ASSERT(fow_ultravision_probe(0));
+    G_FowShutdown();
+}
+
+TEST(wc3_game, fow_ultravision_uses_source_owner_for_shared_vision) {
+    static UnitBalance_t const eligible = { .upgrades = "Reuv" };
+    uint32_t const research = MAKEFOURCC('R', 'e', 'u', 'v');
+    edict_t *scout;
+
+    reset_entities(); setup_test_world();
+    fow_ultravision_clock(true);
+    G_FowInit(); G_FowConnectPlayer(0); G_FowConnectPlayer(1);
+    G_SetPlayerTechResearched(&game.clients[0], research, 0);
+    G_SetPlayerTechResearched(&game.clients[1], research, 1);
+    scout = alloc_test_unit(MAKEFOURCC('e', 'a', 'r', 'c'), 128.0f, 128.0f);
+    scout->s.player = 0;
+    scout->data.UnitBalance = &eligible;
+    scout->runtime.sight_radius.day = 192.0f;
+    scout->runtime.sight_radius.night = 64.0f;
+    memset(level.alliances, 0, sizeof(level.alliances));
+    G_SetPlayerAlliance(G_GetPlayerByNumber(0), G_GetPlayerByNumber(1),
+                        ALLIANCE_SHARED_VISION, true);
+
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(0));
+    T_ASSERT(!fow_ultravision_probe(1));
+    G_SetPlayerTechResearched(&game.clients[0], research, 1);
+    G_FowUpdate();
+    T_ASSERT(fow_ultravision_probe(0));
+    T_ASSERT(fow_ultravision_probe(1));
+
+    scout->s.player = 1;
+    G_SetPlayerTechResearched(&game.clients[1], research, 0);
+    G_FowUpdate();
+    T_ASSERT(!fow_ultravision_probe(1));
+    G_FowShutdown();
+}
+
 TEST(wc3_game, fow_updates_only_connected_shared_viewers) {
     reset_entities();
     G_FowInit();
