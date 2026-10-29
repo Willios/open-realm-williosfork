@@ -63,6 +63,7 @@ static void UI_MenuCampaignHuman_f(void);
 static void UI_MenuCampaignOrc_f(void);
 static void UI_MenuCampaignUndead_f(void);
 static void UI_MenuCampaignNightElf_f(void);
+static void UI_MenuCampaignNightElfSelect(void);
 static void UI_MenuCampaignTutorial_f(void);
 static void UI_MenuVideoMode_f(void);
 static void UI_MenuCampaignSelect_f(void);
@@ -652,8 +653,12 @@ static void UI_MenuSlotRace_f(void) { UI_MenuPair(GameSetup_SetSlotRace); }
 static void UI_MenuCampaignHuman_f(void) { SinglePlayerMenu_LaunchCampaign("human"); }
 static void UI_MenuCampaignOrc_f(void) { SinglePlayerMenu_LaunchCampaign("orc"); }
 static void UI_MenuCampaignUndead_f(void) { SinglePlayerMenu_LaunchCampaign("undead"); }
-/* CampaignStrings uses NightElf; the old hyphenated shortcut never resolved a campaign. */
-static void UI_MenuCampaignNightElf_f(void) { SinglePlayerMenu_LaunchCampaign("NightElf"); }
+/* This route is also used after leaving a campaign map, when no menu screen (and
+ * therefore no campaign data) may be initialized yet. Load the screen first. */
+static void UI_MenuCampaignNightElf_f(void) {
+    UI_RequestScreen(&singlePlayerMenuScreen, singlePlayerMenuScreen.glue, UI_MenuCampaignNightElfSelect);
+}
+static void UI_MenuCampaignNightElfSelect(void) { SinglePlayerMenu_LaunchCampaign("NightElf"); }
 static void UI_MenuCampaignTutorial_f(void) { SinglePlayerMenu_LaunchCampaign("tutorial"); }
 
 /* A quoted map path is one console argument, including spaces and archive separators. */

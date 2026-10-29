@@ -3864,6 +3864,41 @@ TEST(menu_fdf, single_player_screen_loads_tft_campaigns) {
     test_single_player_campaign_profile(true);
 }
 
+TEST(menu_fdf, campaign_return_shortcut_loads_campaign_data_after_gameplay) {
+    menuImport_t saved = mi;
+    bool saved_expansion = test_fs_expansion;
+    bool saved_skip_transitions = test_skip_menu_transitions;
+
+    test_glue_setup();
+    test_map = "Maps\\Campaign\\NightElf07.w3m";
+    test_fs_expansion = false;
+    test_skip_menu_transitions = true;
+    mi.FS_ReadFile = test_fs_read_file;
+    mi.FS_FreeFile = test_fs_free_file;
+    mi.Cvar_String = test_cvar_string;
+    mi.Cvar_Register = test_cvar_register;
+    mi.MemAlloc = test_ui_mem_alloc;
+    mi.MemFree = test_ui_mem_free;
+    mi.GetRenderer = test_get_renderer;
+    mi.UserPath = test_user_path;
+
+    M_Init();
+    T_NULL(UI_GetCurrentScreen()); /* Gameplay startup leaves no frontend screen initialized. */
+    Cmd_ExecuteString("menu_single_player_campaign_night_elf");
+    T_ASSERT(UI_GetCurrentScreen() == &singlePlayerMenuScreen);
+    if (UI_FindFrame("MissionName"))
+        T_STREQ(UI_FindFrame("MissionName")->Text, "Eternity's End");
+    else
+        T_ASSERT(false);
+    T_ASSERT(UI_FindFrame("MissionSelectFrame") && !UI_FindFrame("MissionSelectFrame")->hidden);
+
+    M_Shutdown();
+    test_map = "";
+    test_fs_expansion = saved_expansion;
+    test_skip_menu_transitions = saved_skip_transitions;
+    mi = saved;
+}
+
 TEST(menu_fdf, campaign_backdrops_play_birth_before_stand) {
     cstring_t files[] = {
         "UI\\FrameDef\\GlobalStrings.fdf",
