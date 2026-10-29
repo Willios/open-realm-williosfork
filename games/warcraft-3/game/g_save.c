@@ -2404,9 +2404,9 @@ static void RebindEntityModels(edict_t *ent) {
         ent->s.model = G_RegisterModel(model_filename);
     }
     if (!ent->unit_state) return;
-    if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY)
+    if (ent->unit_state->attack1.weapon == WPN_MISSILE || ent->unit_state->attack1.weapon == WPN_ARTILLERY || ent->unit_state->attack1.weapon == WPN_MSPLASH)
         ent->unit_state->attack1.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[0].art);
-    if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY)
+    if (ent->unit_state->attack2.weapon == WPN_MISSILE || ent->unit_state->attack2.weapon == WPN_ARTILLERY || ent->unit_state->attack2.weapon == WPN_MSPLASH)
         ent->unit_state->attack2.projectile.model = G_RegisterModel(ent->data.UnitProfile->attack[1].art);
 }
 

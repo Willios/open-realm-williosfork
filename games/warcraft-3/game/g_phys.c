@@ -47,9 +47,8 @@ void SV_Physics_Step(edict_t *ent) {
 
 /* Missile entities use the same snapshot/model path as ordinary units, but
  * they do not run monster_think() and therefore never select/advance an MDX
- * sequence on their own.  Start with the authored Stand sequence (the normal
- * travelling sequence for WC3 missiles), falling back to Birth for models
- * that only provide a one-shot sequence.  Keeping this state on the server
+ * sequence on their own. Start with authored Birth launch art when available,
+ * then transition to the Stand travel loop. Keeping this state on the server
  * means the existing entity snapshot contract remains sufficient for every
  * client renderer. */
 void G_StartProjectilePresentation(edict_t *ent) {
@@ -60,10 +59,8 @@ void G_StartProjectilePresentation(edict_t *ent) {
     ent->s.renderfx |= RF_NO_SHADOW;
     if (!ent->s.model) return;
 
-    anim = G_GetAnimation(ent->s.model, "Stand");
-    /* TODO: Some authored missile models omit Stand; Birth is the only
-     * available travel sequence until a data-driven sequence selector exists. */
-    if (!anim) anim = G_GetAnimation(ent->s.model, "Birth");
+    anim = G_GetAnimation(ent->s.model, "Birth");
+    if (!anim) anim = G_GetAnimation(ent->s.model, "Stand");
     ent->animation = anim;
     if (anim) ent->s.frame = anim->interval[0];
 }
@@ -151,6 +148,12 @@ void SV_Physics_Toss(edict_t *ent) {
                 if (fixed_target && primary &&
                     (!primary->inuse || primary->spawn_time != cast->target_spawn_time)) primary = NULL;
                 S_ResolveArtilleryPointHit(attacker, primary, &impact, ent->damage, G_GetArtillery(ent));
+            } else if (G_GetArtillery(ent)) {
+                /* Unit-target Missile Splash follows the victim, unlike fixed
+                 * artillery. Its authored attack type and splash bands were
+                 * captured on the projectile at the launch damage point. */
+                vec2_t const impact = ent->goalentity->s.origin2;
+                S_ResolveMissileSplashHit(attacker, ent->goalentity, &impact, ent->damage, G_GetArtillery(ent));
             } else {
                 int const damage = G_AttackDamageWithType(attacker, ent->goalentity, ent->damage,
                                                           ent->missile->attack_type);

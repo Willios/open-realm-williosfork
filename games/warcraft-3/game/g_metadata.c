@@ -140,6 +140,9 @@ static slkField_t const profile_schema[] = {
     { "Makeitems",     offsetof(UnitProfile_t, makeItems),         STB_SLK_STR,   "umki" },
     { "Missileart",    offsetof(UnitProfile_t, attack[0].art),     STB_SLK_STR,   "ua1m", .list = 1 },
     { "Missilearc",    offsetof(UnitProfile_t, attack[0].arc),     STB_SLK_FLOAT, "uma1", .list = 1 },
+    /* Some melee overlays contain this misspelling; canonical follows it so
+     * correct data wins if both keys are present. */
+    { "Missilspeed",   offsetof(UnitProfile_t, attack[0].speed),   STB_SLK_FLOAT, NULL, .list = 1 },
     { "Missilespeed",  offsetof(UnitProfile_t, attack[0].speed),   STB_SLK_FLOAT, "ua1z", .list = 1 },
     { "MissileHoming", offsetof(UnitProfile_t, attack[0].homing),  STB_SLK_BOOL,  "umh1", .list = 1 },
     { "Missileart",    offsetof(UnitProfile_t, attack[1].art),     STB_SLK_STR,   "ua2m", .list = 2 },

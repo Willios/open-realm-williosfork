@@ -935,6 +935,25 @@ TEST(wc3_slk, ini_decode_selects_list_element_by_schema_index) {
     Stb_IniCacheFree(&cache);
 }
 
+TEST(wc3_slk, profile_missile_speed_accepts_melee_overlay_typo) {
+    static slkField_t const schema[] = {
+        { "", offsetof(UnitProfile_t, id), STB_SLK_FOURCC },
+        { "Missilspeed", offsetof(UnitProfile_t, attack[0].speed), STB_SLK_FLOAT, NULL, NULL, 1 },
+        { "Missilespeed", offsetof(UnitProfile_t, attack[0].speed), STB_SLK_FLOAT, NULL, NULL, 1 },
+        { 0 }
+    };
+    stbIniCache_t cache = { 0 };
+    UnitProfile_t *rows = NULL;
+    uint32_t count;
+
+    T_ASSERT(Stb_IniCacheLoadBuffer(&cache, "[Edmm]\nMissilspeed=900\n"));
+    count = Stb_IniDecode(&cache, schema, (void **)&rows, sizeof(*rows));
+    T_EQ(count, 1);
+    T_FEQ(rows[0].attack[0].speed, 900.0f, 0.001f);
+    FS_SLKFreeRows(schema, rows, count, sizeof(*rows));
+    Stb_IniCacheFree(&cache);
+}
+
 TEST(wc3_slk, unitabilities_default_active_ability_is_fourcc) {
     static char const slk[] =
         "ID;PWXL;N;E\n"

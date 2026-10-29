@@ -176,19 +176,22 @@ void fire_rocket(edict_t *ent, rocketDesc_t const *desc) {
          * only when that same unit is still inside the splash bands. */
         rocket->goalentity = desc->target;
         cast->target_spawn_time = desc->target ? desc->target->spawn_time : 0;
-        if (desc->attack) {
-            artillery_t *splash = G_AddArtillery(rocket);
-            splash->attack_type = desc->attack->type;
-            splash->area_targets = desc->area_targets;
-            splash->targets_allowed = desc->attack->targetsAllowed;
-            splash->area_full = desc->attack->areaFull;
-            splash->area_medium = desc->attack->areaMedium;
-            splash->area_small = desc->attack->areaSmall;
-            splash->factor_medium = desc->attack->factorMedium;
-            splash->factor_small = desc->attack->factorSmall;
-        }
     } else {
         rocket->goalentity = desc->target;
+    }
+    /* Missile Splash follows a unit instead of the artillery impact point.
+     * Both weapons snapshot their splash profile when the projectile launches,
+     * so morphs, upgrades and target changes cannot change an in-flight hit. */
+    if (desc->attack && (desc->attack->weapon == WPN_ARTILLERY || desc->attack->weapon == WPN_MSPLASH)) {
+        artillery_t *splash = G_AddArtillery(rocket);
+        splash->attack_type = desc->attack->type;
+        splash->area_targets = desc->area_targets;
+        splash->targets_allowed = desc->attack->targetsAllowed;
+        splash->area_full = desc->attack->areaFull;
+        splash->area_medium = desc->attack->areaMedium;
+        splash->area_small = desc->attack->areaSmall;
+        splash->factor_medium = desc->attack->factorMedium;
+        splash->factor_small = desc->attack->factorSmall;
     }
     rocket->owner = ent;
     rocket->movetype = MOVETYPE_FLYMISSILE;
@@ -578,25 +581,24 @@ static bool artillery_splash_target_allowed(edict_t *attacker, edict_t *target, 
     return flag && (mask & flag) != 0;
 }
 
-/* Artillery weapons damage around the fixed impact point using the authored
- * full/medium/small radii. Warsmash converts an ARTILLERY unit target to an
- * AbilityPointTarget at the damage point, so the original unit is not a
- * guaranteed direct hit if it moves before impact. Preserve OpenRealm's
- * established hit contract: only that original target receives primary-hit
- * listeners (if it is still in the blast); secondary/Attack-Ground victims
- * receive physical splash damage without multiplying orb/lifesteal/cleave. */
-void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
-                                struct artillery_s const *profile) {
+/* Artillery snapshots an impact point, while Missile Splash resolves around a
+ * homing unit on arrival. Both use the authored rings and only the primary
+ * victim receives attack-hit listeners. */
+static void resolve_splash_point_hit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
+                                     struct artillery_s const *profile, bool missile_splash) {
     float max_radius;
+    bool primary_hit = false;
 
-    if (!attacker || !impact || raw_damage <= 0) return;
-    if (!profile) return;
-    artillery_spawn_meat_wagon_impact(attacker, impact);
-    artillery_spawn_meat_wagon_plague_cloud(attacker, impact);
+    if (!attacker || !impact || raw_damage <= 0 || !profile) return;
+    if (!missile_splash) {
+        artillery_spawn_meat_wagon_impact(attacker, impact);
+        artillery_spawn_meat_wagon_plague_cloud(attacker, impact);
+    }
     max_radius = MAX(profile->area_full, MAX(profile->area_medium, profile->area_small));
     if (max_radius < 0.0f) return;
 
-    FILTER_EDICTS(other, artillery_splash_target_allowed(attacker, other, profile->area_targets, profile->targets_allowed)) {
+    FILTER_EDICTS(other, artillery_splash_target_allowed(attacker, other, profile->area_targets, profile->targets_allowed) &&
+                  (!missile_splash || other == primary || S_SpellIsEnemy(attacker, other))) {
         float const distance = MAX(0.0f, Vector2_distance(&other->s.origin2, impact) - MAX(0.0f, other->collision));
         float factor;
         int damage;
@@ -607,9 +609,27 @@ void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t cons
         else continue;
         if (factor <= 0.0f) continue;
         damage = attack_damage_type(attacker, other, (int)MAX(1.0f, (float)raw_damage * factor), profile->attack_type);
-        if (other == primary) S_ResolveAttackHit(attacker, other, damage);
-        else T_Damage(other, attacker, damage);
+        if (other == primary) {
+            primary_hit = true;
+            S_ResolveAttackHit(attacker, other, damage);
+        } else {
+            T_Damage(other, attacker, damage);
+        }
     }
+    if (missile_splash && !primary_hit && primary && primary->inuse && primary != attacker && !M_IsDead(primary)) {
+        int const damage = attack_damage_type(attacker, primary, raw_damage, profile->attack_type);
+        S_ResolveAttackHit(attacker, primary, damage);
+    }
+}
+
+void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
+                                struct artillery_s const *profile) {
+    resolve_splash_point_hit(attacker, primary, impact, raw_damage, profile, false);
+}
+
+void S_ResolveMissileSplashHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
+                               struct artillery_s const *profile) {
+    resolve_splash_point_hit(attacker, primary, impact, raw_damage, profile, true);
 }
 
 void S_ResolveArtilleryHit(edict_t *attacker, edict_t *target, int raw_damage) {
@@ -675,8 +695,8 @@ static void throw_missile(edict_t *ent) {
      * armor or defense changes while the projectile is in flight are honored. */
     int damage = (int)ai_rolldamage1(ent, 1);
     mat4_t matrix;
-    M_GetEntityMatrix(&ent->s, &matrix);
     unitAttack_t const *atk = ACTIVE_ATTACK(ent);
+    M_GetEntityMatrix(&ent->s, &matrix);
     vec3_t origin = Matrix4_multiply_vector3(&matrix, &atk->origin);
     vec2_t impact = other->s.origin2;
     cstring_t missile_art = S_SearingArrowsMissileArt(ent);
@@ -922,13 +942,13 @@ static void ai_attack_walk(edict_t *ent) {
     } else {
         if (!cooldown_ready) {
             ent->wait = MAX(ent->wait, attack_cooldown_remaining(ent));
-            if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY)
+            if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY || ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH)
                 unit_setmove(ent, &attack_move_ranged_cooldown);
             else
                 unit_setmove(ent, &attack_move_melee_cooldown);
             return;
         }
-        if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY)
+        if (ACTIVE_ATTACK(ent)->weapon == WPN_MISSILE || ACTIVE_ATTACK(ent)->weapon == WPN_ARTILLERY || ACTIVE_ATTACK(ent)->weapon == WPN_MSPLASH)
             attack_ranged(ent);
         else
             attack_melee(ent);

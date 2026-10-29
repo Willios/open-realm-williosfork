@@ -4,6 +4,7 @@
 #include "../game/skills/s_skills.h"
 
 void attack_melee(edict_t *self);
+void attack_ranged(edict_t *self);
 void whirlwind_think(edict_t *ent);
 void morph_end(edict_t *thinker);
 
@@ -6321,7 +6322,7 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
         "ID;PWXL;N;EBB;Y3;X6\nC;Y1;X1;K\"unitWeaponsID\"\nC;Y1;X2;K\"weapsOn\"\n"
         "C;Y1;X3;K\"atkType1\"\nC;Y1;X4;K\"weapTp1\"\nC;Y1;X5;K\"rangeN1\"\nC;Y1;X6;K\"dice1\"\n"
         "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K1\nC;Y2;X3;K\"hero\"\nC;Y2;X4;K\"mwc\"\nC;Y2;X5;K100\nC;Y2;X6;K1\n"
-        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K1\nC;Y3;X3;K\"chaos\"\nC;Y3;X4;K\"missile\"\nC;Y3;X5;K600\nC;Y3;X6;K1\nE\n";
+        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K1\nC;Y3;X3;K\"chaos\"\nC;Y3;X4;K\"msplash\"\nC;Y3;X5;K600\nC;Y3;X6;K1\nE\n";
     slkTestData_t *ability_rows = parse_slk_string(ability_data), *old_ability = G_SetSLKRows("AbilityData", ability_rows);
     slkTestData_t *abilities_rows = parse_slk_string(unit_abilities), *old_abilities = G_SetSLKRows("UnitAbilities", abilities_rows);
     slkTestData_t *ui_rows = parse_slk_string(unit_ui), *old_ui = G_SetSLKRows("UnitUI", ui_rows);
@@ -6348,14 +6349,46 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
     T_EQ(demon->unit_state->hero.level, 10u);
     T_EQ(demon->unit_state->hero.str, 47u);
     T_FEQ(demon->health.max_value, 1775.0f, 0.001f);
+    T_EQ(demon->unit_state->attack1.projectile.model,
+         G_RegisterModel("TestUI\\Models\\anim_projectile.mdx"));
     T_FEQ(demon->unit_state->attack1.range, 600.0f, 0.001f);
-    T_EQ(demon->unit_state->attack1.weapon, WPN_MISSILE);
+    T_EQ(demon->unit_state->attack1.weapon, WPN_MSPLASH);
     T_ASSERT(unit_findstatus(demon, MAKEFOURCC('B','E','m','e')) != NULL);
     T_ASSERT(unit_statusshowstimedbar(MAKEFOURCC('B','E','m','e')));
     T_FEQ(unit_statusremainingfraction(unit_findstatus(demon, MAKEFOURCC('B','E','m','e'))), 1.0f, 0.001f);
     T_ASSERT(G_ActorHasSkill(demon, "AEmb"));
     T_ASSERT(G_ActorHasSkill(demon, "AEim"));
     T_ASSERT(G_ActorHasSkill(demon, "AEev"));
+    {
+        edict_t *enemy = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 64.0f);
+        edict_t *missile = NULL;
+        demon->data.UnitProfile = (UnitProfile_t *)G_UnitProfile(demon->class_id);
+        demon->goalentity = enemy;
+        enemy->targtype = TARG_GROUND;
+        enemy->unit_state->armor_value = 0.0f;
+        demon->s.player = 0;
+        enemy->s.player = 1;
+        demon->svflags |= SVF_MONSTER;
+        demon->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+        enemy->targtype = TARG_GROUND;
+        enemy->health.value = enemy->health.max_value = 1000.0f;
+        demon->goalentity = enemy;
+        demon->wait = 0.0f;
+        T_ASSERT(S_AttackCanTarget(demon, enemy));
+        attack_ranged(demon);
+        demon->wait = 0.01f;
+        demon->currentmove->think(demon);
+        FILTER_EDICTS(candidate, candidate->owner == demon && candidate->movetype == MOVETYPE_FLYMISSILE) {
+            missile = candidate;
+            break;
+        }
+        T_NOT_NULL(missile);
+        if (missile) {
+            T_EQ(missile->s.model, G_RegisterModel("TestUI\\Models\\anim_projectile.mdx"));
+            T_NOT_NULL(missile->animation);
+            T_STREQ(missile->animation->name, "Birth");
+        }
+    }
     FOR_LOOP(i, globals.num_edicts) {
         edict_t *candidate = g_edicts + i;
         if (candidate->inuse && candidate->think == morph_end && candidate->owner == demon) morph = candidate;

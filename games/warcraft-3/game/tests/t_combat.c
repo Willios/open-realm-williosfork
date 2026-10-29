@@ -136,7 +136,7 @@ static void attach_stub_anim(edict_t *ent) {
  * Ability presentation effects
  * ========================================================================== */
 
-TEST(wc3_combat, projectile_presentation_selects_stand_sequence) {
+TEST(wc3_combat, projectile_presentation_plays_birth_then_stand_sequence) {
     edict_t *missile;
 
     setup_test_world();
@@ -147,10 +147,19 @@ TEST(wc3_combat, projectile_presentation_selects_stand_sequence) {
     G_StartProjectilePresentation(missile);
 
     T_NOT_NULL(missile->animation);
-    T_STREQ(missile->animation->name, "Stand");
+    T_STREQ(missile->animation->name, "Birth");
     T_EQ(missile->s.frame, missile->animation->interval[0]);
     T_ASSERT(missile->s.flags & EF_NOT_SELECTABLE);
     T_ASSERT(missile->s.renderfx & RF_NO_SHADOW);
+
+    /* The launch sequence runs once, then the missile enters its travel loop. */
+    missile->goalentity = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 1000.0f, 0.0f);
+    missile->movetype = MOVETYPE_FLYMISSILE;
+    missile->velocity = 0.1f;
+    missile->s.frame = missile->animation->interval[1] - 1;
+    SV_Physics_Toss(missile);
+    T_STREQ(missile->animation->name, "Stand");
+    T_EQ(missile->s.frame, missile->animation->interval[0]);
 }
 
 TEST(wc3_combat, flymissile_advances_animation_and_tracks_homing_yaw) {
@@ -2789,6 +2798,167 @@ TEST(wc3_combat, artillery_minimum_range_makes_mobile_attacker_back_away) {
     after = Vector2_distance(&attacker->s.origin2, &target->s.origin2);
     T_ASSERT(after > before);
     T_STREQ(attacker->currentmove->animation, "walk");
+}
+
+TEST(wc3_combat, missile_splash_attack_order_selects_ranged_windup) {
+    UnitWeapons_t weapons = { .attacksEnabled = 1 };
+    edict_t *attacker, *target;
+    setup_test_world(); reset_entities();
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeComputer;
+    attacker = make_combat_unit(MAKEFOURCC('E','d','e','m'), 750.0f, 0.0f, 0.0f);
+    target = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 200.0f, 0.0f);
+    attacker->data.UnitWeapons = &weapons;
+    attacker->s.player = 0;
+    target->s.player = 1;
+    target->targtype = TARG_GROUND;
+    attacker->unit_state->attack1.type = ATK_CHAOS;
+    attacker->unit_state->attack1.weapon = WPN_MSPLASH;
+    attacker->unit_state->attack1.range = 600.0f;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.damagePoint = 0.1f;
+    attacker->unit_state->attack1.cooldown = 1.0f;
+    order_attack(attacker, target);
+    T_NOT_NULL(attacker->currentmove);
+    if (!attacker->currentmove) return;
+    attacker->currentmove->think(attacker); /* attack_walk picks ranged, not melee */
+    T_STREQ(attacker->currentmove->animation, "attack range");
+}
+
+/* Metamorphosis uses the generic WPN_MSPLASH delivery path. This test
+ * uses custom profile values rather than stock Edmm data, so the same route
+ * also works for custom units and other Missile Splash attacks. */
+TEST(wc3_combat, missile_splash_launches_homing_projectile_and_snapshots_damage_bands) {
+    UnitWeapons_t weapons = { .attacksEnabled = 1, .attack1 = { .areaTargets = WC3_TARGET_FLAG_GROUND } };
+    edict_t *attacker, *target, *bystander, *ally, *missile = NULL;
+
+    setup_test_world(); reset_entities();
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeComputer;
+    attacker = make_combat_unit(MAKEFOURCC('E','d','e','m'), 750.0f, 0.0f, 0.0f);
+    target = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 200.0f, 0.0f);
+    bystander = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 300.0f, 75.0f);
+    ally = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 300.0f, 90.0f);
+    attacker->s.player = ally->s.player = 0;
+    target->s.player = bystander->s.player = 1;
+    attacker->data.UnitWeapons = &weapons;
+    attacker->goalentity = target;
+    attacker->unit_state->attack1.weapon = WPN_MSPLASH;
+    attacker->unit_state->attack1.type = ATK_CHAOS;
+    attacker->unit_state->attack1.damageBase = 100;
+    attacker->unit_state->attack1.numberOfDice = 0;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.range = 600.0f;
+    attacker->unit_state->attack1.damagePoint = 0.1f;
+    attacker->unit_state->attack1.cooldown = 1.0f;
+    attacker->unit_state->attack1.areaFull = 50.0f;
+    attacker->unit_state->attack1.areaMedium = 100.0f;
+    attacker->unit_state->attack1.areaSmall = 150.0f;
+    attacker->unit_state->attack1.factorMedium = 0.5f;
+    attacker->unit_state->attack1.factorSmall = 0.25f;
+    attacker->unit_state->attack1.projectile.speed = 900.0f;
+    attacker->unit_state->attack1.projectile.model = G_RegisterModel("TestUI\\Models\\anim_pulse.mdx");
+    target->targtype = bystander->targtype = ally->targtype = TARG_GROUND;
+    target->unit_state->defense_type = bystander->unit_state->defense_type = 7;
+    target->unit_state->armor_value = bystander->unit_state->armor_value = 0.0f;
+
+    attack_ranged(attacker);
+    attacker->wait = 0.01f;
+    attacker->currentmove->think(attacker);
+    FILTER_EDICTS(ent, ent->owner == attacker && ent->movetype == MOVETYPE_FLYMISSILE) {
+        missile = ent; break;
+    }
+    T_NOT_NULL(missile);
+    if (!missile) return;
+    T_ASSERT(!(missile->aiflags & AI_PROJECTILE_FIXED_TARGET));
+    T_ASSERT(missile->goalentity == target);
+    T_EQ(missile->s.model, attacker->unit_state->attack1.projectile.model);
+    T_FEQ(missile->velocity, 0.9f, 0.001f);
+    T_NOT_NULL(G_GetArtillery(missile));
+    if (!G_GetArtillery(missile)) return;
+    T_EQ(G_GetArtillery(missile)->attack_type, ATK_CHAOS);
+    T_EQ(G_GetArtillery(missile)->area_targets, WC3_TARGET_FLAG_GROUND);
+    T_FEQ(G_GetArtillery(missile)->area_medium, 100.0f, 0.001f);
+    T_FEQ(target->health.value, 500.0f, 0.001f); /* no damage at launch */
+
+    /* The missile travels on each simulation tick and homes to the target. */
+    {
+        uint32_t const missile_index = missile->s.number;
+        bool moved = false;
+        for (int tick = 0; tick < 20 && g_edicts[missile_index].inuse; ++tick) {
+            vec3_t const before = g_edicts[missile_index].s.origin;
+            SV_Physics_Toss(&g_edicts[missile_index]);
+            if (!g_edicts[missile_index].inuse) break;
+            vec3_t const current = g_edicts[missile_index].s.origin;
+            if (Vector3_len(&(vec3_t){ current.x - before.x, current.y - before.y, current.z - before.z }) > 0.0f)
+                moved = true;
+            if (tick == 1) {
+                /* A moving target should redirect the next homing step. */
+                target->s.origin2.y = target->s.origin.y = 50.0f;
+            }
+        }
+        T_ASSERT(moved);
+        T_ASSERT(!g_edicts[missile_index].inuse);
+    }
+    T_ASSERT(target->health.value < 500.0f);
+    T_ASSERT(bystander->health.value < 500.0f);
+    T_FEQ(ally->health.value, 500.0f, 0.001f);
+}
+
+TEST(wc3_combat, missile_splash_falls_back_to_direct_hit_when_splash_mask_excludes_primary) {
+    struct artillery_s profile = { 0 };
+    edict_t *attacker, *primary, *bystander;
+    vec2_t impact;
+
+    setup_test_world(); reset_entities();
+    ((mapInfo_t *)level.mapinfo)->players[0].playerType = kPlayerTypeHuman;
+    ((mapInfo_t *)level.mapinfo)->players[1].playerType = kPlayerTypeComputer;
+    attacker = make_combat_unit(MAKEFOURCC('E','d','e','m'), 750.0f, 0.0f, 0.0f);
+    primary = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 200.0f, 0.0f);
+    bystander = make_combat_unit(MAKEFOURCC('h','f','o','o'), 500.0f, 220.0f, 0.0f);
+    attacker->s.player = 0;
+    primary->s.player = bystander->s.player = 1;
+    primary->targtype = bystander->targtype = TARG_GROUND;
+    primary->unit_state->defense_type = 7;
+    primary->unit_state->armor_value = 0.0f;
+    profile.attack_type = ATK_CHAOS;
+    profile.area_targets = WC3_TARGET_FLAG_AIR; /* neither ground target participates in the splash enumeration */
+    profile.targets_allowed = WC3_TARGET_FLAG_GROUND;
+    profile.area_full = 50.0f;
+    profile.area_medium = 100.0f;
+    profile.area_small = 150.0f;
+    profile.factor_medium = 0.5f;
+    profile.factor_small = 0.25f;
+    impact = primary->s.origin2;
+
+    S_ResolveMissileSplashHit(attacker, primary, &impact, 100, &profile);
+    T_FEQ(primary->health.value, 400.0f, 0.001f);
+    T_FEQ(bystander->health.value, 500.0f, 0.001f);
+}
+
+TEST(wc3_combat, plain_missile_still_uses_direct_hit_without_splash_component) {
+    edict_t *attacker, *target, *missile = NULL;
+    setup_test_world(); reset_entities();
+    attacker = make_combat_unit(MAKEFOURCC('h','r','i','f'), 535.0f, 0.0f, 0.0f);
+    target = make_combat_unit(MAKEFOURCC('h','f','o','o'), 420.0f, 200.0f, 0.0f);
+    attacker->goalentity = target;
+    attacker->unit_state->attack1.type = ATK_NORMAL;
+    attacker->unit_state->attack1.weapon = WPN_MISSILE;
+    attacker->unit_state->attack1.damageBase = 100;
+    attacker->unit_state->attack1.targetsAllowed = WC3_TARGET_FLAG_GROUND;
+    attacker->unit_state->attack1.range = 500.0f;
+    attacker->unit_state->attack1.damagePoint = 0.1f;
+    attacker->unit_state->attack1.cooldown = 1.0f;
+    attacker->unit_state->attack1.projectile.speed = 900.0f;
+    target->targtype = TARG_GROUND;
+    attack_ranged(attacker);
+    attacker->wait = 0.01f;
+    attacker->currentmove->think(attacker);
+    FILTER_EDICTS(ent, ent->owner == attacker && ent->movetype == MOVETYPE_FLYMISSILE) {
+        missile = ent; break;
+    }
+    T_NOT_NULL(missile);
+    if (missile) T_NULL(G_GetArtillery(missile));
 }
 
 TEST(wc3_combat, artillery_splash_uses_authored_three_damage_bands) {

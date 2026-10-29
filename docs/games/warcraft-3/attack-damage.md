@@ -26,6 +26,24 @@ Melee resolves the target-facing stages at the damage point. Missile attacks rol
 
 `WPN_ARTILLERY` shares the physical projectile launch path instead of falling through the melee resolver. The unit-level authored `minRange` is a real dead zone: a mobile attacker backs away until the target is outside it, while a holding/immobile attacker cannot fire. At the attack damage point an artillery unit target is converted to a fixed point, matching Warsmash's `CBehaviorAttack`: the missile flies to that snapshot even if the original unit moves afterward. The projectile snapshots its attack type, splash bands, factors, and matching `splashTargs` mask at launch, so later orders or target selection cannot change impact behavior. Impact then applies those values around the fixed point. If the original unit target is still inside the blast, it retains the ordinary primary-hit pipeline; secondary victims (and all victims of Attack Ground, which has no primary unit) receive physical splash damage without duplicating primary-only orb/lifesteal/cleave behavior. `CmdAttackGround` uses the same point-target projectile/splash path and is exposed only for the implemented `WPN_ARTILLERY` class. Attack Ground approach/retreat steps consult Move-owned `S_UnitCanTranslate` (immobile, Cyclone, Roots, Ensnare, Purge pause) every tick: a locked unit holds its firing point without translating or cancelling, and still fires in-range points.
 
+`WPN_MSPLASH` uses that same server-owned missile launch/presentation pipeline,
+with the transformed Demon Hunter (`AEme`, `Edmm`) as the stock example. Unlike
+artillery it follows its unit target and resolves splash around the *arrival*
+position. The launch snapshots raw damage, attack type, three splash radii and
+medium/small factors, and the authored `splashTargs` mask from the selected
+Attack 1/2 profile. The transformed unit's own `Missileart`, `Missilespeed`,
+and launch offset select projectile appearance, speed, and origin rather than
+hardcoded Demon Hunter asset names; stock Demon Hunter missile art resolves to
+`Abilities\Weapons\DemonHunterMissile\DemonHunterMissile.mdx`. Secondary
+victims must be enemies and have a matching splash target flag. The primary
+victim uses the normal attack-hit pipeline exactly once; if it is excluded from
+the splash enumeration it still takes one ordinary primary hit. Artillery keeps
+its existing fixed-point policy, and only artillery supports Attack Ground.
+The current generic missile mover still treats unit-target missiles as homing
+and uses straight-line 3D motion: authored `MissileHoming=false` and visual
+`Missilearc` trajectories remain separate projectile-physics gaps. Other missile
+variants (bounce, line) remain separate work.
+
 `T_Damage()` ignores targets whose life is already zero, and `unit_die()` is a one-shot transition once `SVF_DEADMONSTER` is set. This matters for simultaneous or near-simultaneous missile impacts: only the first lethal hit may publish WC3 death events, so map-authored death/loot triggers cannot run twice for the same corpse.
 
 ### Defend projectile reaction
@@ -60,7 +78,7 @@ For each `unitAttack_t`:
 - `temporaryDamageBonus`: item/temporary modifier added to each roll but not folded into the base range.
 - `cooldown`, `damagePoint`, `backswingPoint`: attack-cycle timing.
 - `range`, `rangeBuffer`: true weapon range and cooldown-only movement hysteresis.
-- artillery splash metadata (`Farea`/`Harea`/`Qarea`, `Hfact`/`Qfact`, `splashTargs`) is consumed by the generic `WPN_ARTILLERY` impact path; bounce/line/missile-splash weapon classes remain separate gaps.
+- splash metadata (`Farea`/`Harea`/`Qarea`, `Hfact`/`Qfact`, `splashTargs`) is consumed by both fixed `WPN_ARTILLERY` and homing `WPN_MSPLASH` impact paths; bounce and line weapon classes remain separate gaps.
 
 ### Chase range and attack timing
 
@@ -202,7 +220,7 @@ These affect existing owned units and newly spawned units that inherit already-r
 
 ## Missile Presentation
 
-Ranged Attack 1 missiles remain ordinary server entities with `MOVETYPE_FLYMISSILE`; the renderer does not own a parallel WC3-only projectile object. `G_StartProjectilePresentation()` therefore initializes presentation state when the missile is spawned: the entity is non-selectable, does not cast a unit shadow, and selects the projectile model's authored `Stand` sequence, falling back to `Birth` only when no `Stand` sequence exists. `SV_Physics_Toss()` advances that sequence while the missile is in flight. Ordinary missiles continue to update yaw from their current homing direction every simulation frame; artillery missiles instead carry `AI_PROJECTILE_FIXED_TARGET` plus the launch-time point in `channel.origin`, so they no longer depend on a moving/freed target entity. The existing snapshot `model`/`frame`/`angle` fields remain sufficient for presentation, and the fixed point rides in already-persisted edict state rather than adding a client-only projectile object. Attack and spell missiles also inherit the firing unit's existing `s.player`, allowing the client MDX renderer to resolve replaceable team-colour textures from the correct source player just as it does for ordinary entities.
+Ranged Attack 1 missiles remain ordinary server entities with `MOVETYPE_FLYMISSILE`; the renderer does not own a parallel WC3-only projectile object. `G_StartProjectilePresentation()` initializes presentation state when the missile spawns: the entity is non-selectable, does not cast a unit shadow, and starts with authored `Birth` when available, then switches to `Stand` for travel. Models without `Birth` start in `Stand`. `SV_Physics_Toss()` advances the sequence while the missile is in flight. Ordinary missiles continue to update yaw from their current homing direction every simulation frame; artillery missiles instead carry `AI_PROJECTILE_FIXED_TARGET` plus the launch-time point in `channel.origin`, so they no longer depend on a moving/freed target entity. The existing snapshot `model`/`frame`/`angle` fields remain sufficient for presentation, and the fixed point rides in already-persisted edict state rather than adding a client-only projectile object. Attack and spell missiles also inherit the firing unit's existing `s.player`, allowing the client MDX renderer to resolve replaceable team-colour textures from the correct source player just as it does for ordinary entities.
 
 This is important for Warcraft missile MDX files whose visible geosets/emitters begin in a sequence interval above frame zero. Merely assigning the registered missile model with `frame == 0` can leave a valid projectile simulation entity visually empty. Spell missiles using the same `MOVETYPE_FLYMISSILE` path receive the same initialization rather than maintaining a second animation policy.
 

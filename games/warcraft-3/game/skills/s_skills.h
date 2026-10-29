@@ -473,6 +473,8 @@ bool S_AttackProfileIsMelee(unitAttack_t const *);
 void S_ResolveArtilleryHit(edict_t *attacker, edict_t *target, int raw_damage);
 void S_ResolveArtilleryPointHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
                                 struct artillery_s const *profile);
+void S_ResolveMissileSplashHit(edict_t *attacker, edict_t *primary, vec2_t const *impact, int raw_damage,
+                               struct artillery_s const *profile);
 bool S_OrderAttackGround(edict_t *unit, vec2_t const *point);
 void S_ReincarnationOnDeath(edict_t *unit);
 bool S_HumanCanAttack(edict_t const *unit);
