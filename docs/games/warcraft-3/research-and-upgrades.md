@@ -215,6 +215,34 @@ combat behavior already queries the mutable runtime range, so existing and
 newly trained affected units use the researched distance without replacing the
 unit type.
 
+### Night Elf Improved Bows (`Reib`) and Marksmanship (`Remk`)
+
+Both upgrades are researched at the Ancient of War. The player-wide tech is
+applied to eligible Archers and Hippogryph Riders because their unit types list
+the upgrade in `UnitBalance.upgrades` (`Upgrades Used`); it is not a global bonus
+for every Night Elf attack. The completed research applies to existing units and
+new spawns, including Hippogryph Riders created by mounting an Archer. Standard
+Huntresses do not receive either upgrade.
+
+- `Reib` uses `ratr`: increases the runtime weapon range of eligible attack
+  slots. The usual +200 Warcraft world-unit effect is supplied by the upgrade
+  row, not hard-coded. Unit-target attack/chase checks use the updated runtime
+  weapon range. `uacq` (automatic acquisition range) is a **separate** authored
+  statistic and is not changed by this research; automatic scanning remains
+  bounded by the existing acquisition setting.
+- `Remk` uses `ratx`: increases the runtime damage base of eligible attack
+  slots, and the permanent attack-damage ledger keeps it consistent with other
+  buffs and modifiers. The currently common +4 and older +3 values are
+  resolved from the loaded `UpgradeData.slk`, not assumed by the engine.
+- Both are independent player-owned technologies: ordinary research completion
+  and JASS `SetPlayerTechResearched`/`AddPlayerTechResearched` use the same delta
+  path. Removing either bonus does not remove the other; unresearched units
+  remain unchanged. Costs, prerequisites and duration are controlled by the
+  loaded upgrade/command data rather than these gameplay effect handlers.
+
+Regression coverage is in `games/warcraft-3/game/tests/t_building.c`, using
+fixture `Reib`/`Remk` rows and the real research queue plus runtime stat path.
+
 ### `rhpx` — maximum hit points
 
 The authored level value uses the same `base + mod * (level - 1)` rule and is

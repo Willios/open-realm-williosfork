@@ -296,6 +296,46 @@ static const char building_upgrade_slk[] =
     "C;X18;K\"undead ghoul cannibalize\"\n"
     "E\n";
 
+/* Night Elf ranged upgrades use the same generic ratr/ratx path as other
+ * research. These two retail rawcodes have dedicated fixture rows so tests
+ * exercise both the researcher and the unit-side Upgrades Used opt-in without
+ * loading the developer's Warcraft archives. The bonus values here are
+ * authored object-data values, not engine constants. */
+static const char building_nightelf_ranged_upgrade_slk[] =
+    "ID;PWXL;N;E\n"
+    "B;X10;Y3;D0\n"
+    "C;X1;Y1;K\"upgradeid\"\n"
+    "C;X2;K\"maxlevel\"\n"
+    "C;X3;K\"goldbase\"\n"
+    "C;X4;K\"lumberbase\"\n"
+    "C;X5;K\"timebase\"\n"
+    "C;X6;K\"effect1\"\n"
+    "C;X7;K\"base1\"\n"
+    "C;X8;K\"mod1\"\n"
+    "C;X9;K\"class\"\n"
+    "C;X10;K\"used\"\n"
+    "C;X1;Y2;K\"Reib\"\n"
+    "C;X2;K1\n"
+    "C;X3;K50\n"
+    "C;X4;K100\n"
+    "C;X5;K35\n"
+    "C;X6;K\"ratr\"\n"
+    "C;X7;K200\n"
+    "C;X8;K0\n"
+    "C;X9;K\"range\"\n"
+    "C;X10;K1\n"
+    "C;X1;Y3;K\"Remk\"\n"
+    "C;X2;K1\n"
+    "C;X3;K100\n"
+    "C;X4;K175\n"
+    "C;X5;K40\n"
+    "C;X6;K\"ratx\"\n"
+    "C;X7;K4\n"
+    "C;X8;K0\n"
+    "C;X9;K\"range\"\n"
+    "C;X10;K1\n"
+    "E\n";
+
 static const char building_dependency_ability_slk[] =
     "ID;PWXL;N;E\n"
     "B;X4;Y3;D0\n"
@@ -1279,6 +1319,148 @@ TEST(wc3_building, researched_attack_range_effect_updates_existing_and_future_un
     T_FEQ(unit->unit_state->attack1.range, 400.0f, 0.001f);
     T_FEQ(unit->unit_state->attack2.range, 250.0f, 0.001f);
     building_restore_upgrade_data(old, rows);
+}
+
+TEST(wc3_building, nightelf_improved_bows_and_marksmanship_affect_only_opted_in_units) {
+    gameClient_t *owner = &game.clients[0];
+    edict_t *archer, *rider, *huntress, *future, *future_rider;
+    UnitBalance_t ranged_balance = { .upgrades = "Reib,Remk" };
+    UnitBalance_t huntress_balance = { .upgrades = "Remg,Resc" };
+    slkTestData_t *rows = parse_slk_string(building_nightelf_ranged_upgrade_slk);
+    slkTestData_t *old = G_SetSLKRows("UpgradeData", rows);
+    uint32_t const bows = MAKEFOURCC('R','e','i','b');
+    uint32_t const marksmanship = MAKEFOURCC('R','e','m','k');
+
+    setup_test_world();
+    memset(owner->tech, 0, sizeof(owner->tech));
+    archer = alloc_test_unit(MAKEFOURCC('e','a','r','c'), 0, 0);
+    rider = alloc_test_unit(MAKEFOURCC('e','h','p','r'), 128, 0);
+    huntress = alloc_test_unit(MAKEFOURCC('e','s','e','n'), 256, 0);
+    archer->s.player = rider->s.player = huntress->s.player = owner->ps.number;
+    archer->data.UnitBalance = rider->data.UnitBalance = &ranged_balance;
+    huntress->data.UnitBalance = &huntress_balance;
+    archer->runtime.acquisition_range = 800.0f;
+    archer->unit_state->attack1.numberOfDice = 1;
+    archer->unit_state->attack1.range = 500.0f;
+    archer->unit_state->attack1.damageBase = 16;
+    /* The generic effect must also update an authored second attack. */
+    archer->unit_state->attack2.numberOfDice = 1;
+    archer->unit_state->attack2.range = 450.0f;
+    archer->unit_state->attack2.damageBase = 19;
+    rider->unit_state->attack1.numberOfDice = 1;
+    rider->unit_state->attack1.range = 400.0f;
+    rider->unit_state->attack1.damageBase = 18;
+    huntress->unit_state->attack1.numberOfDice = 1;
+    huntress->unit_state->attack1.range = 225.0f;
+    huntress->unit_state->attack1.damageBase = 15;
+
+    T_EQ(G_UpgradeData(bows)->effect[0], MAKEFOURCC('r','a','t','r'));
+    T_EQ(G_UpgradeData(marksmanship)->effect[0], MAKEFOURCC('r','a','t','x'));
+    G_SetPlayerTechResearched(owner, bows, 1);
+    G_SetPlayerTechResearched(owner, marksmanship, 1);
+    T_FEQ(archer->unit_state->attack1.range, 700.0f, 0.001f);
+    T_FEQ(archer->runtime.acquisition_range, 800.0f, 0.001f);
+    T_FEQ(archer->unit_state->attack2.range, 650.0f, 0.001f);
+    T_EQ(archer->unit_state->attack1.damageBase, 20);
+    T_EQ(archer->unit_state->attack2.damageBase, 23);
+    T_FEQ(rider->unit_state->attack1.range, 600.0f, 0.001f);
+    T_EQ(rider->unit_state->attack1.damageBase, 22);
+    T_FEQ(huntress->unit_state->attack1.range, 225.0f, 0.001f);
+    T_EQ(huntress->unit_state->attack1.damageBase, 15);
+
+    future = alloc_test_unit(MAKEFOURCC('e','a','r','c'), 384, 0);
+    future->s.player = owner->ps.number;
+    future->data.UnitBalance = &ranged_balance;
+    future->unit_state->attack1.numberOfDice = 1;
+    future->unit_state->attack1.range = 500.0f;
+    future->unit_state->attack1.damageBase = 16;
+    G_ApplyPlayerUpgradesToUnit(future);
+    T_FEQ(future->unit_state->attack1.range, 700.0f, 0.001f);
+    T_EQ(future->unit_state->attack1.damageBase, 20);
+    T_FEQ(future->unit_state->attack1.permanentDamageBonus, 4.0f, 0.001f);
+    future_rider = alloc_test_unit(MAKEFOURCC('e','h','p','r'), 448, 0);
+    future_rider->s.player = owner->ps.number;
+    future_rider->data.UnitBalance = &ranged_balance;
+    future_rider->unit_state->attack1.numberOfDice = 1;
+    future_rider->unit_state->attack1.range = 400.0f;
+    future_rider->unit_state->attack1.damageBase = 18;
+    G_ApplyPlayerUpgradesToUnit(future_rider);
+    T_FEQ(future_rider->unit_state->attack1.range, 600.0f, 0.001f);
+    T_EQ(future_rider->unit_state->attack1.damageBase, 22);
+
+    /* JASS may revoke either upgrade independently; the other survives. */
+    G_SetPlayerTechResearched(owner, bows, 0);
+    T_FEQ(archer->unit_state->attack1.range, 500.0f, 0.001f);
+    T_FEQ(rider->unit_state->attack1.range, 400.0f, 0.001f);
+    T_EQ(archer->unit_state->attack1.damageBase, 20);
+    G_SetPlayerTechResearched(owner, marksmanship, 0);
+    T_EQ(archer->unit_state->attack1.damageBase, 16);
+    T_EQ(rider->unit_state->attack1.damageBase, 18);
+    T_FEQ(future->unit_state->attack1.permanentDamageBonus, 0.0f, 0.001f);
+    T_FEQ(future_rider->unit_state->attack1.range, 400.0f, 0.001f);
+    T_EQ(future_rider->unit_state->attack1.damageBase, 18);
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
+}
+
+TEST(wc3_building, nightelf_ranged_research_queue_completes_both_upgrade_effects) {
+    gameClient_t *owner = &game.clients[0];
+    edict_t *producer, *archer;
+    UnitProfile_t profile = { .researches = "Reib,Remk" };
+    UnitBalance_t balance = { .upgrades = "Reib,Remk" };
+    slkTestData_t *rows = parse_slk_string(building_nightelf_ranged_upgrade_slk);
+    slkTestData_t *old = G_SetSLKRows("UpgradeData", rows);
+    uint32_t const bows = MAKEFOURCC('R','e','i','b');
+    uint32_t const marksmanship = MAKEFOURCC('R','e','m','k');
+    int32_t next_level = 0;
+    char reason[128];
+
+    setup_test_world();
+    memset(owner->tech, 0, sizeof(owner->tech));
+    producer = alloc_test_unit(MAKEFOURCC('e','a','o','w'), 0, 0);
+    producer->s.flags |= EF_BUILDING;
+    producer->runtime.flags |= UNIT_BALANCE_BUILDING;
+    producer->s.player = owner->ps.number;
+    producer->data.UnitProfile = &profile;
+    producer->stand = building_test_stand;
+    archer = alloc_test_unit(MAKEFOURCC('e','a','r','c'), 64, 0);
+    archer->s.player = owner->ps.number;
+    archer->data.UnitBalance = &balance;
+    archer->unit_state->attack1.numberOfDice = 1;
+    archer->unit_state->attack1.range = 500.0f;
+    archer->unit_state->attack1.damageBase = 16;
+    owner->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 1000;
+    owner->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 1000;
+    owner->connected = false;
+    owner->cheat_instant_build = true;
+
+    T_EQ(G_GetResearchCommandState(owner, producer, bows, &next_level, reason, sizeof(reason)),
+         BUILD_COMMAND_AVAILABLE);
+    T_EQ(G_GetResearchCommandState(owner, producer, marksmanship, &next_level, reason, sizeof(reason)),
+         BUILD_COMMAND_AVAILABLE);
+    T_ASSERT(G_QueueResearch(producer, bows));
+    T_FEQ(archer->unit_state->attack1.range, 500.0f, 0.001f);
+    T_NOT_NULL(producer->currentmove);
+    T_NOT_NULL(producer->currentmove->think);
+    producer->currentmove->think(producer);
+    T_EQ(G_GetPlayerTechResearchedLevel(owner, bows), 1);
+    T_FEQ(archer->unit_state->attack1.range, 700.0f, 0.001f);
+
+    T_ASSERT(G_QueueResearch(producer, marksmanship));
+    T_EQ(archer->unit_state->attack1.damageBase, 16);
+    T_NOT_NULL(producer->currentmove);
+    T_NOT_NULL(producer->currentmove->think);
+    producer->currentmove->think(producer);
+    T_EQ(G_GetPlayerTechResearchedLevel(owner, marksmanship), 1);
+    T_EQ(archer->unit_state->attack1.damageBase, 20);
+    T_EQ(owner->ps.stats[PLAYERSTATE_RESOURCE_GOLD], 850);
+    T_EQ(owner->ps.stats[PLAYERSTATE_RESOURCE_LUMBER], 725);
+
+    owner->cheat_instant_build = false;
+    G_SetPlayerTechResearched(owner, bows, 0);
+    G_SetPlayerTechResearched(owner, marksmanship, 0);
+    G_SetSLKRows("UpgradeData", old);
+    free_slk_rows(rows);
 }
 
 TEST(wc3_building, researched_hit_points_effect_preserves_health_ratio) {
