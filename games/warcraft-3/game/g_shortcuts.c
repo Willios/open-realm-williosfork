@@ -38,7 +38,8 @@ bool G_UnitIsWorker(edict_t const *ent) {
 
 bool G_UnitShowsHeroShortcut(gameClient_t *client, edict_t const *ent) {
     return G_ShortcutIsControlledMonster(client, ent) && ent->data.UnitBalance &&
-        ent->data.UnitUI && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) && !(ent->s.renderfx & RF_HIDDEN) &&
+        ent->data.UnitUI && !G_UnitHasFlag(ent, UNIT_FLAG_TRAINING) &&
+        (!(ent->s.renderfx & RF_HIDDEN) || M_IsDead(ent)) &&
         !ent->data.UnitUI->hideHeroBar && !(ent->aiflags & AI_ILLUSION) &&
         G_UnitIsHero(ent);
 }

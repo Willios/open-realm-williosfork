@@ -1440,7 +1440,11 @@ TEST(wc3_unit, untinted_hero_dissipation_publishes_white_fade) {
 
 TEST(wc3_unit, hero_dissipation_marks_same_hero_revivable_and_hidden) {
     reset_test_entities();
+    setup_test_world();
+    game.clients[0].ps.number = 0;
     edict_t *hero = make_inventory_unit(0, 0);
+    hero->svflags |= SVF_MONSTER;
+    hero->s.player = 0;
     hero->health.value = hero->health.max_value = 500.0f;
 
     unit_die(hero, NULL);
@@ -1456,6 +1460,7 @@ TEST(wc3_unit, hero_dissipation_marks_same_hero_revivable_and_hidden) {
     T_ASSERT(hero->inuse);
     T_ASSERT(G_GetRevival(hero)->awaiting);
     T_ASSERT(hero->s.renderfx & RF_HIDDEN);
+    T_ASSERT(G_UnitShowsHeroShortcut(&game.clients[0], hero));
 }
 
 TEST(wc3_unit, hero_death_invalidates_owner_shortcut_roster) {
