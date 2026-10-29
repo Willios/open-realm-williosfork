@@ -1397,6 +1397,10 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     gameClient_t *client;
     float health_ratio, mana_ratio, temporary_armor, temporary_health, temporary_mana;
     float temporary_attack1, temporary_attack2;
+    doodadHero_t saved_hero;
+    heroability_t saved_ranks[MAX_HERO_ABILITIES];
+    UnitBalance_t const *source_balance;
+    bool preserve_hero_progression;
     uint32_t old_flags;
     bool source_building, target_building;
     /* SP_SpawnUnit initializes guards for new entities; a morph is not a spawn.
@@ -1408,6 +1412,12 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     creepGuardPhase_t creep_guard_phase;
 
     if (!unit || !type || !G_UnitUI(type)->modelFile) return false;
+    source_balance = unit->data.UnitBalance;
+    preserve_hero_progression = G_UnitIsHero(unit);
+    if (preserve_hero_progression) {
+        saved_hero = unit->unit_state->hero;
+        memcpy(saved_ranks, unit->unit_state->ranks, sizeof(saved_ranks));
+    }
     source_building = G_UnitIsBuilding(unit->class_id);
     target_building = G_UnitIsBuilding(type);
     /* Keep pathing/lifecycle ownership coherent: morphs may stay within the
@@ -1448,6 +1458,26 @@ bool G_TransformUnitType(edict_t *unit, uint32_t type) {
     unit->unit_state->temporary_health_bonus = 0.0f;
     unit->unit_state->temporary_mana_bonus = 0.0f;
     SP_SpawnUnit(unit);
+    /* Spawn rebinding initializes the new type's base Hero state. A Hero
+     * changing into another Hero form keeps its level, XP, learned abilities,
+     * and non-level attribute bonuses, while level growth follows the target
+     * form's UnitBalance row. */
+    if (preserve_hero_progression && G_UnitIsHero(unit)) {
+        UnitBalance_t const *target_balance = unit->data.UnitBalance;
+        float const steps = (float)(saved_hero.level > 0 ? saved_hero.level - 1 : 0);
+        int32_t const old_str_level = source_balance->strength + (int32_t)(steps * source_balance->strengthPerLevel);
+        int32_t const old_agi_level = source_balance->agility + (int32_t)(steps * source_balance->agilityPerLevel);
+        int32_t const old_int_level = source_balance->intelligence + (int32_t)(steps * source_balance->intelligencePerLevel);
+        unit->unit_state->hero = saved_hero;
+        unit->unit_state->hero.str = (uint32_t)MAX(0, target_balance->strength +
+            (int32_t)(steps * target_balance->strengthPerLevel) + (int32_t)saved_hero.str - old_str_level);
+        unit->unit_state->hero.agi = (uint32_t)MAX(0, target_balance->agility +
+            (int32_t)(steps * target_balance->agilityPerLevel) + (int32_t)saved_hero.agi - old_agi_level);
+        unit->unit_state->hero.intel = (uint32_t)MAX(0, target_balance->intelligence +
+            (int32_t)(steps * target_balance->intelligencePerLevel) + (int32_t)saved_hero.intel - old_int_level);
+        memcpy(unit->unit_state->ranks, saved_ranks, sizeof(saved_ranks));
+        G_RecomputeHeroStats(unit);
+    }
     /* A transformation retains the same handle, owner, and guard post. Do not
      * silently recapture its current position or re-enable a disabled guard. */
     unit->orders->creep_guard_origin = creep_guard_origin;

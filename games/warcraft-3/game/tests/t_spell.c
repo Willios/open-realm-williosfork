@@ -6309,8 +6309,10 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
         "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K\"Units\\NightElf\\DemonHunter\\DemonHunter.mdx\"\nC;Y2;X3;K1\n"
         "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K\"Units\\NightElf\\DemonHunter\\DemonHunter.mdx\"\nC;Y3;X3;K1\nE\n";
     char const unit_balance[] =
-        "ID;PWXL;N;EBB;Y3;X3\nC;Y1;X1;K\"unitBalanceID\"\nC;Y1;X2;K\"realHP\"\nC;Y1;X3;K\"spd\"\n"
-        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K500\nC;Y2;X3;K300\nC;Y3;X1;K\"Edmm\"\nC;Y3;X2;K500\nC;Y3;X3;K300\nE\n";
+        "ID;PWXL;N;EBB;Y3;X5\nC;Y1;X1;K\"unitBalanceID\"\nC;Y1;X2;K\"realHP\"\nC;Y1;X3;K\"spd\"\n"
+        "C;Y1;X4;K\"STR\"\nC;Y1;X5;K\"STRplus\"\n"
+        "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K575\nC;Y2;X3;K300\nC;Y2;X4;K19\nC;Y2;X5;K2.4\n"
+        "C;Y3;X1;K\"Edmm\"\nC;Y3;X2;K750\nC;Y3;X3;K300\nC;Y3;X4;K26\nC;Y3;X5;K2.4\nE\n";
     char const unit_data[] =
         "ID;PWXL;N;EBB;Y3;X3\nC;Y1;X1;K\"unitID\"\nC;Y1;X2;K\"targType\"\nC;Y1;X3;K\"movetp\"\n"
         "C;Y2;X1;K\"Edem\"\nC;Y2;X2;K\"ground\"\nC;Y2;X3;K\"foot\"\n"
@@ -6332,14 +6334,20 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
     demon = alloc_test_unit(MAKEFOURCC('E','d','e','m'), 64.0f, 64.0f);
     demon->s.player = 0;
     demon->svflags |= SVF_MONSTER;
-    demon->health.max_value = demon->health.value = 500.0f;
+    G_HeroApplyLevel(demon, 10);
+    demon->health.max_value = demon->health.value = 1100.0f;
+    T_EQ(demon->unit_state->hero.level, 10u);
     demon->unit_state->ranks[0] = MAKE(heroability_t, .code = MAKEFOURCC('A','E','m','e'), .level = 1);
     abilityitem_t const spell = S_AbilityItem(MAKEFOURCC('A','E','m','e'));
     spellTarget_t const target = MAKE(spellTarget_t, .type = SPELL_TARGET_NONE);
     abilityCall_t const call = MAKE(abilityCall_t, .item = &spell, .target = &target);
     T_ASSERT(S_AbilityMessage(demon, A_EXECUTE, &call));
     T_EQ(demon->class_id, MAKEFOURCC('E','d','m','m'));
-    T_FEQ(demon->health.max_value, 1000.0f, 0.001f);
+    /* At level 10 Edem has 1100 HP. Edmm's higher base STR and HP retain
+     * that level progression; Metamorphosis DataE then adds 500 more. */
+    T_EQ(demon->unit_state->hero.level, 10u);
+    T_EQ(demon->unit_state->hero.str, 47u);
+    T_FEQ(demon->health.max_value, 1775.0f, 0.001f);
     T_FEQ(demon->unit_state->attack1.range, 600.0f, 0.001f);
     T_EQ(demon->unit_state->attack1.weapon, WPN_MISSILE);
     T_ASSERT(unit_findstatus(demon, MAKEFOURCC('B','E','m','e')) != NULL);
@@ -6358,7 +6366,9 @@ TEST(wc3_spell, metamorphosis_keeps_abilities_adds_ranged_attack_and_reverts_bon
         morph_end(morph);
     }
     T_EQ(demon->class_id, MAKEFOURCC('E','d','e','m'));
-    T_FEQ(demon->health.max_value, 500.0f, 0.001f);
+    T_EQ(demon->unit_state->hero.level, 10u);
+    T_EQ(demon->unit_state->hero.str, 40u);
+    T_FEQ(demon->health.max_value, 1100.0f, 0.001f);
     T_NULL(unit_findstatus(demon, MAKEFOURCC('B','E','m','e')));
 
     G_SetSLKRows("UnitWeapons", old_weapons); free_slk_rows(weapons_rows);
