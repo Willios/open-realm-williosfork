@@ -54,6 +54,7 @@ static bool test_fs_expansion;
 static char test_saved_game_deleted[256];
 static char test_saved_game_loaded[256];
 static uint32_t test_saved_game_load_count;
+static uint32_t test_campaign_strings_read_count;
 static bool test_skip_menu_transitions;
 static bool test_background_birth_available = true;
 static int test_vid_native = -1;
@@ -214,6 +215,13 @@ static int test_fs_read_file(cstring_t file_name, void **buf) {
     ((char *)data)[size] = '\0';
     *buf = data;
     return (int)size;
+}
+
+static int test_campaign_strings_fs_read(cstring_t file_name, void **buf) {
+    if (file_name && (!strcasecmp(file_name, "UI\\CampaignStrings.txt") ||
+                      !strcasecmp(file_name, "UI\\CampaignStrings_exp.txt")))
+        test_campaign_strings_read_count++;
+    return test_fs_read_file(file_name, buf);
 }
 
 static int test_missing_fs_read(cstring_t file_name, void **buf) {
@@ -3873,7 +3881,10 @@ TEST(menu_fdf, campaign_return_shortcut_loads_campaign_data_after_gameplay) {
     test_map = "Maps\\Campaign\\NightElf07.w3m";
     test_fs_expansion = false;
     test_skip_menu_transitions = true;
-    mi.FS_ReadFile = test_fs_read_file;
+    test_campaign_visibility = NULL;
+    test_campaign_strings_read_count = 0;
+    remove(test_campaign_progress_path);
+    mi.FS_ReadFile = test_campaign_strings_fs_read;
     mi.FS_FreeFile = test_fs_free_file;
     mi.Cvar_String = test_cvar_string;
     mi.Cvar_Register = test_cvar_register;
@@ -3886,14 +3897,22 @@ TEST(menu_fdf, campaign_return_shortcut_loads_campaign_data_after_gameplay) {
     T_NULL(UI_GetCurrentScreen()); /* Gameplay startup leaves no frontend screen initialized. */
     Cmd_ExecuteString("menu_single_player_campaign_night_elf");
     T_ASSERT(UI_GetCurrentScreen() == &singlePlayerMenuScreen);
+    T_EQ(test_campaign_strings_read_count, 1);
     if (UI_FindFrame("MissionName"))
         T_STREQ(UI_FindFrame("MissionName")->Text, "Eternity's End");
     else
         T_ASSERT(false);
     T_ASSERT(UI_FindFrame("MissionSelectFrame") && !UI_FindFrame("MissionSelectFrame")->hidden);
 
+    Cmd_ExecuteString("menu_single_player_campaign_back");
+    T_ASSERT(UI_FindFrame("CampaignSelectFrame") && !UI_FindFrame("CampaignSelectFrame")->hidden);
+    T_ASSERT(sp_row_shows("CampaignListBox", 0, "Human Campaign", "The Scourge of Lordaeron", false, 0));
+    T_ASSERT(sp_row_shows("CampaignListBox", 6, "Night Elf Campaign", "Eternity's End", false, 3));
+    T_EQ(test_campaign_strings_read_count, 1);
+
     M_Shutdown();
     test_map = "";
+    remove(test_campaign_progress_path);
     test_fs_expansion = saved_expansion;
     test_skip_menu_transitions = saved_skip_transitions;
     mi = saved;

@@ -117,7 +117,11 @@ Campaign Quit Mission resolves its race-specific menu command only after the fro
 particular, `menu_single_player_campaign_night_elf` must use `UI_RequestScreen()` with a configure callback that selects the
 `NightElf` key after `SinglePlayerMenu_Init()` loads `CampaignStrings.txt`; calling `SinglePlayerMenu_LaunchCampaign()` directly
 can run while no frontend screen is active and its campaign table is empty. The resulting `UI: unknown campaign 'NightElf'` leaves
-the player on a blank screen. `menu_fdf.campaign_return_shortcut_loads_campaign_data_after_gameplay` covers this no-screen return path.
+the player on a blank screen. That direct route also skips `SinglePlayerMenu_ShowCampaign()`, which normally builds the visible
+campaign list. When Back returns from the mission selector, it must refresh progress and rebuild the list from the campaign table
+already loaded by `SinglePlayerMenu_Init()`; it should not parse `CampaignStrings.txt` again. The regression
+`menu_fdf.campaign_return_shortcut_loads_campaign_data_after_gameplay` covers both transitions and asserts the strings file is read
+once.
 
 Use ordinary `onclick` strings for server-owned state transitions such as `menu_endgame` and `menu_confirm_exit`. Save/Load commit
 buttons use `close_window_command ...` plus control placeholders such as `{SaveGameFileEditBox}` and the resolved inner save-list

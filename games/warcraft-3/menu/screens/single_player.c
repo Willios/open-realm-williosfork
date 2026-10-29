@@ -1520,7 +1520,10 @@ void SinglePlayerMenu_ShowCampaign(void) {
 void SinglePlayerMenu_BackCampaign(void) {
     if (current_view == SINGLE_PLAYER_VIEW_MISSION_SELECT) {
         /* Picking a campaign moved the camera into that campaign's scene; returning restores the selector's
-         * scene through the same Birth camera move that first entering the campaign screen plays. */
+         * scene through the same Birth camera move that first entering the campaign screen plays. The direct
+         * campaign return shortcut skips ShowCampaign(), so rebuild the visible list from the already-loaded data. */
+        SinglePlayer_LoadCampaignProgress();
+        SinglePlayer_PopulateCampaignList();
         singlePlayerCampaign_t const *campaign = SinglePlayer_DefaultCampaign();
         SinglePlayer_SetCampaignBackdrop(campaign);
         SinglePlayer_BeginCampaignBackdropBirth(campaign);
