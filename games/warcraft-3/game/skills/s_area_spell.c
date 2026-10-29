@@ -278,11 +278,21 @@ void rain_of_fire_think(edict_t *ent) {
 /* Starfall: self-centered periodic area damage.  AbilityData stores the
  * authored damage in DataA, wave interval in DataB, area in Area, and the
  * channel lifetime in Dur. */
+static cstring_t starfall_target_art_code(uint32_t code, uint32_t level) {
+    cstring_t buff = S_SpellBuffId(code, level);
+#if BZ_COMPAT_WORKAROUNDS
+    if (!buff && G_AbilityCode(code) == MAKEFOURCC('A','E','s','f')) {
+        return "AEsd";
+    }
+#endif
+    return buff;
+}
+
 void starfall_think(edict_t *ent) {
     uint32_t now = G_Time();
     edict_t *caster = ent->owner;
     uint32_t level = S_SpellLevel(caster, ent->class_id);
-    cstring_t target_art_code = S_SpellBuffId(ent->class_id, level);
+    cstring_t target_art_code = starfall_target_art_code(ent->class_id, level);
 
     if (!S_SpellChannelActive(ent)) {
         S_SpellEndAreaPresentation(ent);
