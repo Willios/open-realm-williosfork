@@ -3392,6 +3392,7 @@ bool G_ReviveHero(edict_t *ent, float x, float y) {
     G_ActivateUnitFood(ent);
     unit_stand(ent); /* back to a living idle state */
     gi.LinkEntity(ent);
+    G_InvalidateUnitShortcutsForUnit(ent);
     return true;
 }
 
