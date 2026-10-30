@@ -940,6 +940,26 @@ bool CM_PointIsPathableForRadius(vec2_t const *location, float radius) {
     return CM_PointIsPathableForRadiusFlags(location, radius, CM_PATHING_UNWALKABLE);
 }
 
+/* Retail item placement: an item set down on a tree, a building or a cliff
+ * moves to the nearest walkable cell of the static map (terrain plus baked
+ * building and destructable footprints). Units do not push items. A free
+ * point is kept exactly, so scripts can probe walkability with an item. */
+bool CM_ClosestStaticPathablePointForRadius(vec2_t const *location, float radius, vec2_t *out) {
+    point2_t point;
+
+    if (!location || !out) return false;
+    if (!pathmap.original || !pathmap.width || !pathmap.height ||
+        CM_PointIsPathableForRadius(location, radius)) {
+        *out = *location;
+        return true;
+    }
+    if (!closest_pathable_node_original_flags(location, radius, CM_PATHING_UNWALKABLE, &point))
+        return false;
+    *out = CM_GetDenormalizedMapPosition((point.x + 0.5f) / pathmap.width,
+                                         (point.y + 0.5f) / pathmap.height);
+    return true;
+}
+
 /* Cheap straight-line walkability test between two world points: walk the
  * pathmap cells along the segment (Bresenham) and fail on the first position
  * where the mover's full collision footprint would overlap static pathing.

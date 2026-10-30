@@ -88,6 +88,10 @@ static void Com_LimitFrameRate(Uint64 frame_start, Uint64 frequency, bool dedica
     if (dedicated || !frequency) return;
 
     maxfps = Cvar_Integer("com_maxfps", 0);
+    /* In the background (Alt+Tab), draw just enough to stay responsive. */
+    int background = Cvar_Integer("com_maxfps_background", 20);
+    if (background > 0 && SDL_WasInit(SDL_INIT_VIDEO) && !SDL_GetKeyboardFocus())
+        maxfps = maxfps > 0 ? MIN(maxfps, background) : background;
     if (maxfps <= 0) return;
 
     target_ticks = frequency / (Uint64)maxfps;

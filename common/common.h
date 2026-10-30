@@ -271,6 +271,7 @@ void S_PlaySound(uint32_t kit_id);
 void S_PlaySoundByName(cstring_t name);
 void S_StopAllSounds(void);
 void S_SetUserVolume(float volume);
+void S_SetGroupVolumes(float spells, float ambience, float units);
 void S_BeginRegistration(void);
 void S_EndRegistration(void);
 void CL_Connect(cstring_t host, unsigned short port);
@@ -337,6 +338,7 @@ bool CM_ClosestPathablePointForRadiusFlags(vec2_t const *location, float radius,
 bool CM_ClosestReachablePointForRadius(vec2_t const *from, vec2_t const *target, float radius, vec2_t *out);
 bool CM_ClosestReachablePointForRadiusFlags(vec2_t const *from, vec2_t const *target, float radius,
                                             uint8_t blocked_flags, vec2_t *out);
+bool CM_ClosestStaticPathablePointForRadius(vec2_t const *location, float radius, vec2_t *out);
 bool CM_FindDirectApproachPointForRadius(vec2_t const *from, vec2_t const *target, float range, float radius, vec2_t *out);
 float CM_PathCellWorldSize(void);
 bool CM_FindApproachPointToFootprintForRadius(struct edict_s const *target, vec2_t const *from, float range, float radius, vec2_t *out);

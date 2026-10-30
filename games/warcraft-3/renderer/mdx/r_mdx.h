@@ -491,6 +491,11 @@ typedef struct mdxModel_s {
     int num_sequences;
     int num_globalSequences;
     int num_pivots;
+    /* Upper body for layered clips (renderEntity_t.upper_frame): a node named
+     * like "Bone_Chest" (not a mount's) and everything under it. Without one,
+     * an upper clip plays on the whole model. */
+    bool has_upper_body;
+    bool upper_body[MDX_MAX_NODES];
 } mdxModel_t;
 
 /* Model camera inputs and output matrices travel together through cinematic extraction. */
@@ -519,6 +524,8 @@ void MDLX_UpdateEntityAnimationPause(renderEntity_t const *entity);
 void MDLX_GetAnimatedColorTrackValue(mdxModel_t const *model, mdxKeyTrack_t const *keytrack, uint32_t time, vec3_t *output);
 void MDLX_GetGeosetAnimationStaticColor(mdxGeosetAnim_t const *geosetAnim, vec3_t *output);
 void MDLX_BindBoneMatrices(mdxModel_t const *model, mat4_t const *model_matrix, uint32_t frame1, uint32_t frame0);
+void MDLX_BindBoneMatricesUpper(mdxModel_t const *model, mat4_t const *model_matrix, uint32_t frame1, uint32_t frame0,
+                                uint32_t upper1, uint32_t upper0);
 bool MDLX_EvaluateLight(mdxModel_t const *model, mdxLight_t const *light,
                         mat4_t const *model_matrix, uint32_t frame, bool use_visibility,
                         rModelLight_t *output);

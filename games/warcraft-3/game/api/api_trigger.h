@@ -341,6 +341,8 @@ uint32_t TriggerRegisterPlayerUnitEvent(jass_t *j) {
     player_t *whichPlayer = jass_checkhandle(j, 2, "player");
     EVENTTYPE *whichPlayerUnitEvent = jass_checkhandle(j, 3, "playerunitevent");
     //handle_t filter = jass_checkhandle(j, 4, "boolexpr");
+    /* A map compiled against a newer common.j can pass an event this one lacks (null). */
+    if (!whichPlayerUnitEvent) return jass_pushnullhandle(j, "event");
     event_t *evt = G_MakeEvent(*whichPlayerUnitEvent);
     G_SetPlayerEventSubject(evt, PLAYER_ENT(whichPlayer));
     evt->trigger = whichTrigger;

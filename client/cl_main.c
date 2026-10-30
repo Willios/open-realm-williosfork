@@ -1579,6 +1579,21 @@ void CL_Frame(uint32_t msec) {
     CL_MusicUpdate();
     S_SetUserVolume(Cvar_Integer("s_sound", 1)
         ? Cvar_Value("s_volume", 1.0f) : 0.0f);
+    S_SetGroupVolumes(Cvar_Value("s_spellvolume", 1.0f), Cvar_Value("s_ambiencevolume", 1.0f),
+        Cvar_Value("s_unitvolume", 1.0f));
+    {
+        /* Window width / height, for scripts that pin UI to the screen edges
+         * (the 0.8 x 0.6 frame space is centered and widens with the window). */
+        static uint32_t aspect_w, aspect_h;
+        size2_t size = re.GetWindowSize ? re.GetWindowSize() : (size2_t){ 0, 0 };
+        if (size.width && size.height && (size.width != aspect_w || size.height != aspect_h)) {
+            char value[32];
+            aspect_w = size.width;
+            aspect_h = size.height;
+            snprintf(value, sizeof(value), "%.4f", (float)size.width / (float)size.height);
+            Cvar_Set("vid_aspect", value);
+        }
+    }
     CL_SendSoundEvents();
     CL_CheckTimeout();
     CL_SendCommand();

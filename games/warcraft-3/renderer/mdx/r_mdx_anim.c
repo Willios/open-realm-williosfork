@@ -96,7 +96,8 @@ bool MDLX_EventWorldTransform(mdxModel_t const *model, mdxEvent_t const *event,
                               mat4_t *out) {
     vec3_t pivot = {0}, local, world;
     if (!model || !event || !entity || !model_transform || !out) return false;
-    MDLX_BindBoneMatrices(model, model_transform, entity->frame, entity->oldframe);
+    MDLX_BindBoneMatricesUpper(model, model_transform, entity->frame, entity->oldframe,
+                               entity->upper_frame, entity->upper_oldframe);
     if (event->node.node_id < (uint32_t)model->num_pivots) pivot = model->pivots[event->node.node_id];
     local = pivot; *out = *model_transform;
     if (event->node.node_id < MDX_MAX_NODES && model->nodes[event->node.node_id]) {
@@ -641,23 +642,12 @@ void MDLX_GetGeosetAnimationStaticColor(mdxGeosetAnim_t const *geosetAnim, vec3_
     *output = geosetAnim->staticColor;
 }
 
-static void R_CalculateNodeMatrix(mdxModel_t const *model, mdxNode_t *node, uint32_t frame1,
-                                   uint32_t frame0, mdxPoseSequencePair_t *sequences, mat4_t *matrix) {
+static void R_CalculateNodeTRS(mdxModel_t const *model, mdxNode_t *node, uint32_t frame1,
+                               uint32_t frame0, mdxPoseSequencePair_t *sequences,
+                               vec3_t *out_translation, quaternion_t *out_rotation, vec3_t *out_scale) {
     vec3_t vTranslation = { 0, 0, 0 };
     quaternion_t vRotation = { 0, 0, 0, 1 };
     vec3_t vScale = { 1, 1, 1 };
-    vec3_t zero_pivot = { 0, 0, 0 };
-    vec3_t const *pivot = &zero_pivot;
-    /* Helpers, attachments and some bone nodes have no animated TRS. Their
-     * local transform is identity regardless of pivot, time or blend factor;
-     * parent inheritance and billboarding remain in R_GetNodeGlobalMatrix. */
-    if (!node->translation && !node->rotation && !node->scale) {
-        Matrix4_identity(matrix);
-        return;
-    }
-    if (node->node_id < (uint32_t)model->num_pivots) {
-        pivot = (vec3_t const *)&model->pivots[node->node_id];
-    }
     if (frame0 != frame1) {
         if (node->translation) {
             vec3_t t0 = vTranslation, t1 = vTranslation;
@@ -705,6 +695,44 @@ static void R_CalculateNodeMatrix(mdxModel_t const *model, mdxNode_t *node, uint
         }
         if (node->scale) {
             MDLX_GetPoseKeytrackValue(model, node->scale, frame1, 1, sequences, &vScale);
+        }
+    }
+    *out_translation = vTranslation;
+    *out_rotation = vRotation;
+    *out_scale = vScale;
+}
+
+/* upper_weight > 0 blends the node toward its upper-body clip pose at
+ * upper1/upper0 (MDLX_BindBoneMatricesUpper); 0 leaves the base pose. */
+static void R_CalculateNodeMatrixLayered(mdxModel_t const *model, mdxNode_t *node, uint32_t frame1,
+                                         uint32_t frame0, mdxPoseSequencePair_t *sequences,
+                                         uint32_t upper1, uint32_t upper0, float upper_weight,
+                                         mdxPoseSequencePair_t *upper_sequences, mat4_t *matrix) {
+    vec3_t vTranslation, vScale;
+    quaternion_t vRotation;
+    vec3_t zero_pivot = { 0, 0, 0 };
+    vec3_t const *pivot = &zero_pivot;
+    /* Helpers, attachments and some bone nodes have no animated TRS. Their
+     * local transform is identity regardless of pivot, time or blend factor;
+     * parent inheritance and billboarding remain in R_GetNodeGlobalMatrix. */
+    if (!node->translation && !node->rotation && !node->scale) {
+        Matrix4_identity(matrix);
+        return;
+    }
+    if (node->node_id < (uint32_t)model->num_pivots) {
+        pivot = (vec3_t const *)&model->pivots[node->node_id];
+    }
+    if (upper_weight >= 1.0f) {
+        R_CalculateNodeTRS(model, node, upper1, upper0, upper_sequences, &vTranslation, &vRotation, &vScale);
+    } else {
+        R_CalculateNodeTRS(model, node, frame1, frame0, sequences, &vTranslation, &vRotation, &vScale);
+        if (upper_weight > 0.0f) {
+            vec3_t uTranslation, uScale;
+            quaternion_t uRotation;
+            R_CalculateNodeTRS(model, node, upper1, upper0, upper_sequences, &uTranslation, &uRotation, &uScale);
+            vTranslation = Vector3_lerp(&vTranslation, &uTranslation, upper_weight);
+            vRotation = Quaternion_slerp(&vRotation, &uRotation, upper_weight);
+            vScale = Vector3_lerp(&vScale, &uScale, upper_weight);
         }
     }
     if (node->translation && !node->rotation && !node->scale) {
@@ -796,16 +824,45 @@ void AddSkin(vec3_t *pos, mat4_t const *mat, vec3_t const *org, float weight) {
     *pos = Vector3_add(pos, &val);
 }
 
+/* How much of the upper-body clip shows at the drawn time: it fades in over
+ * its first 120 ms and out over its last 200 ms, so a swing starts from and
+ * returns to the walking pose instead of snapping. */
+static float MDLX_UpperClipWeight(mdxModel_t const *model, uint32_t upper1, uint32_t upper0) {
+    mdxSequence_t const *seq = R_FindSequenceAtTime(model, upper1);
+    float time, in, out;
+    if (!seq) return 0.0f;
+    time = (float)upper0 + ((float)upper1 - (float)upper0) * tr.viewDef.lerpfrac;
+    in = (time - (float)seq->interval[0]) / 120.0f;
+    out = ((float)seq->interval[1] - time) / 200.0f;
+    return MAX(0.0f, MIN(1.0f, MIN(in, out)));
+}
+
 void MDLX_BindBoneMatrices(mdxModel_t const *model, mat4_t const *model_matrix, uint32_t frame1, uint32_t frame0) {
-    mdxPoseSequencePair_t sequences = { 0 };
+    MDLX_BindBoneMatricesUpper(model, model_matrix, frame1, frame0, 0, 0);
+}
+
+/* Layered pose: nodes of the model's upper body (or every node, if it has
+ * none) take the clip at upper1/upper0 over the base frames. upper1 == 0 is
+ * the plain pose. */
+void MDLX_BindBoneMatricesUpper(mdxModel_t const *model, mat4_t const *model_matrix, uint32_t frame1, uint32_t frame0,
+                                uint32_t upper1, uint32_t upper0) {
+    mdxPoseSequencePair_t sequences = { 0 }, upper_sequences = { 0 };
+    float weight = 0.0f;
+    if (upper1) {
+        /* A clip that just began (or restarted) has no earlier frame to lerp from. */
+        if (!upper0 || upper0 > upper1) upper0 = upper1;
+        weight = MDLX_UpperClipWeight(model, upper1, upper0);
+    }
     /* Only the nodes this model actually has need their global matrices
      * recomputed.  The old path memset the full 64KB node_matrices array and
      * scanned all MDX_MAX_NODES slots twice; models have tens of nodes, so the
      * compact node_list built at load time is orders of magnitude smaller. */
     FOR_LOOP(i, model->num_nodes) {
         mdxNode_t *node = model->node_list[i];
+        bool const layered = weight > 0.0f && (!model->has_upper_body || model->upper_body[node->node_id]);
         memset(&node_matrices[node->node_id], 0, sizeof(mat4_t)); /* reset the "computed" flag (v[15]==0) */
-        R_CalculateNodeMatrix(model, node, frame1, frame0, &sequences, &local_matrices[node->node_id]);
+        R_CalculateNodeMatrixLayered(model, node, frame1, frame0, &sequences, upper1, upper0,
+                                     layered ? weight : 0.0f, &upper_sequences, &local_matrices[node->node_id]);
     }
     FOR_LOOP(i, model->num_nodes)
         R_GetNodeGlobalMatrix(model, model_matrix, model->node_list[i]);

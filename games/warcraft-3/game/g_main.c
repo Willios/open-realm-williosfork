@@ -1088,6 +1088,7 @@ static void G_ShutdownGame(void) {
     UI_ResetHud();
     gi.SetPaused(false);
     G_BotShutdown();
+    G_LuaShutdown();
     if (level.vm) { jass_close(level.vm); level.vm = NULL; }
     G_ClearJassGroupRegistry();
     G_ClearRegionRegistry();
@@ -1759,6 +1760,7 @@ static void G_RunFrame(void) {
     G_StartScripts();
     G_UpdateTimeOfDay();
     G_RunTimers();
+    G_RunTextTags();
     G_RunEvents();
     jass_runevents(level.vm);
     G_UpdateTimerDialogs();
@@ -1792,6 +1794,7 @@ static void G_RunFrame(void) {
     /* After the resource compare pass so Team Resources follows an owner's
      * gold/lumber/food change in the same frame as that owner's console. */
     G_UpdateMultiboards();
+    G_UpdateScriptFrames();
     G_UpdateClientUnitShortcuts();
 
     /* RemovePlayer queues its fallback result UI instead of writing it inline.
@@ -2121,6 +2124,8 @@ static void G_ClientBegin(edict_t *edict) {
     UI_WriteTimerDialogs(edict);
     UI_WriteLeaderboard(edict);
     UI_WriteMultiboard(edict);
+    G_ScriptFramesClientBegin(edict);
+    G_OsKeyClientBegin(edict);
     UI_JassDialogRestore(edict);
 
     G_AccumulatePlayerFood(client);

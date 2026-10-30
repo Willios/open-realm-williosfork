@@ -883,6 +883,34 @@ static bool S_StartSound(sfxcache_t *sc, float volume, vec2_t const *origin, boo
     return false;
 }
 
+/* True when path starts with prefix, ignoring case and slash direction. */
+static bool S_PathHasPrefix(cstring_t path, cstring_t prefix) {
+    for (; *prefix; path++, prefix++) {
+        char a = *path == '/' ? '\\' : (char)tolower((unsigned char)*path);
+        char b = *prefix == '/' ? '\\' : (char)tolower((unsigned char)*prefix);
+        if (a != b) return false;
+    }
+    return true;
+}
+
+static sGroup_t S_PathGroup(cstring_t path) {
+    if (S_PathHasPrefix(path, "abilities\\")) return S_GROUP_SPELLS;
+    if (S_PathHasPrefix(path, "sound\\ambient\\") || S_PathHasPrefix(path, "doodads\\")) return S_GROUP_AMBIENCE;
+    if (S_PathHasPrefix(path, "units\\") || S_PathHasPrefix(path, "sound\\units\\")) return S_GROUP_UNITS;
+    return S_GROUP_OTHER;
+}
+
+/* The user volume of the group a sound file belongs to. */
+static float S_GroupVolume(cstring_t path) {
+    return 1.0f - s.group_cut[S_PathGroup(path)];
+}
+
+void S_SetGroupVolumes(float spells, float ambience, float units) {
+    s.group_cut[S_GROUP_SPELLS] = 1.0f - MAX(0.0f, MIN(spells, 1.0f));
+    s.group_cut[S_GROUP_AMBIENCE] = 1.0f - MAX(0.0f, MIN(ambience, 1.0f));
+    s.group_cut[S_GROUP_UNITS] = 1.0f - MAX(0.0f, MIN(units, 1.0f));
+}
+
 /* =========================================================================
  * Public API
  * ========================================================================= */
@@ -954,7 +982,7 @@ void S_PlaySoundFile(cstring_t path) {
     sfx_t *sfx = S_FindSfx(path, true);
     if (!sfx) return;
     sfx->registration_sequence = s.registration_sequence;
-    S_StartSound(S_LoadSfx(sfx), 1.0f, NULL, false, 0, DEFAULT_SOUND_PACKET_ATTENUATION, 0, NULL);
+    S_StartSound(S_LoadSfx(sfx), S_GroupVolume(path), NULL, false, 0, DEFAULT_SOUND_PACKET_ATTENUATION, 0, NULL);
 }
 
 /* Play a positional sound at a 2D world origin (distance attenuation + stereo pan). */
@@ -963,7 +991,7 @@ void S_PlaySoundAt(cstring_t path, vec2_t const *origin) {
     sfx_t *sfx = S_FindSfx(path, true);
     if (!sfx) return;
     sfx->registration_sequence = s.registration_sequence;
-    S_StartSound(S_LoadSfx(sfx), 1.0f, origin, true, 0, DEFAULT_SOUND_PACKET_ATTENUATION, 0, NULL);
+    S_StartSound(S_LoadSfx(sfx), S_GroupVolume(path), origin, true, 0, DEFAULT_SOUND_PACKET_ATTENUATION, 0, NULL);
 }
 
 void S_PlaySoundPacket(cstring_t path, vec3_t const *origin, bool positioned, int channel, float volume,
@@ -973,8 +1001,8 @@ void S_PlaySoundPacket(cstring_t path, vec3_t const *origin, bool positioned, in
     sfx = S_FindSfx(path, true);
     if (!sfx) return;
     sfx->registration_sequence = s.registration_sequence;
-    S_StartSound(S_LoadSfx(sfx), volume, positioned ? &(vec2_t){ origin->x, origin->y } : NULL, positioned,
-                 channel, attenuation, timeofs, NULL);
+    S_StartSound(S_LoadSfx(sfx), volume * S_GroupVolume(path), positioned ? &(vec2_t){ origin->x, origin->y } : NULL,
+                 positioned, channel, attenuation, timeofs, NULL);
 }
 
 void S_BeginLoopingSounds(void) {
@@ -993,6 +1021,7 @@ void S_UpdateLoopingSound(uint32_t entity, cstring_t path, vec2_t const *origin,
     sfx->registration_sequence = s.registration_sequence;
     sc = S_LoadSfx(sfx);
     if (!sc) return;
+    volume *= S_GroupVolume(path);
 
     S_Lock();
     FOR_LOOP(ch, S_MAX_CHANNELS) {
@@ -1155,7 +1184,7 @@ bool S_PlaySoundPolicy(cstring_t path, vec3_t const *origin, bool positioned, in
     }
     if (!(sfx = S_FindSfx(path, true))) goto rejected;
     sfx->registration_sequence = s.registration_sequence;
-    if (S_StartSound(S_LoadSfx(sfx), volume, positioned ? &(vec2_t){ origin->x, origin->y } : NULL,
+    if (S_StartSound(S_LoadSfx(sfx), volume * S_GroupVolume(path), positioned ? &(vec2_t){ origin->x, origin->y } : NULL,
                      positioned, channel, attenuation, timeofs, policy)) return true;
 rejected:
     S_Lock();

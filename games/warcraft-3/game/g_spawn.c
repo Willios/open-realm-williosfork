@@ -912,7 +912,11 @@ void G_SpawnEntities(cstring_t map_path) {
 
     /* Map replacement must release script roots before level pointers are cleared. */
     G_BotShutdown();
+    G_LuaShutdown();
     if (level.vm) { jass_close(level.vm); level.vm = NULL; }
+    G_ScriptFramesReset();
+    G_OsKeyReset();
+    G_PreloadReset();
     G_ClearSaveRegistries();
     G_ClearJassGroupRegistry();
     G_ClearRegionRegistry();
@@ -1034,6 +1038,7 @@ void G_SpawnEntities(cstring_t map_path) {
     }
     
     jass_dofile(level.vm, "Scripts\\common.j");
+    G_LoadReforgedDeclarations(level.vm);
     gi.LoadingFrame();
     jass_dofile(level.vm, "Scripts\\Blizzard.j");
     gi.LoadingFrame();
@@ -1042,13 +1047,18 @@ void G_SpawnEntities(cstring_t map_path) {
     if (level.mapinfo->mapscript) {
         G_FixOrc07BridgeRestoreScript(level.mapinfo->mapscript);
         jass_dobuffer(level.vm, level.mapinfo->mapscript);
+    } else if (level.mapinfo->luascript) {
+        /* Lua maps define main/config in Lua; the bridge registers them as VM functions. */
+        G_LuaRunMapScript(level.mapinfo->luascript);
     } else
         fprintf(stderr, "G_SpawnEntities: missing mapscript; skipping jass_dobuffer\n");
+    G_LuaRunScriptOverlay();
     gi.LoadingFrame();
 
     /* Warcraft executes config before main; this phase owns authored player colors, teams, and slots. */
-    if (!level.scriptsConfigured && level.mapinfo && level.mapinfo->mapscript &&
-        strstr(level.mapinfo->mapscript, "function config")) {
+    if (!level.scriptsConfigured && level.mapinfo &&
+        ((level.mapinfo->mapscript && strstr(level.mapinfo->mapscript, "function config")) ||
+         (level.mapinfo->luascript && G_LuaHasFunction("config")))) {
         jass_callbyname(level.vm, "config", false);
         if (!jass_rterror_pending(level.vm)) level.scriptsConfigured = true;
     }

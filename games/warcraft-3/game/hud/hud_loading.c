@@ -58,15 +58,43 @@ static void loading_players(mapInfo_t const *info) {
     }
 }
 
-/* Resolve W3I presentation before the server publishes the loading-only media table. */
+static cstring_t loading_cvar(cstring_t name) {
+    cstring_t value = gi.CvarString ? gi.CvarString(name, "") : "";
+    return value && *value ? value : NULL;
+}
+
+/* Resolve W3I presentation before the server publishes the loading-only media table.
+ * A script that loads its own arena can restyle the screen first (cvars, set
+ * before ChangeLevel): wc3_loading_quiet 1 draws nothing but black, and
+ * wc3_loading_title/_subtitle/_text/_background (a LoadingScreens row of
+ * UI\WorldEditData.txt) replace the map's own presentation. */
 void UI_WriteLoadingLayout(edict_t *ent, mapInfo_t const *info) {
     cstring_t title = info && info->loadingScreenTitle && *info->loadingScreenTitle ? info->loadingScreenTitle :
                    info ? info->mapName : NULL;
+    cstring_t subtitle = info ? info->loadingScreenSubtitle : NULL;
+    cstring_t text = info ? info->loadingScreenText : NULL;
+    cstring_t background = loading_cvar("wc3_loading_background");
+    bool quiet = loading_cvar("wc3_loading_quiet") && atoi(loading_cvar("wc3_loading_quiet")) != 0;
+    bool restyled = loading_cvar("wc3_loading_title") || background;
     uint32_t model = 0, seq = 0;
-    bool melee = info && info->campaignBackgroundNumber == (uint32_t)-1 &&
+    bool melee = !restyled && info && info->campaignBackgroundNumber == (uint32_t)-1 &&
                  (!info->loadingScreenModel || !*info->loadingScreenModel);
 
     if (!hud.loading.Loading) return;
+    if (restyled) {
+        title = loading_cvar("wc3_loading_title") ? loading_cvar("wc3_loading_title") : title;
+        subtitle = loading_cvar("wc3_loading_subtitle");
+        text = loading_cvar("wc3_loading_text");
+    }
+    UI_SetHidden(hud.loading.LoadingBar, quiet);
+    UI_SetHidden(hud.loading.LoadingBarText, quiet);
+    if (quiet) {
+        UI_SetHidden(hud.loading.LoadingCustomPanel, true);
+        UI_SetHidden(hud.loading.LoadingMeleePanel, true);
+        if (hud.loading.LoadingBackground) hud.loading.LoadingBackground->Portrait.model = 0;
+        UI_WriteLayout(ent, hud.loading.Loading, LAYER_LOADING);
+        return;
+    }
     /* The custom panel anchors its title on the right; stock melee art requires the other FDF panel. */
     UI_SetHidden(hud.loading.LoadingCustomPanel, melee);
     UI_SetHidden(hud.loading.LoadingMeleePanel, !melee);
@@ -83,18 +111,18 @@ void UI_WriteLoadingLayout(edict_t *ent, mapInfo_t const *info) {
     if (hud.loading.LoadingTitleText)
         UI_SetText(hud.loading.LoadingTitleText, "%s", loading_text(info, title));
     if (hud.loading.LoadingSubtitleText)
-        UI_SetText(hud.loading.LoadingSubtitleText, "%s", loading_text(info, info ? info->loadingScreenSubtitle : NULL));
+        UI_SetText(hud.loading.LoadingSubtitleText, "%s", loading_text(info, subtitle));
     if (hud.loading.LoadingText)
-        UI_SetText(hud.loading.LoadingText, "%s", loading_text(info, info ? info->loadingScreenText : NULL));
+        UI_SetText(hud.loading.LoadingText, "%s", loading_text(info, text));
     /* Loading.fdf authors screen-space sprites; portrait conversion discarded their native geometry. */
-    if (info && info->loadingScreenModel && *info->loadingScreenModel) {
+    if (!background && info && info->loadingScreenModel && *info->loadingScreenModel) {
         model = UI_LoadModel(info->loadingScreenModel, false);
-    } else if (info && info->campaignBackgroundNumber != (uint32_t)-1) {
+    } else if (background || (info && info->campaignBackgroundNumber != (uint32_t)-1)) {
         stbIniCache_t data = { 0 };
         PATHSTR path;
         char key[16];
         Stb_IniCacheLoad(&data, "UI\\WorldEditData.txt");
-        snprintf(key, sizeof(key), "%02u", (unsigned)info->campaignBackgroundNumber);
+        snprintf(key, sizeof(key), "%02u", background ? (unsigned)atoi(background) : (unsigned)info->campaignBackgroundNumber);
         cstring_t row = Stb_IniCacheFind(&data, "LoadingScreens", key);
         if (UI_ParseLoadingRow(row, &seq, path)) model = UI_LoadModel(path, false);
         else fprintf(stderr, "UI_WriteLoadingLayout: invalid LoadingScreens[%s]: %s\n", key, row ? row : "(missing)");

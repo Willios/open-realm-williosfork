@@ -599,8 +599,14 @@ static bool R_VideoNative(void) {
     return R_CvarEnabled("vid_native", "0") && !R_VideoHidden();
 }
 
+/* vid_fullscreen 2: a borderless window covering the desktop. It is a plain
+ * window, so Alt+Tab switches away without a mode change or a minimize. */
+static bool R_VideoBorderless(void) {
+    return atoi(ri.CvarString("vid_fullscreen", "0")) == 2 && !R_VideoHidden();
+}
+
 static bool R_VideoFullscreen(void) {
-    return R_CvarEnabled("vid_fullscreen", "0") && !R_VideoHidden();
+    return R_CvarEnabled("vid_fullscreen", "0") && !R_VideoBorderless() && !R_VideoHidden();
 }
 
 static bool R_GetDesktopMode(SDL_DisplayMode *mode) {
@@ -745,6 +751,25 @@ static void R_ApplyVideoMode(uint32_t width, uint32_t height) {
     }
     SDL_SetWindowDisplayMode(window, NULL);
 
+    if (R_VideoBorderless()) {
+        SDL_Rect bounds;
+        int display = SDL_GetWindowDisplayIndex(window);
+        if (SDL_GetDisplayBounds(display < 0 ? 0 : display, &bounds) == 0) {
+            SDL_SetWindowBordered(window, SDL_FALSE);
+            /* One row taller than the display: a borderless GL window that
+             * covers the monitor exactly is promoted to exclusive fullscreen
+             * by Windows and some drivers, and Alt+Tab then blanks the screen
+             * and stalls the desktop while the mode switches. */
+            SDL_SetWindowSize(window, bounds.w, bounds.h + 1);
+            SDL_SetWindowPosition(window, bounds.x, bounds.y);
+            SDL_GetWindowSize(window, &actual_width, &actual_height);
+            fprintf(stderr, "Video mode applied: borderless %dx%d\n", actual_width, actual_height);
+            return;
+        }
+        fprintf(stderr, "Video: no display bounds (%s); keeping a bordered window\n", SDL_GetError());
+    }
+    SDL_SetWindowBordered(window, SDL_TRUE);
+
     if (native) {
         SDL_DisplayMode desktop;
         if (R_GetDesktopMode(&desktop)) {
@@ -822,6 +847,8 @@ void R_InitRenderer(uint32_t width, uint32_t height) {
             2L /* NSApplicationActivationPolicyProhibited */);
     }
 #endif
+    /* Alt+Tab out of a fullscreen window must not minimize it. */
+    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);

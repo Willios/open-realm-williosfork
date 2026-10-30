@@ -4,7 +4,10 @@
 #include <stdio.h>
 #include <time.h>
 #ifdef _WIN32
-#include <windows.h>
+/* Not <windows.h>: winuser.h declares SetRect/GetClassName, which clash with
+   WC3 game-module symbols. The performance counter lives in winbase.h. */
+#include <windef.h>
+#include <winbase.h>
 #endif
 
 /* Renderer and game modules are separately linked; diagnostics cannot call engine common symbols. */

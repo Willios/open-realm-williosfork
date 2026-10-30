@@ -132,6 +132,41 @@ static uiBackdrop_t MakeBackdrop(frameDef_t const *frame) {
     );
 }
 
+/* Script frames inherit only the look of a BACKDROP template: FDF files that
+ * hold the stock templates are parsed on first use. Reforged also ships
+ * EscMenuBackdrop, which 1.29 authors inline in the escape menu panel. */
+static cstring_t const backdrop_template_files[] = {
+    "UI\\FrameDef\\UI\\EscMenuTemplates.fdf",
+    "UI\\FrameDef\\UI\\QuestDialog.fdf",
+    "UI\\FrameDef\\Glue\\StandardTemplates.fdf",
+    "UI\\FrameDef\\Glue\\BattleNetTemplates.fdf",
+    "UI\\FrameDef\\Glue\\DialogWar3.fdf",
+};
+
+bool UI_BackdropTemplate(cstring_t name, uiBackdrop_t *out) {
+    frameDef_t const *frame;
+    if (!name || !*name || !out) return false;
+    if (!strcmp(name, "EscMenuBackdrop")) {
+        *out = MAKE(uiBackdrop_t,
+            .CornerFlags = 0x1ff,
+            .CornerSize = 0.048f,
+            .BackgroundSize = 0.128f,
+            .BackgroundInsets = { 0.01f, 0.01f, 0.01f, 0.01f },
+            .Background = gi.ImageIndex(UI_ThemeImagePath("EscMenuBackground")),
+            .EdgeFile = gi.ImageIndex(UI_ThemeImagePath("EscMenuBorder")),
+            .TileBackground = true);
+        return true;
+    }
+    frame = UI_FindFrame(name);
+    for (uint32_t i = 0; !frame && i < sizeof(backdrop_template_files) / sizeof(*backdrop_template_files); i++) {
+        UI_EnsureFDF(backdrop_template_files[i]);
+        frame = UI_FindFrame(name);
+    }
+    if (!frame || frame->Type != FT_BACKDROP) return false;
+    *out = MakeBackdrop(frame);
+    return out->Background || out->EdgeFile;
+}
+
 static uiHighlight_t MakeHighlight(frameDef_t const *frame) {
     if (!frame) return (uiHighlight_t){ 0 };
     return MAKE(uiHighlight_t,

@@ -35,6 +35,7 @@ static void CL_SendInput(inputCmd_t const *cmd) {
 
 /* Keep immediate orbit feedback separate from the authoritative delta-compressed player state. */
 static void CL_SendView(vec3_t angles, float dist) {
+    if (cl.playerstate.uiflags & PS_UIFLAG_NO_CAMERA) return; /* the script holds the camera */
     cl.camera_prediction.view = true;
     cl.camera_prediction.angles = angles;
     cl.camera_prediction.distance = dist;

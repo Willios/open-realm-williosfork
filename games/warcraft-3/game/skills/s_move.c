@@ -1996,6 +1996,14 @@ bool move_selectlocation(edict_t *clent, vec2_t const *location) {
         vec2_t preferred = move_preferred_slot(ent, &center, location, spacing, num_units);
         vec2_t target;
 
+        /* A unit its script moves (EngineUnitScriptOrders) only reports the
+         * click: this path used to start the native walk directly, with no
+         * order event, so the script never saw a right-click on the ground. */
+        if (G_UnitHasFlag(ent, UNIT_FLAG_SCRIPT_ORDERS)) {
+            G_PublishIssuedPointOrder(ent, G_OrderId("smart"), location, clent->client->ps.number, "smart");
+            issued = true;
+            continue;
+        }
         if (!move_find_reserved_slot(location,
                                      &preferred,
                                      ent->collision,

@@ -805,6 +805,30 @@ static void MDLX_AddNode(mdxModel_t *model, mdxNode_t *node) {
     }
 }
 
+static bool MDLX_NameHas(mdxObjectName_t const name, cstring_t word) {
+    size_t const size = strnlen(name, sizeof(mdxObjectName_t)), len = strlen(word);
+    for (size_t i = 0; i + len <= size; i++)
+        if (!strncasecmp(name + i, word, len)) return true;
+    return false;
+}
+
+/* Mark the upper body for layered clips: a chest node (the rider's on a
+ * mounted hero, never the horse's) and every node under it. Bones list
+ * parents before children in practice, but resolve by walking up to be safe. */
+static void MDLX_FindUpperBody(mdxModel_t *model) {
+    FOR_LOOP(i, model->num_nodes) {
+        mdxNode_t const *node = model->node_list[i];
+        for (uint32_t depth = 0; node && depth < 64; depth++) {
+            if (MDLX_NameHas(node->name, "chest") && !MDLX_NameHas(node->name, "horse")) {
+                model->upper_body[model->node_list[i]->node_id] = true;
+                model->has_upper_body = true;
+                break;
+            }
+            node = node->parent_id < MDX_MAX_NODES ? model->nodes[node->parent_id] : NULL;
+        }
+    }
+}
+
 mdxModel_t *R_LoadModelMDLX(void *data, uint32_t size) {
     static bool warned_prem_runtime;
     mdxModel_t *model = ri.MemAlloc(sizeof(mdxModel_t));
@@ -831,6 +855,7 @@ mdxModel_t *R_LoadModelMDLX(void *data, uint32_t size) {
     }
     FOR_EACH_LIST(mdxLight_t, light, model->lights) MDLX_AddNode(model, &light->node);
     FOR_EACH_LIST(mdxEvent_t, event, model->events) MDLX_AddNode(model, &event->node);
+    MDLX_FindUpperBody(model);
     FOR_LOOP(i, model->num_textures) {
         mdxTexture_t *tex = model->textures+i;
         if (!tex->path[0]) {

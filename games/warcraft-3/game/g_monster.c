@@ -139,6 +139,12 @@ void M_MoveFrame(edict_t *self) {
     {
         self->s.frame = anim->interval[0] ;
     } else if (next_frame >= anim->interval[1]) {
+        /* A script's looping animation (SetUnitAnimation) owns the unit until
+         * the script or a new move replaces it. */
+        if (G_UnitHasFlag(self, UNIT_FLAG_ANIMATION_OVERRIDE) && !(anim->flags & 1)) {
+            self->s.frame = anim->interval[0];
+            return;
+        }
         SAFE_CALL(move->endfunc, self);
         if (!(self->aiflags & AI_HOLD_FRAME)) {
             if (self->currentmove == move && self->animation == anim &&
@@ -161,6 +167,7 @@ void M_MoveFrame(edict_t *self) {
  * invokes the active umove_t think callback (e.g. ai_walk, ai_melee). */
 void monster_think(edict_t *self) {
     S_RunAbilityUpdates(self);
+    if (!G_UnitHasFlag(self, UNIT_FLAG_PAUSED)) G_RunUpperAnimation(self);
     /* A blocked return can leave no active Move. Still run the guard policy
      * so its retry timer can recover when movement becomes available. */
     G_CreepGuardTick(self);

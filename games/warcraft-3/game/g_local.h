@@ -2287,6 +2287,7 @@ typedef enum {
     UNIT_FLAG_ANIMATION_OVERRIDE = 1u << 9, /* advance authored animation while paused */
     UNIT_FLAG_VERTEX_COLOR_SET = 1u << 10, /* runtime vertex tint has a value */
     UNIT_FLAG_VERTEX_COLOR_OVERRIDE_SET = 1u << 11, /* vertex tint was explicitly overridden */
+    UNIT_FLAG_SCRIPT_ORDERS = 1u << 12, /* EngineUnitScriptOrders: move/attack/stop orders only raise their events */
 } unitFlags_t;
 
 /* Authoritative game entity; server-shared prefix stays fixed and optional roles own their lifecycle state. */
@@ -2341,6 +2342,10 @@ struct edict_s {
     edict_t *build;
     animation_t const *animation;
     float animation_speed; /* JASS SetUnitTimeScale multiplier for the simulation animation clock */
+    /* EngineUnitUpperAnimation: a one-shot clip on the bones from the chest up
+     * (s.upper_frame) over the base animation; cleared when it ends. */
+    animation_t const *upper_animation;
+    float upper_speed;
     /* Warcraft Required Animation Names (UnitProfile.animProps/uani) plus
      * AddUnitAnimationProperties mutations. The request is retained separately
      * so a property change can reselect the same logical animation family.
@@ -2937,6 +2942,9 @@ bool G_HasPendingDeathEvent(edict_t const *);
 void G_PublishEventResponse(edict_t *, EVENTTYPE, event_t *);
 gameEvent_t *G_PublishEventWithSource(edict_t *, EVENTTYPE, edict_t *);
 gameEvent_t *G_PublishEventWithValue(edict_t *, EVENTTYPE, edict_t *, int32_t);
+float G_RunDamageTriggers(edict_t *target, edict_t *source, float damage);
+bool G_DamageEventAmount(float *amount);
+void G_SetDamageEventAmount(float amount);
 gameEvent_t *G_PublishEventWithPoint(gameEventPointParams_t const *params);
 void G_PublishSummonEvents(edict_t *summoner, edict_t *summoned);
 void G_PublishChangeOwnerEvents(edict_t *unit, uint32_t old_player);
@@ -3130,6 +3138,75 @@ void G_BindEntityData(edict_t *);
 void G_BindEntityRuntime(edict_t *);
 void G_FillMapPlacedUnitMana(edict_t *);
 void G_SpawnEntities(cstring_t map_path);
+/* Reforged script frames (BlzCreateFrameByType); see hud/hud_script_frames.c. */
+#define WC3_LAYER_SCRIPTFRAMES LAYER_GAME_4
+#define MAX_SCRIPT_FRAMES 8192 // pool slots; a full survivor lobby measures under 3000 frames
+#define SF_ORIGIN_COUNT 23 // ORIGIN_FRAME_GAME_UI .. ORIGIN_FRAME_WORLD_FRAME occupy the first slots
+typedef enum { SF_FRAME, SF_BACKDROP, SF_TEXT, SF_BUTTON, SF_ORIGIN, SF_MODEL } scriptFrameKind_t;
+typedef struct {
+    bool used, visible, enabled;
+    uint8_t kind, point, halign, valign, alpha;
+    int16_t level;
+    int32_t parent;   /* pool index; -1 for none */
+    int32_t fill;     /* SetAllPoints source pool index; -1 when anchored by point */
+    uint32_t serial;  /* creation order, the tie-break for drawing */
+    float ax, ay;     /* anchor point position, Reforged screen units (origin bottom-left, y up) */
+    float w, h;
+    color32_t color;
+    float fontheight;
+    char name[32];
+    char font[64];
+    char texture[128];
+    string_t text;
+    bool templated;      /* BACKDROP created from an FDF template: drawn with its edge file */
+    uiBackdrop_t backdrop;
+    int32_t model;       /* SPRITE/MODEL frames: model index from BlzFrameSetModel, 0 for none */
+    uiModel_t camera;    /* camera framing the whole model, from its Stand extents */
+    uint8_t team;        /* player color index for the model's team-colored parts */
+} scriptFrame_t;
+bool UI_BackdropTemplate(cstring_t name, uiBackdrop_t *out);
+void G_ScriptFramesReset(void);
+void G_ScriptFramesDirty(void);
+void G_UpdateScriptFrames(void);
+void G_ScriptFramesClientBegin(edict_t *ent);
+void CMD_ScriptFrameEvent(edict_t *ent, uint32_t argc, cstring_t argv[]);
+void CMD_ScriptFrameHover(edict_t *ent, uint32_t argc, cstring_t argv[]);
+scriptFrame_t *G_ScriptFrameValid(handle_t handle);
+scriptFrame_t *G_ScriptFrameOrigin(int32_t type);
+scriptFrame_t *G_ScriptFrameByName(cstring_t name);
+scriptFrame_t *G_ScriptFrameCreate(cstring_t type, cstring_t name, scriptFrame_t *parent, cstring_t inherits);
+void G_ScriptFrameDestroy(scriptFrame_t *frame);
+void G_ScriptFrameSetPoint(scriptFrame_t *frame, int32_t point, float x, float y);
+void G_ScriptFrameSetSize(scriptFrame_t *frame, float w, float h);
+void G_ScriptFrameFill(scriptFrame_t *frame, scriptFrame_t *relative);
+void G_ScriptFrameSetText(scriptFrame_t *frame, cstring_t text);
+void G_ScriptFrameSetModel(scriptFrame_t *frame, cstring_t model);
+void G_ScriptFrameSetTeamColor(scriptFrame_t *frame, int32_t color);
+vec2_t G_ScriptFrameAnchor(scriptFrame_t *frame, int32_t point);
+void G_ScriptFrameHideOrigin(bool hide);
+void G_ScriptFrameRegisterEvent(trigger_t *trigger, scriptFrame_t *frame, int32_t event);
+scriptFrame_t *G_ScriptFrameTrigger(void);
+int32_t G_ScriptFrameTriggerEvent(void);
+void G_LoadReforgedDeclarations(jass_t *j);
+void G_OsKeyReset(void);
+void G_OsKeyRegister(trigger_t *trigger, uint32_t player, int32_t vk, bool down);
+void G_OsKeyClientBegin(edict_t *ent);
+int32_t G_OsKeyTrigger(void);
+bool G_OsKeyTriggerDown(void);
+uint32_t G_OsKeyTriggerMods(void);
+void CMD_OsKey(edict_t *ent, uint32_t argc, cstring_t argv[]);
+bool G_LuaRunMapScript(cstring_t source);
+bool G_LuaHasFunction(cstring_t name);
+bool G_LuaRunChunk(cstring_t source, size_t size, cstring_t name);
+void G_PreloadRecord(cstring_t line);
+void G_PreloadGenClear(void);
+void G_PreloadGenEnd(cstring_t filename);
+void G_PreloadRun(cstring_t filename);
+cstring_t G_AbilityTooltipOverride(int32_t code, int32_t level);
+void G_SetAbilityTooltipOverride(int32_t code, int32_t level, cstring_t text);
+void G_PreloadReset(void);
+void G_LuaRunScriptOverlay(void);
+void G_LuaShutdown(void);
 #ifdef BZ_TESTS
 bool G_TestMapObjectCreatedByMapScript(uint32_t id);
 #endif
@@ -3224,6 +3301,7 @@ void G_MultiboardReleaseItem(multiboardItem_t *item);
 multiboard_t *G_MultiboardItemBoard(multiboardItem_t const *item);
 texttag_t *G_AllocTextTag(void);
 void G_FreeTextTag(texttag_t *tag);
+void G_RunTextTags(void);
 void G_TextTagPresentation(texttag_t *tag, bool remove);
 void G_SetTextTagVisible(texttag_t *tag, player_t *player, bool visible);
 bool G_IsTextTagVisible(texttag_t const *tag, player_t const *player);
@@ -3259,6 +3337,8 @@ void         G_NormalizeModelFilename(cstring_t authored, string_t out, size_t o
 int          G_RegisterModel(cstring_t filename);
 uint16_t     G_NameConfigstring(cstring_t name);
 animation_t const *G_GetAnimation(uint32_t modelindex, cstring_t animname);
+animation_t const *G_GetFirstAnimation(uint32_t modelindex);
+bool G_GetModelBindBounds(uint32_t modelindex, vec3_t *min, vec3_t *max);
 animation_t const *G_SelectAnimationForProperties(animation_t const *animations, uint32_t count, cstring_t animname, cstring_t properties);
 animation_t const *G_SelectAnimationVariantForProperties(animation_t const *animations, uint32_t count, cstring_t animname, cstring_t properties, bool randomize);
 animation_t const *G_GetAnimationForProperties(uint32_t modelindex, cstring_t animname, cstring_t properties);
@@ -3268,6 +3348,8 @@ animation_t const *G_GetUnitAnimation(edict_t *unit, cstring_t animname);
 cstring_t G_InternAnimationName(cstring_t text);
 void G_FreeAnimationNames(void);
 void         G_SetUnitAnimation(edict_t *unit, cstring_t animname);
+bool         G_SetUnitUpperAnimation(edict_t *unit, cstring_t animname, float speed);
+void         G_RunUpperAnimation(edict_t *unit);
 void         G_RunDestructableAnimation(edict_t *ent);
 void         G_ResetUnitAnimationProperties(edict_t *unit);
 void         G_AddUnitAnimationProperties(edict_t *unit, cstring_t properties, bool add);
@@ -3805,6 +3887,9 @@ uint32_t G_UnitCombatSoundVariantCount(cstring_t key);
 int G_UnitCombatSoundVariantIndex(cstring_t key, uint32_t variant);
 bool G_SoundLabelDescriptor(cstring_t alias, string_t path, size_t path_size, int *sound_index, float *volume);
 void G_PlayCombatImpactSound(edict_t *attacker, edict_t *target);
+void G_PlayWeaponImpactSound(cstring_t weapon, edict_t *target);
+cstring_t G_WeaponTypeSound(int32_t weapon_type);
+int32_t G_WeaponSoundType(cstring_t weapon);
 void G_SetConstructionLoopSound(edict_t *building, bool active);
 
 /* Resolved JASS sound playback state used by sound natives and presentation dispatch. */
@@ -4079,6 +4164,7 @@ void unit_stand(edict_t *);
 bool G_ActorHasSkill(edict_t const *, cstring_t);
 bool G_ActorAddSkill(edict_t *, uint32_t);
 bool G_ActorRemoveSkill(edict_t *, uint32_t);
+bool G_ActorSkillRemoved(edict_t const *, uint32_t);
 bool G_ActorSetSkillPermanent(edict_t *, uint32_t, bool);
 bool G_ActorSkillPermanent(edict_t *, uint32_t);
 void G_FreeActorSkills(edict_t *);
@@ -4193,6 +4279,7 @@ bool jass_dofilenative(jass_t *, cstring_t);
 void jass_callbyname(jass_t *, cstring_t, bool);
 cstring_t jass_functionname(struct jass_function const *);
 void jass_executetrigger(jass_t *, trigger_t *, edict_t *);
+bool jass_calltriggernow(jass_t *, trigger_t *, edict_t *, edict_t *, int32_t);
 bool jass_dobuffer(jass_t *, string_t);
 void jass_runevents(jass_t *);
 

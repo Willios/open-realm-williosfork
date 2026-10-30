@@ -934,7 +934,8 @@ void MDX_RenderModel(renderEntity_t const *entity,
     /* Environment light is already on viewDef from R_SetupEnvironmentLighting.
      * Rebind this entity before evaluating its local lights or rendering. */
     if (!MDLX_ViewPoseRestore(scene_entity, model, transform, entity->frame, entity->oldframe)) {
-        MDLX_BindBoneMatrices(model, transform, entity->frame, entity->oldframe);
+        MDLX_BindBoneMatricesUpper(model, transform, entity->frame, entity->oldframe,
+                                   entity->upper_frame, entity->upper_oldframe);
         /* Only models that actually render an alpha contribution justify a
          * saved pose; opaque-only models retain the existing one-pass path. */
         if (tr.render_phase == RENDER_PHASE_SOLID && MDLX_ModelHasAlphaWork(entity, model))

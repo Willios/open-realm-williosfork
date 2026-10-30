@@ -169,24 +169,37 @@ void G_UpdateTimerDialogs(void) {
 }
 
 /* Timer callbacks enter the same coroutine/event path as authored map triggers. */
+#define G_TIMER_MAX_FIRES_PER_FRAME 16 // a periodic timer shorter than FRAMETIME catches up, bounded
+
 void G_RunTimers(void) {
     FOR_LOOP(i, level.num_timers) {
         gtimer_t *timer = &level.timers[i];
-        if (!timer->running || timer->paused) continue;
         /* Countdown rather than a level.time deadline: a save carries no clock-absolute
-         * state, so a loaded timer resumes with exactly the time it had left. */
-        timer->remaining = timer->remaining > FRAMETIME ? timer->remaining - FRAMETIME : 0;
-        if (timer->remaining) continue;
-        timer->remaining = timer->periodic ? timer->duration : 0;
-        timer->running = timer->periodic;
-        if (timer->handler)
-            jass_startcoroutine(level.vm, &MAKE(jassContext_t,
-                .func = timer->handler, .timer = timer,
-                .timer_generation = timer->generation, .timer_pending = true));
-        jass_settimercontext(timer);
-        FOR_EACH_EVENT(event)
-            if (event->type == EVENT_GAME_TIMER_EXPIRED && event->timer == timer)
-                jass_calltriggerwithtimer(level.vm, event->trigger, timer);
-        jass_settimercontext(NULL);
+         * state, so a loaded timer resumes with exactly the time it had left. A periodic
+         * timer shorter than a frame fires once per elapsed period (a 0.03125 s script
+         * tick fires three or four times per 100 ms frame), keeping script time real. */
+        uint32_t budget = FRAMETIME;
+        for (uint32_t fires = 0; budget && fires < G_TIMER_MAX_FIRES_PER_FRAME; fires++) {
+            uint32_t generation = timer->generation;
+            if (!timer->running || timer->paused) break;
+            if (timer->remaining > budget) {
+                timer->remaining -= budget;
+                break;
+            }
+            budget -= timer->remaining;
+            timer->remaining = timer->periodic ? timer->duration : 0;
+            timer->running = timer->periodic;
+            if (timer->handler)
+                jass_startcoroutine(level.vm, &MAKE(jassContext_t,
+                    .func = timer->handler, .timer = timer,
+                    .timer_generation = timer->generation, .timer_pending = true));
+            jass_settimercontext(timer);
+            FOR_EACH_EVENT(event)
+                if (event->type == EVENT_GAME_TIMER_EXPIRED && event->timer == timer)
+                    jass_calltriggerwithtimer(level.vm, event->trigger, timer);
+            jass_settimercontext(NULL);
+            /* Zero-length periods, and timers restarted by a callback, wait for the next frame. */
+            if (!timer->periodic || !timer->duration || timer->generation != generation) break;
+        }
     }
 }

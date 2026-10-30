@@ -479,6 +479,41 @@ void G_RunEvents(void) {
     }
 }
 
+/* Damage triggers run during the hit instead of from the event queue, as in
+ * Warcraft: GetEventDamage reads the amount and BlzSetEventDamage changes the
+ * damage that is then applied. Nested hits (a handler dealing damage) keep
+ * their own amount. */
+static float *damage_event_amount;
+
+bool G_DamageEventAmount(float *amount) {
+    if (!damage_event_amount) return false;
+    if (amount) *amount = *damage_event_amount;
+    return true;
+}
+
+void G_SetDamageEventAmount(float amount) {
+    if (damage_event_amount) *damage_event_amount = MAX(0.0f, amount);
+}
+
+float G_RunDamageTriggers(edict_t *target, edict_t *source, float damage) {
+    float amount = damage, *previous = damage_event_amount;
+    uint32_t spawn_time;
+    if (!level.vm || !target) return damage;
+    spawn_time = target->spawn_time;
+    damage_event_amount = &amount;
+    FOR_EACH_EVENT(e) {
+        edict_t *owner;
+        if (e->type != EVENT_UNIT_DAMAGED && e->type != EVENT_PLAYER_UNIT_DAMAGED) continue;
+        if (!G_EventSubjectIsCurrent(e)) continue;
+        owner = G_GetPlayerEntityByNumber(target->s.player);
+        if (e->subject != target && e->subject != owner) continue;
+        jass_calltriggernow(level.vm, e->trigger, target, source, (int32_t)damage);
+        if (!target->inuse || target->spawn_time != spawn_time) break;
+    }
+    damage_event_amount = previous;
+    return amount;
+}
+
 /* Warcraft's stock CustomVictoryDialogBJ/CustomDefeatDialogBJ pauses a
  * single-player game after RemovePlayer().  If RemovePlayer ran from a JASS
  * action queued by this frame's first event pass, its result event was

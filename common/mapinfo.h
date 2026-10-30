@@ -282,6 +282,7 @@ struct mapInfo_s {
     unitData_t *userCreatedDoodads;
     mapWeatherRegion_t *weatherRegions;
     string_t mapscript;
+    string_t luascript; /* war3map.lua: Reforged Lua maps carry no war3map.j */
 };
 
 #endif

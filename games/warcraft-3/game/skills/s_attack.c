@@ -389,9 +389,17 @@ static void T_DamageInternal(edict_t *target, edict_t *attacker, int damage, boo
      * have already been resolved. Award before death can free this edict. */
     if (primary_attack && attacker)
         S_PillageOnAttackDamage(attacker, target, MIN(target->health.value, (float)damage));
-    /* GetEventDamage / GetEventDamageSource read value/source from these events. */
-    G_PublishEventWithValue(target, EVENT_UNIT_DAMAGED, attacker, damage);
-    G_PublishEventWithValue(target, EVENT_PLAYER_UNIT_DAMAGED, attacker, damage);
+    /* Damage triggers run now so BlzSetEventDamage can change the hit; a
+     * handler may also remove or kill either unit. */
+    {
+        uint32_t target_time = target->spawn_time;
+        uint32_t attacker_time = attacker ? attacker->spawn_time : 0;
+        float changed = G_RunDamageTriggers(target, attacker, (float)damage);
+        if (!target->inuse || target->spawn_time != target_time || M_IsDead(target)) return;
+        if (attacker && (!attacker->inuse || attacker->spawn_time != attacker_time)) return;
+        damage = (int)(changed + 0.5f);
+        if (damage <= 0) return;
+    }
     /* Only real post-mitigation unit damage should refresh the owning Hero shortcut's transient attack warning. */
     G_AlertHeroShortcutDamage(target);
     FOR_LOOP(i, target->unit_state ? MAX_UNIT_STATUSES : 0)
@@ -781,6 +789,7 @@ static bool attack_target_out_of_base_range(edict_t *ent) {
  * disable-chase lifecycle. */
 bool S_AttackCanAutoAcquire(edict_t const *attacker, edict_t const *target) {
     if (S_UnitIsEntanglingRooted(attacker) || !S_AttackCanTarget(attacker, target)) return false;
+    if (G_ActorSkillRemoved(attacker, MAKEFOURCC('A', 'a', 't', 'k'))) return false;
     if ((attacker->aiflags & AI_IMMOBILE) &&
         (attack_target_out_of_range_for(attacker, target) || attack_target_too_close_for(attacker, target)))
         return false;

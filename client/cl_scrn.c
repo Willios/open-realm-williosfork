@@ -1010,7 +1010,8 @@ void SCR_LayoutDrawPortrait(uiFrame_t const *frame, rect_t const *screen) {
     uint32_t const model_index = frame->tex.index;
     model_t const *port = model_index < MAX_MODELS ? cl.portraits[model_index] : NULL;
     model_t const *model = model_index < MAX_MODELS ? cl.models[model_index] : NULL;
-    model_t const *draw  = port ? port : model;
+    /* A frame with its own camera shows the whole model, not the portrait bust. */
+    model_t const *draw  = port && frame->buffer.size != sizeof(uiModel_t) ? port : model;
     cstring_t anim = (frame->text && *frame->text) ? frame->text : "Portrait";
     if (!draw) return;
 
@@ -1549,11 +1550,18 @@ void SCR_LayoutUpdateTooltip(handle_t layout) {
     SCR_LayoutRunFrames(layout, SCR_LayoutUpdateFrame);
 }
 
+/* Frames flagged UIFLAG_PAINT_ORDERED (script-authored UI) keep their authored
+ * stacking: they skip the per-type passes and paint once, in frame-number order. */
+static uiFrame_t const *SCR_LayoutTypedFrame(uint32_t number) {
+    uiFrame_t const *f = SCR_Frame(number);
+    return f && (f->flagsvalue & UIFLAG_PAINT_ORDERED) ? NULL : f;
+}
+
 void SCR_LayoutDrawOverlay(handle_t layout) {
     SCR_BeginSelectedEntityDraw();
     layout_current = layout;
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type == FT_SPRITE && !(f->flagsvalue & UIFLAG_SPRITE_OVERLAY)) SCR_LayoutDrawFrame(f);
     }
     /* Paint the common sibling stack as texture background -> status bar ->
@@ -1561,44 +1569,48 @@ void SCR_LayoutDrawOverlay(handle_t layout) {
      * than paint order: the Hero level label belongs above its XP bar, while
      * hover-bar fills belong above their FT_TEXTURE backings. */
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type == FT_TEXTURE && !(f->flagsvalue & UIFLAG_TEXTURE_OVERLAY))
             SCR_LayoutDrawFrame(f);
     }
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type == FT_SIMPLESTATUSBAR) SCR_LayoutDrawFrame(f);
     }
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type != FT_SPRITE && f->flags.type != FT_TEXTURE &&
             f->flags.type != FT_SIMPLESTATUSBAR &&
             !(f->flags.type == FT_TEXT && (f->flagsvalue & UIFLAG_TEXT_OVERLAY)))
             SCR_LayoutDrawFrame(f);
     }
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && (f->flags.type == FT_GLUETEXTBUTTON || f->flags.type == FT_GLUEBUTTON))
             SCR_LayoutDrawGlueTextButtonHighlight(f);
     }
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type == FT_TEXTURE && (f->flagsvalue & UIFLAG_TEXTURE_OVERLAY))
             SCR_LayoutDrawFrame(f);
     }
     FOR_LOOP(i, SCR_NumFrames()) {
-        uiFrame_t const *f = SCR_Frame(i);
+        uiFrame_t const *f = SCR_LayoutTypedFrame(i);
         if (f && f->flags.type == FT_SPRITE && (f->flagsvalue & UIFLAG_SPRITE_OVERLAY)) SCR_LayoutDrawFrame(f);
     }
     /* Paint captions after the sprite, rightmost first. The rank belongs to
      * high flag bits, never frame.stat (which changes the label's text). */
     for (int rank = 3; rank >= 0; --rank) {
         FOR_LOOP(i, SCR_NumFrames()) {
-            uiFrame_t const *f = SCR_Frame(i);
+            uiFrame_t const *f = SCR_LayoutTypedFrame(i);
             if (f && f->flags.type == FT_TEXT && (f->flagsvalue & UIFLAG_TEXT_OVERLAY) &&
                 (int)((f->flagsvalue & UIFLAG_TEXT_RANK_MASK) >> UIFLAG_TEXT_RANK_SHIFT) == rank)
                 SCR_LayoutDrawFrame(f);
         }
+    }
+    FOR_LOOP(i, SCR_NumFrames()) {
+        uiFrame_t const *f = SCR_Frame(i);
+        if (f && (f->flagsvalue & UIFLAG_PAINT_ORDERED)) SCR_LayoutDrawFrame(f);
     }
     SCR_EndSelectedEntityDraw();
 }
@@ -1692,6 +1704,25 @@ static void SCR_LayoutApplyOrderQueueModifier(uiFrame_t const *frame, char *comm
     strlcat(command, " queue", size);
 }
 
+/* Script frames (BlzCreateFrameByType) get FRAMEEVENT_MOUSE_ENTER/LEAVE: when
+ * the frame under the pointer changes, its "scriptframe <slot> <serial>"
+ * click command is echoed as "scriptframehover <slot> <serial> <1|0>". */
+static void SCR_LayoutScriptHover(uiFrame_t const *frame) {
+    static char current[64];
+    static cstring_t const prefix = "scriptframe ";
+    cstring_t next = frame && frame->onclick && !strncmp(frame->onclick, prefix, strlen(prefix)) ? frame->onclick : "";
+    if (!strcmp(current, next)) return;
+    if (current[0]) {
+        MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+        SZ_Printf(&cls.netchan.message, "scriptframehover %s 0", current + strlen(prefix));
+    }
+    strlcpy(current, next, sizeof(current));
+    if (current[0]) {
+        MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+        SZ_Printf(&cls.netchan.message, "scriptframehover %s 1", current + strlen(prefix));
+    }
+}
+
 bool SCR_LayoutMouseEvent(layoutMouseEvent_t const *mouse_event) {
     menuMouseEvent_t const event = mouse_event->event;
     int const x = mouse_event->x;
@@ -1731,6 +1762,7 @@ bool SCR_LayoutMouseEvent(layoutMouseEvent_t const *mouse_event) {
         }
         if (layout_hovered_number) break;
     }
+    if (cls.state == ca_active) SCR_LayoutScriptHover(hovered_frame);
 
     /* Proxy command buttons may carry a secondary command in text. Warcraft
      * uses this for right-click autocast toggles while preserving left-click

@@ -231,7 +231,9 @@ static bool jass_valuehandle(cstring_t type) {
         "dialogevent", "unitevent", "limitop", "unittype", "gamespeed", "placement", "startlocprio",
         "gamedifficulty", "aidifficulty", "gametype", "mapflag", "mapvisibility", "mapsetting", "mapdensity", "mapcontrol",
         "playercolor", "playerslotstate", "volumegroup", "camerafield", "blendmode", "raritycontrol",
-        "texmapflags", "fogstate", "effecttype", "itemtype"
+        "texmapflags", "fogstate", "effecttype", "itemtype",
+        /* Reforged frame API enums (common_reforged.j) */
+        "originframetype", "framepointtype", "textaligntype", "frameeventtype", "oskeytype"
     };
     FOR_LOOP(i, sizeof(value_handles) / sizeof(value_handles[0])) if (!strcmp(type, value_handles[i])) return true;
     return false;
@@ -880,6 +882,15 @@ static void jass_resumecoroutine(jasscoroutine_t *co) {
         token_t const *token = frame->pc;
         token_t const *next;
 
+        /* Host-language callbacks have no token body: run them to completion in one step. */
+        if (frame->type == JASS_FRAME_FUNCTION && frame->func && frame->func->nativefunc) {
+            jassFunc_t const *func = frame->func;
+            jass_coroutine_popframe(co);
+            jass_pushfunction(j, func);
+            jass_discard(j, jass_call(j, 0));
+            continue;
+        }
+
         if (frame->type == JASS_FRAME_IF_CONDITION) {
             token_t const *branch = frame->body;
             bool condition = frame->condition_result != frame->negate_condition;
@@ -1263,6 +1274,11 @@ void jass_executetrigger(jass_t *j, trigger_t *trigger, edict_t *unit) {
     jass_executetriggercontext(j, &(jassTriggerContextParams_t){ .trigger = trigger, .unit = unit }, true);
 }
 
+/* Player-scoped events without a unit (keyboard, UI frames) still answer GetTriggerPlayer. */
+void jass_executetriggerforplayer(jass_t *j, trigger_t *trigger, player_t *player) {
+    jass_executetriggercontext(j, &(jassTriggerContextParams_t){ .trigger = trigger, .event_player = player }, true);
+}
+
 static bool jass_calltriggercontext(jass_t *j, jassTriggerContextParams_t const *params) {
     /* Disabled triggers do not respond to registered events. Explicit JASS
      * evaluation/execution is separate: Blizzard.j queue helpers evaluate a
@@ -1283,6 +1299,16 @@ bool jass_calltriggerwithvalue(jass_t *j,
                                int32_t eventValue) {
     return jass_calltriggercontext(j, &(jassTriggerContextParams_t){
         .trigger = trigger, .unit = unit, .source = source, .value = eventValue });
+}
+
+/* Evaluate and run a trigger at once, for events whose outcome the caller
+ * still has to read back (damage: BlzSetEventDamage). */
+bool jass_calltriggernow(jass_t *j, trigger_t *trigger, edict_t *unit, edict_t *source, int32_t eventValue) {
+    jassTriggerContextParams_t params = { .trigger = trigger, .unit = unit, .source = source, .value = eventValue };
+    if (!trigger || trigger->disabled) return false;
+    if (!jass_evaluatetriggercontext(j, &params)) return false;
+    jass_executetriggercontext(j, &params, true);
+    return true;
 }
 
 bool jass_calltriggerevent(jass_t *j, trigger_t *trigger, gameEvent_t const *event) {
@@ -1771,7 +1797,7 @@ handle_t jass_checkhandle(jass_t *j, int index, cstring_t type) {
     if (var->type) {
         jassType_t const *expected = find_type(j, type);
         if (expected && !is_handle_convertible(var->type, expected)) {
-            fprintf(stderr, "Warning: jass_checkhandle type mismatch\n");
+            fprintf(stderr, "Warning: jass_checkhandle type mismatch: %s passed as %s\n", var->type->name, type);
         }
     }
     return var->value;
@@ -3106,6 +3132,118 @@ void jass_callbyname(jass_t *j, cstring_t name, bool spawn_coroutine) {
         jass_pushfunction(j, func);
         jass_call(j, 0);
     }
+}
+
+/* =========================================================================
+ * Host-language bridge
+ *
+ * A second script language (Lua map scripts) drives the same natives. Its
+ * callbacks become native jassFunc_t records, so triggers, timers and filters
+ * store and run them like any JASS code value. Values it keeps between calls
+ * are pinned jassVar_t copies, which hold a handle reference like a global.
+ * ========================================================================= */
+
+jassFunc_t *jass_newnativefunction(jass_t *j, cstring_t name, jassCFunction_t nativefunc, bool global) {
+    jass_t *root = jass_root(j);
+    jassFunc_t *func = JASSALLOC(jassFunc_t);
+    size_t len = strlen(name);
+    string_t copy = jass_alloc((long)len + 1);
+    memcpy(copy, name, len + 1);
+    func->name = copy;
+    func->native = true;
+    func->nativefunc = nativefunc;
+    func->returns = find_type(root, "boolean");
+    if (global) {
+        jassFunc_t **bucket = &root->function_hash[jass_hash(func->name)];
+        func->hash_next = *bucket;
+        *bucket = func;
+    }
+    return func;
+}
+
+/* The function record a native was entered through; a bridge trampoline uses it to find its callback. */
+jassFunc_t const *jass_currentnative(jass_t *j) {
+    jassVar_t const *root = j->stack_pointer;
+    if (!root || jass_getvarbasetype(root) != jasstype_code) return NULL;
+    return root->value;
+}
+
+uint32_t jass_functionargcount(jassFunc_t const *func) {
+    uint32_t count = 0;
+    if (!func) return 0;
+    FOR_EACH_LIST(jassarg_t, arg, func->args) count++;
+    return count;
+}
+
+cstring_t jass_functionargtype(jassFunc_t const *func, uint32_t index) {
+    if (!func) return NULL;
+    FOR_EACH_LIST(jassarg_t, arg, func->args) {
+        if (!index--) return arg->type ? arg->type->name : NULL;
+    }
+    return NULL;
+}
+
+cstring_t jass_functionreturntype(jassFunc_t const *func) {
+    return func && func->returns ? func->returns->name : "nothing";
+}
+
+JASSTYPEID jass_typenamebase(jass_t *j, cstring_t name) {
+    jassType_t const *type = name ? find_type(jass_root(j), name) : NULL;
+    return type ? (JASSTYPEID)(get_base_type(type) - jass_types) : jasstype_handle;
+}
+
+bool jass_pushglobal(jass_t *j, cstring_t name) {
+    jassVar_t const *var = find_global(jass_root(j), name);
+    if (!var || var->_array) return false;
+    jass_pushvalue(j, var);
+    return true;
+}
+
+cstring_t jass_typename(jass_t *j, int index) {
+    jassVar_t const *var = jass_stackvalue(j, index);
+    return var->type ? var->type->name : "handle";
+}
+
+/* Enum handles (race, playerunitevent, ...) compare by their integer, not by identity. */
+bool jass_isvaluehandle(jass_t *j, int index, int32_t *value) {
+    jassVar_t const *var = jass_stackvalue(j, index);
+    if (jass_getvarbasetype(var) != jasstype_handle || !var->value || !var->type ||
+        !jass_valuehandle(var->type->name)) return false;
+    if (value) *value = *(int32_t const *)var->value;
+    return true;
+}
+
+handle_t jass_tohandle(jass_t *j, int index) {
+    jassVar_t const *var = jass_stackvalue(j, index);
+    if (jass_getvarbasetype(var) != jasstype_handle || (var->ref && var->ref->invalid)) return NULL;
+    return var->value;
+}
+
+jassVar_t *jass_newref(jass_t *j, int index) {
+    jassVar_t const *other = jass_stackvalue(j, index);
+    jassVar_t *ref = JASSALLOC(jassVar_t);
+    ref->type = other->type;
+    jass_copy(j, ref, other);
+    return ref;
+}
+
+/* jass_pop drops slots without releasing them; the bridge must release handle references. */
+void jass_release(jass_t *j, uint32_t count) {
+    jass_discard(j, count);
+}
+
+void jass_pushref(jass_t *j, jassVar_t const *ref) {
+    jass_pushvalue(j, ref);
+}
+
+handle_t jass_refhandle(jassVar_t const *ref) {
+    return ref && !(ref->ref && ref->ref->invalid) ? ref->value : NULL;
+}
+
+void jass_freeref(jassVar_t *ref) {
+    if (!ref) return;
+    jass_setnull(ref);
+    jass_free(ref);
 }
 
 #undef TOKENFUNC

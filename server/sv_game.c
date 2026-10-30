@@ -130,6 +130,10 @@ void PF_Sleep(uint32_t msec) {
     usleep(msec * 1000);
 }
 
+static void PF_CvarSet(cstring_t name, cstring_t value) {
+    if (name && *name) Cvar_Set(name, value ? value : "");
+}
+
 void SV_InitGameProgs(void) {
     struct game_import import = { 0 };
     
@@ -173,6 +177,7 @@ void SV_InitGameProgs(void) {
     import.Write = PF_Write;
     import.ApplyLobbySettings = SV_ApplyLobbySettings;
     import.CvarString = Cvar_String;
+    import.CvarSet = PF_CvarSet;
     import.UserPath = FS_UserPath;
     import.SavePath = FS_SavePath;
     import.ListMaps = FS_ListMaps;

@@ -369,44 +369,73 @@ void G_EffectThink(edict_t *effect) {
     M_MoveFrame(effect);
 }
 
+/* A finished one-shot stays alive, hidden on its last frame, until the
+ * script destroys it (the script still holds the handle). */
+static void G_EffectHoldHidden(edict_t *effect, animation_t const *anim) {
+    effect->currentmove = &wc3_effect_stand;
+    effect->animation = anim;
+    effect->s.frame = anim->interval[1] > anim->interval[0] ? anim->interval[1] - 1 : anim->interval[0];
+    effect->aiflags |= AI_HOLD_FRAME;
+    effect->s.renderfx |= RF_HIDDEN;
+    effect->think = NULL;
+}
+
 static void G_EffectLoopStand(edict_t *effect) {
     if (effect->animation && (effect->animation->flags & 1u)) {
-        effect->s.frame = effect->animation->interval[1] > effect->animation->interval[0]
-            ? effect->animation->interval[1] - 1 : effect->animation->interval[0];
-        effect->aiflags |= AI_HOLD_FRAME;
-        effect->s.renderfx |= RF_HIDDEN;
-        effect->think = NULL;
+        G_EffectHoldHidden(effect, effect->animation);
         return;
     }
     unit_setmove(effect, &wc3_effect_stand);
 }
 
 static void G_EffectEnterStand(edict_t *effect) {
+    animation_t const *birth = effect->animation;
     unit_setmove(effect, &wc3_effect_stand);
-    if (!effect->animation) {
-        effect->think = G_FreeEdict;
-        effect->currentmove = NULL;
+    if (effect->animation) return;
+    if (birth && !(birth->flags & 1u)) {
+        /* No Stand but a looping Birth (missile art used as a pickup gem):
+         * keep looping it. Freeing it here handed the slot to the next unit
+         * while the script still moved the old effect handle. */
+        effect->animation = birth;
+        effect->currentmove = &wc3_effect_birth;
+        return;
     }
+    if (birth) {
+        G_EffectHoldHidden(effect, birth);
+        return;
+    }
+    effect->think = G_FreeEdict;
+    effect->currentmove = NULL;
 }
 
 static void G_EffectStartAnimation(edict_t *effect, bool temporary) {
+    animation_t const *first;
+
     unit_setmove(effect, temporary ? &wc3_effect_temp_birth : &wc3_effect_birth);
     if (effect->animation) return;
 
     unit_setmove(effect, temporary ? &wc3_effect_temp_stand : &wc3_effect_stand);
-    if (!effect->animation) {
-        if (temporary) {
-            /* No usable animation sequence means there is no deterministic
-             * lifetime to drive. A one-shot art with no animation should not
-             * leak an edict indefinitely. */
-            G_FreeEdict(effect);
-        } else {
-            /* A persistent effect with no animation sequences cannot drive its
-             * own lifetime.  Schedule an immediate free so the edict does not
-             * leak when the JASS caller omits DestroyEffect. */
-            effect->think = G_FreeEdict;
-            effect->currentmove = NULL;
-        }
+    if (effect->animation) return;
+
+    /* Neither Birth nor Stand (AvatarCaster has only Spell): play the model's
+     * own sequence once, the way it shows as caster art. */
+    first = G_GetFirstAnimation(effect->s.model);
+    if (first) {
+        effect->animation = first;
+        effect->currentmove = temporary ? &wc3_effect_temp_birth : &wc3_effect_birth;
+        return;
+    }
+    if (temporary) {
+        /* No usable animation sequence means there is no deterministic
+         * lifetime to drive. A one-shot art with no animation should not
+         * leak an edict indefinitely. */
+        G_FreeEdict(effect);
+    } else {
+        /* A persistent effect with no animation sequences cannot drive its
+         * own lifetime.  Schedule an immediate free so the edict does not
+         * leak when the JASS caller omits DestroyEffect. */
+        effect->think = G_FreeEdict;
+        effect->currentmove = NULL;
     }
 }
 
@@ -576,11 +605,16 @@ void G_DestroyOwnedEffects(edict_t *owner) {
 }
 
 void G_DestroyEffect(edict_t *effect) {
+    animation_t const *playing;
+    uint32_t frame;
+
     if (!effect || !effect->inuse) return;
     if ((effect->aiflags & AI_HOLD_FRAME) && effect->currentmove == &wc3_effect_stand) {
         G_FreeEdict(effect);
         return;
     }
+    playing = effect->animation;
+    frame = effect->s.frame;
     effect->prethink = NULL;
     effect->s.sound = 0;
     effect->goalentity = NULL;
@@ -588,5 +622,15 @@ void G_DestroyEffect(edict_t *effect) {
     effect->wait = 0.0f;
     effect->think = G_EffectThink;
     unit_setmove(effect, &wc3_effect_death);
-    if (!effect->animation) G_FreeEdict(effect);
+    if (effect->animation) return;
+    /* No Death sequence: a one-shot still playing finishes first, as in
+     * retail. Caster art (Thunder Clap, War Stomp, Mirror Image) is made and
+     * destroyed in the same call and has nothing but that one-shot. */
+    if (playing && (playing->flags & 1u)) {
+        effect->animation = playing;
+        effect->s.frame = frame;
+        effect->currentmove = &wc3_effect_temp_stand;
+        return;
+    }
+    G_FreeEdict(effect);
 }

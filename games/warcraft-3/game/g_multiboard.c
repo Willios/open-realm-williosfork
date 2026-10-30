@@ -216,6 +216,18 @@ void G_FreeTextTag(texttag_t *tag) {
     tag->generation = generation;
 }
 
+/* A non-permanent tag is destroyed at the end of its lifespan, as in Warcraft.
+ * Nothing freed them before: after MAX_TEXTTAGS floating numbers the pool was
+ * full and CreateTextTag failed for the rest of the map. */
+void G_RunTextTags(void) {
+    FOR_LOOP(i, MAX_TEXTTAGS) {
+        texttag_t *tag = &level.texttags[i];
+        if (!tag->inuse || tag->permanent || tag->lifespan <= 0.0f) continue;
+        tag->age += FRAMETIME / 1000.0f;
+        if (tag->age >= tag->lifespan) G_FreeTextTag(tag);
+    }
+}
+
 static uint32_t texttag_color_bits(color32_t color) {
     return (uint32_t)color.r | ((uint32_t)color.g << 8) |
            ((uint32_t)color.b << 16) | ((uint32_t)color.a << 24);

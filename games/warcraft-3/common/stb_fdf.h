@@ -24,7 +24,7 @@
 /* -------------------------------------------------------------------------- */
 #define MAX_BUILD_QUEUE 7
 #ifndef MAX_UI_CLASSES
-#define MAX_UI_CLASSES 2048 // frames per module; measured peak is 1167, leaving 75% headroom
+#define MAX_UI_CLASSES 4096 // frames per module; the HUD peaks near 1170, script backdrop templates load the glue template files on top
 #endif
 #include "ui_constants.h"
 #define UI_MAX_MAP_LIST_ITEMS 1024

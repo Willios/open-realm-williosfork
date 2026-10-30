@@ -390,14 +390,41 @@ static cstring_t G_ArmorSoundSuffix(edict_t const *target) {
 }
 
 void G_PlayCombatImpactSound(edict_t *attacker, edict_t *target) {
+    if (!attacker || !target || !attacker->data.UnitWeapons) return;
+    G_PlayWeaponImpactSound(attacker->data.UnitWeapons->attack1.weaponSound, target);
+}
+
+/* JASS weapontype values, in common.j order (WEAPON_TYPE_WHOKNOWS = 0 has no sound). */
+static cstring_t const weapon_type_sounds[] = {
+    NULL, "MetalLightChop", "MetalMediumChop", "MetalHeavyChop", "MetalLightSlice", "MetalMediumSlice",
+    "MetalHeavySlice", "MetalMediumBash", "MetalHeavyBash", "MetalMediumStab", "MetalHeavyStab",
+    "WoodLightSlice", "WoodMediumSlice", "WoodHeavySlice", "WoodLightBash", "WoodMediumBash", "WoodHeavyBash",
+    "WoodLightStab", "WoodMediumStab", "ClawLightSlice", "ClawMediumSlice", "ClawHeavySlice", "AxeMediumChop",
+    "RockHeavyBash",
+};
+
+cstring_t G_WeaponTypeSound(int32_t weapon_type) {
+    if (weapon_type <= 0 || weapon_type >= (int32_t)(sizeof(weapon_type_sounds) / sizeof(*weapon_type_sounds)))
+        return NULL;
+    return weapon_type_sounds[weapon_type];
+}
+
+int32_t G_WeaponSoundType(cstring_t weapon) {
+    if (!weapon) return 0;
+    FOR_LOOP(i, sizeof(weapon_type_sounds) / sizeof(*weapon_type_sounds))
+        if (weapon_type_sounds[i] && !strcmp(weapon_type_sounds[i], weapon)) return (int32_t)i;
+    return 0;
+}
+
+/* Impact sound of a weapon sound name (MetalHeavySlice...) on the target's armor. */
+void G_PlayWeaponImpactSound(cstring_t weapon, edict_t *target) {
     UnitAckSounds_t const *row;
-    cstring_t weapon, armor;
+    cstring_t armor;
     char key[128];
     int sound;
     float volume;
 
-    if (!attacker || !target || !attacker->data.UnitWeapons) return;
-    weapon = attacker->data.UnitWeapons->attack1.weaponSound;
+    if (!target) return;
     armor = G_ArmorSoundSuffix(target);
     if (!weapon || !weapon[0] || weapon[0] == '_' || !armor) return;
     snprintf(key, sizeof(key), "%s%s", weapon, armor);

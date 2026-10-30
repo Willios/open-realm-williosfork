@@ -86,6 +86,13 @@ uint32_t SetItemPosition(jass_t *j) {
     float x = jass_checknumber(j, 2);
     float y = jass_checknumber(j, 3);
     if (item && G_GetItem(item)->in_world) {
+        /* As in retail, an item dropped on trees or cliffs slides to the
+         * nearest free spot (scripts use this as a walkability probe). */
+        vec2_t spot = { x, y };
+        if (CM_ClosestStaticPathablePointForRadius(&MAKE(vec2_t, x, y), 0.0f, &spot)) {
+            x = spot.x;
+            y = spot.y;
+        }
         item->s.origin.x = x;
         item->s.origin.y = y;
         item->s.origin.z = CM_GetHeightAtPoint(x, y);

@@ -7,7 +7,117 @@
 
 enum {
     ID_SEQS = MAKEFOURCC('S','E','Q','S'),
+    ID_GEOS = MAKEFOURCC('G','E','O','S'),
+    ID_GEOA = MAKEFOURCC('G','E','O','A'),
+    ID_VRTX = MAKEFOURCC('V','R','T','X'),
+    ID_KGAO = MAKEFOURCC('K','G','A','O'),
 };
+
+/* ---- Bind-pose body bounds (model frames fit these) ---- */
+
+static int compare_float(void const *a, void const *b) {
+    float fa = *(float const *)a, fb = *(float const *)b;
+    return (fa > fb) - (fa < fb);
+}
+
+/* Whether a geoset is invisible when its Stand sequence starts: its geoset
+ * animation's alpha key nearest the start of [start, end] is zero, or it has
+ * no key there and its static alpha is zero (Bladestorm swirls and the like). */
+static bool GeosetHiddenInStand(uint8_t const *geoa, uint32_t size, uint32_t geoset, uint32_t const interval[2]) {
+    uint32_t pos = 0;
+    while (geoa && interval && pos + 28 <= size) {
+        uint32_t entry_size, id;
+        float alpha;
+        memcpy(&entry_size, geoa + pos, 4);
+        memcpy(&alpha, geoa + pos + 4, 4);
+        memcpy(&id, geoa + pos + 24, 4);
+        if (entry_size < 28 || entry_size > size - pos) return false;
+        if (id == geoset) {
+            uint32_t tag = 0, count = 0, interp = 0, key_size, best_frame = UINT32_MAX;
+            float best = alpha;
+            if (entry_size >= 44) {
+                memcpy(&tag, geoa + pos + 28, 4);
+                memcpy(&count, geoa + pos + 32, 4);
+                memcpy(&interp, geoa + pos + 36, 4);
+            }
+            key_size = interp > 1 ? 16 : 8;
+            if (tag == ID_KGAO && count <= (entry_size - 44) / key_size) {
+                FOR_LOOP(k, count) {
+                    uint32_t frame;
+                    float value;
+                    memcpy(&frame, geoa + pos + 44 + k * key_size, 4);
+                    memcpy(&value, geoa + pos + 48 + k * key_size, 4);
+                    if (frame >= interval[0] && frame <= interval[1] && frame < best_frame) {
+                        best_frame = frame;
+                        best = value;
+                    }
+                }
+            }
+            return best <= 0.01f;
+        }
+        pos += entry_size;
+    }
+    return false;
+}
+
+/* Counts, and copies to out when given, the vertices of every geoset that
+ * shows in Stand and is not a ground decal (the hero glow ring, shadow cards:
+ * low and much wider than tall). */
+static uint32_t ModelBodyVertices(uint8_t const *geos, uint32_t size, uint8_t const *geoa, uint32_t geoa_size,
+                                  uint32_t const stand[2], float *out) {
+    uint32_t total = 0, pos = 0, geoset = 0;
+    while (pos + 12 <= size) {
+        uint32_t geoset_size, tag, count;
+        memcpy(&geoset_size, geos + pos, 4);
+        memcpy(&tag, geos + pos + 4, 4);
+        memcpy(&count, geos + pos + 8, 4);
+        if (geoset_size < 12 || geoset_size > size - pos) break;
+        if (tag == ID_VRTX && count && count <= (geoset_size - 12) / 12 &&
+            !GeosetHiddenInStand(geoa, geoa_size, geoset, stand)) {
+            uint8_t const *verts = geos + pos + 12;
+            vec3_t lo, hi;
+            memcpy(&lo, verts, sizeof(lo));
+            hi = lo;
+            FOR_LOOP(i, count) {
+                vec3_t v;
+                memcpy(&v, verts + i * 12, sizeof(v));
+                lo.x = MIN(lo.x, v.x); lo.y = MIN(lo.y, v.y); lo.z = MIN(lo.z, v.z);
+                hi.x = MAX(hi.x, v.x); hi.y = MAX(hi.y, v.y); hi.z = MAX(hi.z, v.z);
+            }
+            bool decal = hi.z < 50.0f && hi.z - lo.z < 0.25f * MAX(hi.x - lo.x, hi.y - lo.y);
+            if (!decal) {
+                if (out) memcpy(out + total * 3, verts, (size_t)count * 12);
+                total += count;
+            }
+        }
+        geoset++;
+        pos += geoset_size;
+    }
+    return total;
+}
+
+/* Bind-pose bounds of the model's body as Stand shows it, each axis kept to
+ * the 1st..99th percentile so a few stray vertices do not count. Sequence
+ * extents in the file are often padded far beyond the mesh (most heroes'
+ * include the glow), so model frames fit these instead. */
+static bool ModelGeosetBounds(uint8_t const *geos, uint32_t size, uint8_t const *geoa, uint32_t geoa_size,
+                              uint32_t const stand[2], vec3_t *lo, vec3_t *hi) {
+    uint32_t count = ModelBodyVertices(geos, size, geoa, geoa_size, stand, NULL);
+    float *verts, *axis;
+    if (!count) return false;
+    verts = gi.MemAlloc((long)count * 12);
+    axis = gi.MemAlloc((long)count * 4);
+    ModelBodyVertices(geos, size, geoa, geoa_size, stand, verts);
+    FOR_LOOP(a, 3) {
+        FOR_LOOP(i, count) axis[i] = verts[i * 3 + a];
+        qsort(axis, count, sizeof(float), compare_float);
+        ((float *)lo)[a] = axis[count / 100];
+        ((float *)hi)[a] = axis[count - 1 - count / 100];
+    }
+    gi.MemFree(axis);
+    gi.MemFree(verts);
+    return true;
+}
 
 static uint32_t fnv1a32(cstring_t str) {
     uint32_t prime = 16777619;
@@ -152,12 +262,15 @@ static animation_t *LoadModelMD34(uint8_t const *data, uint32_t data_size, uint3
 
 /* ---- MDLX (Warcraft III) ---- */
 
-static animation_t *LoadModelMDLX(uint8_t const *data, uint32_t data_size, uint32_t *out_count) {
+static animation_t *LoadModelMDLX(uint8_t const *data, uint32_t data_size, uint32_t *out_count,
+                                  vec3_t *bind_min, vec3_t *bind_max, bool *has_bind) {
     uint32_t payloadSize = data_size > 4 ? data_size - 4 : 0;
     animation_t *animations = NULL;
     uint32_t num = 0;
     uint8_t const *ptr = data + 4;
     uint8_t const *end = ptr + payloadSize;
+    uint8_t const *geos = NULL, *geoa = NULL;
+    uint32_t geos_size = 0, geoa_size = 0;
 
     while (ptr && ptr + 8 <= end) {
         uint32_t header, size;
@@ -176,8 +289,24 @@ static animation_t *LoadModelMDLX(uint8_t const *data, uint32_t data_size, uint3
                 memcpy(animations + i, ptr + i * SEQ_RECORD_SIZE, SEQ_RECORD_SIZE);
                 ConvertMDLXAnimationName(animations + i);
             }
+        } else if (header == ID_GEOS) {
+            geos = ptr;
+            geos_size = size;
+        } else if (header == ID_GEOA) {
+            geoa = ptr;
+            geoa_size = size;
         }
         ptr += size;
+    }
+    if (geos && has_bind) {
+        uint32_t const *stand = NULL;
+        FOR_LOOP(i, num) {
+            if (animations[i].syncpoint == fnv1a32("stand")) {
+                stand = animations[i].interval;
+                break;
+            }
+        }
+        *has_bind = ModelGeosetBounds(geos, geos_size, geoa, geoa_size, stand, bind_min, bind_max);
     }
     *out_count = num;
     return animations;
@@ -194,7 +323,7 @@ TEST(wc3_model, empty_mdlx_sequence_name_does_not_break_animation_loading) {
     memcpy(data + 4, &chunk, sizeof(chunk));
     memcpy(data + 8, &chunk_size, sizeof(chunk_size));
     memcpy(data + HEADER_SIZE + SEQ_SIZE, "Stand", 5);
-    animations = LoadModelMDLX(data, sizeof(data), &count);
+    animations = LoadModelMDLX(data, sizeof(data), &count, NULL, NULL, NULL);
     T_NOT_NULL(animations);
     T_EQ(count, 2);
     if (animations && count == 2) {
@@ -213,6 +342,8 @@ TEST(wc3_model, empty_mdlx_sequence_name_does_not_break_animation_loading) {
 typedef struct {
     animation_t *animations;
     uint32_t        num_animations;
+    vec3_t       bind_min, bind_max; /* bind-pose mesh bounds (MDLX) */
+    bool         has_bind;
     char         filename[MAX_PATHLEN];
     bool         loaded;   /* load attempted (success or failure) — avoids
                               re-reading/parsing the model from the MPQ every
@@ -285,7 +416,8 @@ static g_cmodel_t *LoadModel(cstring_t filename) {
     memcpy(&fileheader, data, sizeof(fileheader));
     switch (fileheader) {
         case ID_MDLX:
-            model->animations = LoadModelMDLX(data, data_size, &model->num_animations);
+            model->animations = LoadModelMDLX(data, data_size, &model->num_animations,
+                                              &model->bind_min, &model->bind_max, &model->has_bind);
             break;
         case ID_43DM:
             model->animations = LoadModelMD34(data, data_size, &model->num_animations);
@@ -309,10 +441,21 @@ static g_cmodel_t *GetModel(uint32_t modelindex) {
         if (m) {
             entry->animations     = m->animations;
             entry->num_animations = m->num_animations;
+            entry->bind_min       = m->bind_min;
+            entry->bind_max       = m->bind_max;
+            entry->has_bind       = m->has_bind;
             gi.MemFree(m);
         }
     }
     return entry->animations ? entry : NULL;
+}
+
+bool G_GetModelBindBounds(uint32_t modelindex, vec3_t *min, vec3_t *max) {
+    g_cmodel_t *model = GetModel(modelindex);
+    if (!model || !model->has_bind) return false;
+    *min = model->bind_min;
+    *max = model->bind_max;
+    return true;
 }
 
 animation_t const *G_GetAnimation(uint32_t modelindex, cstring_t animname) {
@@ -327,6 +470,21 @@ animation_t const *G_GetAnimation(uint32_t modelindex, cstring_t animname) {
     FOR_LOOP(i, model->num_animations) {
         if (!strcasecmp(model->animations[i].name, animname))
             return &model->animations[i];
+    }
+    return NULL;
+}
+
+/* First sequence with a real interval: art such as AvatarCaster has neither
+ * Birth nor Stand, only a lone one-shot (Spell). Placeholder "nothing"
+ * sequences carry a wrapped start frame and are skipped. */
+animation_t const *G_GetFirstAnimation(uint32_t modelindex) {
+    g_cmodel_t *model = GetModel(modelindex);
+    if (!model)
+        return NULL;
+    FOR_LOOP(i, model->num_animations) {
+        animation_t const *anim = &model->animations[i];
+        if (anim->interval[1] > anim->interval[0] && anim->interval[1] - anim->interval[0] < 1000000u)
+            return anim;
     }
     return NULL;
 }
@@ -648,6 +806,45 @@ void G_SetUnitAnimation(edict_t *unit, cstring_t animname) {
     unit->animation = !strcasecmp(primary, "walk") ?
         AnimationVariantForProperties(GetModel(unit->s.model), request, unit->animation_props) : NULL;
     if (!unit->animation) unit->animation = G_GetUnitAnimation(unit, request);
+}
+
+/* Upper-body clip (EngineUnitUpperAnimation): plays once at speed on the bones
+ * from the chest up while the base animation keeps the legs. The client draws
+ * it from s.upper_frame; G_RunUpperAnimation advances and ends it. */
+bool G_SetUnitUpperAnimation(edict_t *unit, cstring_t animname, float speed) {
+    animation_t const *anim;
+
+    if (!unit || !animname) return false;
+    if (!*animname) {
+        /* An empty name ends the clip: the whole body follows the base again. */
+        unit->upper_animation = NULL;
+        unit->s.upper_frame = 0;
+        return true;
+    }
+    anim = G_GetUnitAnimation(unit, G_InternAnimationName(animname));
+    if (!anim || anim->interval[1] <= anim->interval[0] + 1) return false;
+    unit->upper_animation = anim;
+    unit->upper_speed = speed > 0.0f ? speed : 1.0f;
+    /* Frame zero means "none" on the wire: start one frame in if needed. */
+    unit->s.upper_frame = MAX(anim->interval[0], 1u);
+    return true;
+}
+
+void G_RunUpperAnimation(edict_t *unit) {
+    animation_t const *anim = unit->upper_animation;
+    uint32_t next;
+
+    if (!anim) {
+        unit->s.upper_frame = 0;
+        return;
+    }
+    next = unit->s.upper_frame + (uint32_t)MAX(0.0f, FRAMETIME * unit->upper_speed);
+    if (next >= anim->interval[1]) {
+        unit->upper_animation = NULL;
+        unit->s.upper_frame = 0;
+        return;
+    }
+    unit->s.upper_frame = next;
 }
 
 /* Destructables do not normally run a unit move sequence. The JASS animation

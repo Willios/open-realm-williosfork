@@ -305,6 +305,7 @@ void CM_FreeMapInfo(mapInfo_t *mapInfo) {
         string = next;
     }
     SAFE_DELETE(mapInfo->mapscript, MemFree);
+    SAFE_DELETE(mapInfo->luascript, MemFree);
 }
 
 #define CM_PLACEMENT_ROC_VERSION 7
@@ -1072,6 +1073,8 @@ void CM_ReadMapScript(handle_t archive) {
     if (!world.info.mapscript)
         world.info.mapscript = FS_ReadArchiveFileIntoString(archive, "scripts\\war3map.j");
     if (!world.info.mapscript)
+        world.info.luascript = FS_ReadArchiveFileIntoString(archive, "war3map.lua");
+    if (!world.info.mapscript && !world.info.luascript)
         fprintf(stderr, "CM_ReadMapScript: missing war3map.j / scripts\\war3map.j in %s\n",
                 cm_loaded_map[0] ? cm_loaded_map : "(unknown)");
 }

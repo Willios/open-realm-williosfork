@@ -382,7 +382,14 @@ uint32_t QueueUnitAnimation(jass_t *j) {
 uint32_t SetUnitAnimation(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     cstring_t whichAnimation = jass_checkstring(j, 2);
-    if (whichUnit) G_SetUnitAnimation(whichUnit, whichAnimation);
+    if (whichUnit) {
+        G_SetUnitAnimation(whichUnit, whichAnimation);
+        /* A looping sequence (walk, stand) set by a script keeps looping
+         * instead of the current move choosing its own clip when it ends;
+         * one-shots (attack, spell) end and return to the move's animation. */
+        G_SetUnitFlag(whichUnit, UNIT_FLAG_ANIMATION_OVERRIDE,
+                      whichUnit->animation && !(whichUnit->animation->flags & 1));
+    }
     return 0;
 }
 uint32_t SetUnitAnimationByIndex(jass_t *j) {
@@ -640,14 +647,19 @@ uint32_t UnitDamageTarget(jass_t *j) {
     edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
     edict_t *target = jass_checkhandle(j, 2, "widget");
     float amount = jass_checknumber(j, 3);
-    /* attack/ranged/attackType/damageType/weaponType are accepted but not yet modeled. */
+    uint32_t const *weaponType;
+    /* attack/ranged/attackType/damageType are accepted but not yet modeled. */
     (void)jass_checkboolean(j, 4);
     (void)jass_checkboolean(j, 5);
     (void)jass_checkhandle(j, 6, "attacktype");
     (void)jass_checkhandle(j, 7, "damagetype");
-    (void)jass_checkhandle(j, 8, "weapontype");
+    weaponType = jass_checkhandle(j, 8, "weapontype");
     if (!whichUnit || !target || amount <= 0.0f) return jass_pushboolean(j, 0);
     if (G_UnitHasFlag(target, UNIT_FLAG_INVULNERABLE) || M_IsDead(target)) return jass_pushboolean(j, 0);
+    /* As in Warcraft, a weapon type plays its impact sound on the target's armor
+     * (scripted melee hits clash like native ones). Before the hit: it may kill
+     * and free the target. */
+    if (weaponType) G_PlayWeaponImpactSound(G_WeaponTypeSound((int32_t)*weaponType), target);
     T_Damage(target, whichUnit, (int)amount);
     return jass_pushboolean(j, 1);
 }

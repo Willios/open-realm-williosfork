@@ -39,6 +39,7 @@ netField_t entityStateFields[] = {
 #endif
     { NETF(entityState_t, scale), NFT_PACKED_FLOAT },
     { NETF(entityState_t, frame), NFT_LONG },
+    { NETF(entityState_t, upper_frame), NFT_LONG },
     { NETF(entityState_t, model), NFT_SHORT },
     { NETF(entityState_t, model2), NFT_SHORT },
     { NETF(entityState_t, effect), NFT_BYTE },

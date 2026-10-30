@@ -975,6 +975,16 @@ void G_PublishIssuedImmediateOrder(edict_t *self, uint32_t order_id,
     G_PublishEvent(self, EVENT_UNIT_ISSUED_ORDER);
 }
 
+/* Orders a UNIT_FLAG_SCRIPT_ORDERS unit only reports: walking, attacking and
+ * stopping belong to its script. Spells and items still run natively. */
+static bool unit_is_script_owned_order(cstring_t order) {
+    static cstring_t const owned[] = { "smart", "move", "attack", "patrol", "attackground",
+                                       "stop", "holdposition" };
+    FOR_LOOP(i, sizeof(owned) / sizeof(owned[0]))
+        if (!strcmp(order, owned[i])) return true;
+    return false;
+}
+
 static void unit_publish_target_order(edict_t *self, cstring_t order,
                                       edict_t *target, uint32_t issuer_player) {
     uint32_t const order_id = unit_order_event_id(order);
@@ -1208,6 +1218,11 @@ bool G_IssueUnitTargetOrder(edict_t *self, cstring_t order, edict_t *target,
     if (S_GoldMineWorkerIsInside(self)) {
         return false;
     }
+    /* See G_IssueUnitPointOrder: the script reads the target and moves the unit. */
+    if (G_UnitHasFlag(self, UNIT_FLAG_SCRIPT_ORDERS) && unit_is_script_owned_order(order)) {
+        unit_publish_target_order(self, order, target, issuer_player);
+        return true;
+    }
     if (!strcmp(order, "harvest")) {
         bool accepted = false;
         if (G_ActorHasSkill(self, "Awha") && G_ActorHasSkill(target, "Aegm"))
@@ -1285,6 +1300,13 @@ bool G_IssueUnitPointOrder(edict_t *self, cstring_t order, vec2_t const *point,
         return accepted;
     }
     if (S_GoldMineWorkerIsInside(self)) return false;
+    /* A script that moves this unit itself (EngineUnitScriptOrders) still
+     * hears the click, but no native walk starts: it would replace the
+     * unit's animation and fight the scripted position. */
+    if (G_UnitHasFlag(self, UNIT_FLAG_SCRIPT_ORDERS) && unit_is_script_owned_order(order)) {
+        G_PublishIssuedPointOrder(self, unit_order_event_id(order), point, issuer_player, order);
+        return true;
+    }
     {
         uint32_t const spell_code = unit_spell_code_for_order(self, order);
         if (spell_code) {
@@ -1486,6 +1508,10 @@ bool unit_issueimmediateorder(edict_t *self, cstring_t order) {
     if (M_IsDead(self)) return false;
     if (S_GoldMineWorkerIsInside(self))
         return false;
+    if (G_UnitHasFlag(self, UNIT_FLAG_SCRIPT_ORDERS) && unit_is_script_owned_order(order)) {
+        G_PublishIssuedImmediateOrder(self, G_OrderId(order), self->s.player, order);
+        return true;
+    }
     if (!strcmp(order, "stop")) {
         G_ClearUnitOrderQueue(self);
         order_stop(self);

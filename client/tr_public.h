@@ -155,6 +155,8 @@ typedef struct {
 #endif
     uint32_t frame;
     uint32_t oldframe;
+    uint32_t upper_frame;    /* WC3 upper-body clip (chest and up), 0 = none */
+    uint32_t upper_oldframe; /* previous snapshot's, 0 when the clip just began */
     uint32_t camera_index; /* dedicated model-cinematic scene; zero for ordinary portraits */
     uint32_t flags;
     uint8_t health;        /* compressed 0..255 snapshot health ratio */

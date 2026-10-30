@@ -17,6 +17,16 @@
 #define S_MAX_CHANNELS      24
 #define S_HASH_BUCKETS      256
 
+/* Sound groups with their own user volume, told apart by file path:
+ * spells (Abilities\), ambience (Sound\Ambient\), units (Units\, Sound\Units\). */
+typedef enum {
+    S_GROUP_OTHER = 0,
+    S_GROUP_SPELLS,
+    S_GROUP_AMBIENCE,
+    S_GROUP_UNITS,
+    S_GROUP_COUNT
+} sGroup_t;
+
 typedef enum {
     S_STREAM_MOVIE = 0,
     S_STREAM_MUSIC,
@@ -123,6 +133,7 @@ typedef struct {
 
     SDL_AudioDeviceID device;
     float             user_volume;
+    float             group_cut[S_GROUP_COUNT]; /* 1 - group volume, so zeroed state plays at full volume */
     bool              initialized;
     uint8_t             *dbc_data;
     void         *slk_rows;       /* UISounds.slk rows backing named kits when no SoundEntries.dbc exists */
@@ -152,6 +163,7 @@ void S_UpdateLoopingSound(uint32_t entity, cstring_t path, vec2_t const *origin,
 void S_EndLoopingSounds(void);
 void S_SetListener(vec2_t const *origin, vec2_t const *right);
 void S_SetUserVolume(float volume);
+void S_SetGroupVolumes(float spells, float ambience, float units);
 void S_StreamStart(sStreamId_t stream);
 uint32_t S_StreamSamples(sStreamId_t stream, int16_t const *samples, uint32_t frames);
 uint32_t S_StreamBufferedFrames(sStreamId_t stream);

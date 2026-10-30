@@ -343,6 +343,7 @@ static wc3EventSpawn_t event_spawns[WC3_EVENT_SPAWN_MAX];
 static uint32_t event_spawn_serial;
 #define WC3_EVENT_SPLAT_MAX 128 // effects; bounds transient SPL/FPT/UBR decals without heap growth
 #define WC3_EVENT_MAX_DEPTH 4 // model levels; caps recursive SPN child-event graphs
+#define WC3_EVENT_FRESH_MS 250 // ms into its sequence; a model first seen sooner has just appeared
 typedef enum { WC3_EVENT_SPLAT_SPLAT, WC3_EVENT_SPLAT_UBER } wc3EventSplatKind_t;
 typedef struct { float r, g, b, a; } wc3SplatColorValue_t;
 typedef struct { vec2_t mins, maxs; } wc3SplatUV_t;
@@ -1825,8 +1826,7 @@ static void R_W3EmitSoundEvent(wc3EventParams_t const *params, uint32_t key) {
                                       params->transform, &event_transform)) return;
         origin = MAKE(vec3_t, event_transform.v[12], event_transform.v[13], event_transform.v[14]);
     }
-    ri.PlaySoundAt(path, &origin, MAX(0.0f, MIN(1.0f, row->volume / 127.0f)));
-}
+    ri.PlaySoundAt(path, &origin, MAX(0.0f, MIN(1.0f, row->volume / 127.0f)));}
 
 /* Reuse an inactive SPN slot, or the oldest transient when the bounded pool is full. */
 static wc3EventSpawn_t *R_W3AllocEventSpawn(void) {
@@ -2222,8 +2222,14 @@ static void R_W3DispatchModelEvents(wc3EventDispatchParams_t const *params) {
         *params->state = (wc3EventState_t){ .model = params->entity->model, .frame = params->entity->frame,
             .render_time = tr.viewDef.time, .generation = params->entity->generation, .valid = true };
         /* A glue panel appears on the first frame of its Birth/Morph sequence, where its slide sound is keyed.
-         * Treat the first sighting as entering the sequence (no previous sequence) instead of skipping it. */
-        if (!params->ui_sprite) return;
+         * Treat the first sighting as entering the sequence (no previous sequence) instead of skipping it.
+         * So does a world model first seen at the start of its sequence: it has just appeared (a spell
+         * effect, a summon), and its opening keys are its cast sound. Skipping them left every spell
+         * effect silent. Seen later in a sequence, it scrolled into view: its keys are not replayed. */
+        if (!params->ui_sprite) {
+            mdxSequence_t const *seq = R_FindSequenceAtTime(params->model, params->entity->frame);
+            if (!seq || params->entity->frame - seq->interval[0] > WC3_EVENT_FRESH_MS) return;
+        }
         params->state->frame = UINT32_MAX;
     }
     if (params->state->frame == params->entity->frame &&

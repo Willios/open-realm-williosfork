@@ -749,6 +749,9 @@ uint32_t GetEventUnitState(jass_t *j) {
     return jass_pushnullhandle(j, "unitstate");
 }
 uint32_t GetEventDamage(jass_t *j) {
+    float amount;
+    /* Inside a damage trigger: the amount as changed so far by BlzSetEventDamage. */
+    if (G_DamageEventAmount(&amount)) return jass_pushnumber(j, amount);
     return jass_pushnumber(j, (float)jass_getcontext(j)->eventValue);
 }
 uint32_t GetEventDamageSource(jass_t *j) {
@@ -932,9 +935,20 @@ uint32_t IsPointBlighted(jass_t *j) {
     vec2_t point = { jass_checknumber(j, 1), jass_checknumber(j, 2) };
     return jass_pushboolean(j, G_IsPointBlighted(&point));
 }
+/* Retail semantics are inverted: true means the terrain is NOT pathable for
+ * that type. Walkability and floatability read the terrain pathing map;
+ * other types (fly, build, blight...) are not modeled and report pathable. */
 uint32_t IsTerrainPathable(jass_t *j) {
-    (void)jass_checknumber(j, 1); (void)jass_checknumber(j, 2); (void)jass_checkhandle(j, 3, "pathingtype");
-    return jass_pushboolean(j, true);
+    vec2_t point = { jass_checknumber(j, 1), jass_checknumber(j, 2) };
+    int32_t const *type = jass_checkhandle(j, 3, "pathingtype");
+    switch (type ? *type : 0) {
+        case 1: /* PATHING_TYPE_WALKABILITY */
+            return jass_pushboolean(j, !CM_TerrainPointIsWalkable(&point));
+        case 6: /* PATHING_TYPE_FLOATABILITY */
+            return jass_pushboolean(j, !CM_TerrainPointIsSwimmable(&point));
+        default:
+            return jass_pushboolean(j, false);
+    }
 }
 uint32_t SetTerrainPathable(jass_t *j) {
     (void)jass_checknumber(j, 1); (void)jass_checknumber(j, 2); (void)jass_checkhandle(j, 3, "pathingtype");
@@ -1587,6 +1601,9 @@ uint32_t EnableUserControl(jass_t *j) {
     /* Fast-forwarding must preserve the script's input lock; early edge scrolling overwrote its final camera snap. */
     if (currentplayer) {
         PLAYER_CLIENT(currentplayer)->no_control = !b;
+        /* The client predicts camera moves locally; tell it to stop, or the view drifts from the server's. */
+        if (b) currentplayer->uiflags &= ~PS_UIFLAG_NO_CAMERA;
+        else currentplayer->uiflags |= PS_UIFLAG_NO_CAMERA;
     }
     return 0;
 }
@@ -1942,7 +1959,8 @@ uint32_t IsNoDefeatCheat(jass_t *j) {
     return jass_pushboolean(j, 0);
 }
 uint32_t Preload(jass_t *j) {
-    //cstring_t filename = jass_checkstring(j, 1);
+    /* Between PreloadGenClear and PreloadGenEnd the string is written to the preload file. */
+    G_PreloadRecord(jass_checkstring(j, 1));
     return 0;
 }
 uint32_t PreloadEnd(jass_t *j) {
@@ -1950,13 +1968,15 @@ uint32_t PreloadEnd(jass_t *j) {
     return 0;
 }
 uint32_t PreloadGenClear(jass_t *j) {
+    (void)j;
+    G_PreloadGenClear();
     return 0;
 }
 uint32_t PreloadGenStart(jass_t *j) {
     return 0;
 }
 uint32_t PreloadGenEnd(jass_t *j) {
-    //cstring_t filename = jass_checkstring(j, 1);
+    G_PreloadGenEnd(jass_checkstring(j, 1));
     return 0;
 }
 uint32_t PreloadRefresh(jass_t *j) {
@@ -1968,7 +1988,7 @@ uint32_t PreloadEndEx(jass_t *j) {
     return 0;
 }
 uint32_t Preloader(jass_t *j) {
-    //cstring_t filename = jass_checkstring(j, 1);
+    G_PreloadRun(jass_checkstring(j, 1));
     return 0;
 }
 

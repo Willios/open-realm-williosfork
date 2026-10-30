@@ -488,9 +488,22 @@ bool G_ActorAddSkill(edict_t *ent, uint32_t code) {
     return true;
 }
 
+/* Attack and Move are implicit: no SLK abilList names them, yet retail
+ * UnitRemoveAbility(u, 'Aatk'/'Amov') takes them away (scripted heroes rely on
+ * it to stop the idle auto-acquire). Their removal is recorded like any other. */
+static bool actor_implicit_skill(uint32_t code) {
+    return code == MAKEFOURCC('A', 'a', 't', 'k') || code == MAKEFOURCC('A', 'm', 'o', 'v');
+}
+
+bool G_ActorSkillRemoved(edict_t const *ent, uint32_t code) {
+    return ent && ent->unit_state &&
+        skill_index(ent->unit_state->overrides.removed, ARRAY_COUNT(ent->unit_state->overrides.removed), code) >= 0;
+}
+
 bool G_ActorRemoveSkill(edict_t *ent, uint32_t code) {
     int32_t index;
-    if (!ent || !code || !actor_has_skill(ent, code)) return false;
+    if (!ent || !code) return false;
+    if (!actor_has_skill(ent, code) && !(actor_implicit_skill(code) && !G_ActorSkillRemoved(ent, code))) return false;
     G_InitUnitState(ent);
     index = skill_index(ent->unit_state->overrides.added, ARRAY_COUNT(ent->unit_state->overrides.added), code);
     if (index < 0 && ARRAY_COUNT(ent->unit_state->overrides.removed) >= MAX_ABILITIES) return false;

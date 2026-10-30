@@ -564,7 +564,8 @@ void Cvar_Init(void) {
 #else
     Cvar_GetD("com_maxfps",       "0",                 CVAR_ARCHIVE, "maximum client frame rate; 0=unlimited");
 #endif
-    Cvar_GetD("com_fast_forward", "0",                 0,            "run one fixed server tick per main-loop frame");
+    Cvar_GetD("com_maxfps_background", "20",           CVAR_ARCHIVE, "frame rate cap while the window has no focus; 0=same as com_maxfps");
+    Cvar_GetD("com_fast_forward", "0",                0,            "run one fixed server tick per main-loop frame");
     Cvar_GetD("scr_showfps",      "1",                 CVAR_ARCHIVE, "show FPS counter on screen");
     Cvar_GetD("skip_cutscene",    "0",                 0,            "skip intro cutscene on startup");
     Cvar_GetD("vid_mode",         "0",                 CVAR_ARCHIVE, "resolution index: 0=640x480, 1=800x600, 2=1024x768, ...");

@@ -103,6 +103,8 @@ struct game_import {
     /* Cvar access — allows the game library to read command-line/config values
      * without linking directly against common.  Returns fallback if not set. */
     cstring_t (*CvarString)(cstring_t name, cstring_t fallback);
+    /* Scripted handoff state between levels (survivor menu -> arena); not archived. */
+    void (*CvarSet)(cstring_t name, cstring_t value);
 
     /* Resolve writable per-game config/state without linking game modules against engine common. */
     void (*UserPath)(cstring_t rel, string_t out, uint32_t out_size);

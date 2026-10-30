@@ -139,6 +139,12 @@ void Key_Event(keyCode_t key, uint32_t mods, bool down, uint32_t time) {
     /* Key-up still reaches +command releases so focusing a window cannot leave an earlier gameplay command stuck. */
     if (cls.key_dest == key_game && down && CL_WindowKeyEvent(key, mods)) return;
 
+    /* Scripted maps that registered key events see every gameplay key, then normal handling continues. */
+    if (cls.key_dest == key_game && key < K_MOUSE1 && (cl.playerstate.uiflags & PS_UIFLAG_FORWARD_KEYS)) {
+        snprintf(cmd, sizeof(cmd), "oskey %i %i %u", key, down ? 1 : 0, (unsigned)(mods & KEY_MOD_MASK));
+        Cmd_ForwardToServer(cmd);
+    }
+
     if (down) {
         key_down_mods[key] = (uint8_t)(mods & KEY_MOD_MASK);
         key_down_set[key] = 1;

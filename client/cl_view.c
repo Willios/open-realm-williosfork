@@ -325,6 +325,8 @@ static void V_AddClientEntity(centity_t const *ent, bool debug_entities) {
     re.frame = ent->current.frame;
     re.owner = ent->current.player;
     re.oldframe = ent->prev.frame;
+    re.upper_frame = ent->current.upper_frame;
+    re.upper_oldframe = ent->prev.upper_frame;
     re.health = ent->current.stats[ENT_HEALTH];
     re.effect_flags = ent->current.effect_flags;
     re.effect_model = cl.models[ent->current.effect];
@@ -832,7 +834,8 @@ void V_RenderView(void) {
         /* Warcraft III's 3D world occupies the area above the command console.
          * Use that rectangle as the real projection viewport rather than drawing a
          * full-window camera and merely clipping it afterwards. */
-        cl.viewDef.viewport = (rect_t) { 0, 0.22, 1, 0.76 };
+        cl.viewDef.viewport = (cl.playerstate.uiflags & PS_UIFLAG_FULL_WORLD)
+            ? (rect_t) { 0, 0, 1, 1 } : (rect_t) { 0, 0.22, 1, 0.76 };
         cl.viewDef.scissor = cl.viewDef.viewport;
 #endif
         cl.viewDef.rdflags = cl.playerstate.rdflags;

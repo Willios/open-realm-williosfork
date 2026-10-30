@@ -140,6 +140,7 @@ bool jass_evaluateboolexpr(jass_t *j, jassFunc_t const *expr, edict_t *unit);
 bool jass_evaluateplayerexpr(jass_t *j, jassFunc_t const *expr, player_t *player);
 bool jass_evaluateplayerinteger(jass_t *j, jassFunc_t const *expr, player_t *player, int32_t *result);
 void jass_executetrigger(jass_t *j, trigger_t *trigger, edict_t *unit);
+void jass_executetriggerforplayer(jass_t *j, trigger_t *trigger, player_t *player);
 
 /* -------------------------------------------------------------------------
  * Runtime error / test-assertion boundary.
@@ -171,6 +172,24 @@ bool jass_dobuffer(jass_t *j, string_t buffer);
 /* _ex variants — explicit mode control. */
 bool jass_dofile_ex(jass_t *j, cstring_t fileName, JASSMODE mode);
 bool jass_dobuffer_ex(jass_t *j, string_t buffer, JASSMODE mode);
+
+/* Host-language bridge (Lua map scripts): native callback records, natives'
+ * signatures, global lookup, and pinned values that keep handle references. */
+jassFunc_t *jass_newnativefunction(jass_t *j, cstring_t name, jassCFunction_t nativefunc, bool global);
+jassFunc_t const *jass_currentnative(jass_t *j);
+uint32_t jass_functionargcount(jassFunc_t const *func);
+cstring_t jass_functionargtype(jassFunc_t const *func, uint32_t index);
+cstring_t jass_functionreturntype(jassFunc_t const *func);
+JASSTYPEID jass_typenamebase(jass_t *j, cstring_t name);
+bool jass_pushglobal(jass_t *j, cstring_t name);
+cstring_t jass_typename(jass_t *j, int index);
+handle_t jass_tohandle(jass_t *j, int index);
+bool jass_isvaluehandle(jass_t *j, int index, int32_t *value);
+jassVar_t *jass_newref(jass_t *j, int index);
+void jass_release(jass_t *j, uint32_t count);
+void jass_pushref(jass_t *j, jassVar_t const *ref);
+handle_t jass_refhandle(jassVar_t const *ref);
+void jass_freeref(jassVar_t *ref);
 
 /* jass_newstate / jass_close — state lifecycle. */
 jass_t *jass_newstate(void);

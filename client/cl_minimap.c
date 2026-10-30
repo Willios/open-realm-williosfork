@@ -32,6 +32,7 @@ void CL_PredictCameraPosition(vec2_t pos) {
 
 /* Apply one camera position through local prediction and the authoritative client message. */
 void CL_SetCameraPosition(vec2_t position) {
+    if (cl.playerstate.uiflags & PS_UIFLAG_NO_CAMERA) return; /* the script holds the camera */
     position = CL_ClampCameraPosition(position);
     CL_PredictCameraPosition(position);
     cl.camera_prediction.active = true;

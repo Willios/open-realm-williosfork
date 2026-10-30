@@ -162,9 +162,10 @@ static bool filter_sight(edict_t const *ent) {
     return true;
 }
 
-/* Does this unit have an attack to acquire targets with? */
+/* Does this unit have an attack to acquire targets with? A script that
+ * removed Attack ('Aatk') owns the unit's combat: it never auto-engages. */
 static bool unit_has_attack(edict_t const *self) {
-    return S_CargoAttacksEnabled(self) &&
+    return S_CargoAttacksEnabled(self) && !G_ActorSkillRemoved(self, MAKEFOURCC('A', 'a', 't', 'k')) &&
            ((S_UnitAttackSlotEnabled(self, 0) && self->unit_state->attack1.cooldown > 0.0f && (self->unit_state->attack1.damageBase > 0 || self->unit_state->attack1.numberOfDice > 0)) ||
             (S_UnitAttackSlotEnabled(self, 1) && self->unit_state->attack2.cooldown > 0.0f && (self->unit_state->attack2.damageBase > 0 || self->unit_state->attack2.numberOfDice > 0)));
 }

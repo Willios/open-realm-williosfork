@@ -520,6 +520,7 @@ typedef enum {
     LAYER_GAME_1,
     LAYER_GAME_2,
     LAYER_GAME_3,
+    LAYER_GAME_4,
 } UILAYOUTLAYER;
 
 typedef enum {
@@ -533,8 +534,11 @@ typedef enum {
 #define UI_WINDOW_NO_PAUSE (1u << 3) // flag bit; modal input capture without acquiring the client-owned simulation pause
 #define UI_WINDOW_NO_ESCAPE (1u << 4) // flag bit; Escape is consumed without dismissing the window; used by mandatory result/decision windows
 #define UI_WINDOW_PRESENTATION (1u << 5) // replaces gameplay world/HUD and other windows while active; client owns generic render isolation
-#define MAX_LAYOUT_LAYERS 17
-_Static_assert(LAYER_GAME_3 < MAX_LAYOUT_LAYERS, "every UILAYOUTLAYER needs a client layout slot");
+#define MAX_LAYOUT_LAYERS 18
+#define PS_UIFLAG_FORWARD_KEYS (1u << 31) // ps.uiflags bit above the layer bits; client forwards gameplay keys to the server as "oskey"
+#define PS_UIFLAG_FULL_WORLD (1u << 30) // the world view fills the window (script set the world frame to the whole screen)
+#define PS_UIFLAG_NO_CAMERA (1u << 29) // EnableUserControl(false): the client must not scroll, drag, rotate or zoom the camera
+_Static_assert(LAYER_GAME_4 < MAX_LAYOUT_LAYERS, "every UILAYOUTLAYER needs a client layout slot");
 #define UI_WINDOW_CLOSE_ACTION "close_window" // client action; closes the owning window without a server command
 #define UI_WINDOW_CLOSE_NOTIFY_ACTION "close_window_notify" // client action; closes locally and notifies server of modal release
 #define UI_WINDOW_CLOSE_COMMAND_PREFIX "close_window_command " // client action prefix; forwards suffix then closes the owning window
@@ -759,6 +763,7 @@ typedef struct entityState_s {
     uint32_t hover_value;   /* hover detail or named-attachment parent+1 when EF_NAMED_ATTACHMENT is set */
     uint16_t sound;
     uint32_t frame;
+    uint32_t upper_frame; /* WC3: one-shot clip on the bones from the chest up, 0 = none */
     uint8_t event;
     uint32_t flags;
     uint8_t renderfx;
@@ -1069,6 +1074,7 @@ typedef enum {
 #define UIFLAG_TEXT_RANK_SHIFT 22
 #define UIFLAG_TEXT_RANK_MASK (3u << UIFLAG_TEXT_RANK_SHIFT)
 #define UIFLAG_TEXTURE_OVERLAY (1 << 19) // flag bit; draws a texture after the containing layout artwork
+#define UIFLAG_PAINT_ORDERED (1u << 24) // flag bit; skip the per-type passes and paint in frame-number order (script frames)
 #define UIFLAG_MINIMAP_PREVIEW (1 << 15) // flag bit; frame text names a static map preview; excludes fog, camera and input
 #define UIFLAG_ALERT_RED_PULSE (1 << 14) // flag bit; command-button art pulses red until frame.value absolute milliseconds; used for transient alerts
 /* Generic disabled-control state carried in the high bits of uiFrame_t.flagsvalue.
@@ -1081,7 +1087,7 @@ typedef enum {
      UIFLAG_SPRITE_STAT_SEQUENCE op UIFLAG_EXTEND_WIDESCREEN_X op UIFLAG_ALERT_RED_PULSE op \
      UIFLAG_MINIMAP_PREVIEW op UIFLAG_SPRITE_OVERLAY op UIFLAG_ABILITY_ENGAGED op \
      UIFLAG_ORDER_QUEUEABLE op UIFLAG_TEXTURE_OVERLAY op UIFLAG_TEXT_OVERLAY op \
-     UIFLAG_TEXT_RANK_MASK op UIFRAME_DISABLED)
+     UIFLAG_TEXT_RANK_MASK op UIFRAME_DISABLED op UIFLAG_PAINT_ORDERED)
 _Static_assert(UIFLAG_SHARED_BITS(+) == UIFLAG_SHARED_BITS(|), "UIFLAG_* bits overlap");
 _Static_assert((UIFLAG_SHARED_BITS(|) & ((1 << 9) - 1)) == 0, "UIFLAG_* bits collide with FDF state bits 0..8");
 

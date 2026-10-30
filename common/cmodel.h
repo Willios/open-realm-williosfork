@@ -81,6 +81,7 @@ bool CM_ClosestReachablePointForRadiusFlags(vec2_t const *from, vec2_t const *ta
                                             uint8_t blocked_flags, vec2_t *out);
 bool CM_PointIsPathableForRadius(vec2_t const *location, float radius);
 bool CM_PointIsPathableForRadiusFlags(vec2_t const *location, float radius, uint8_t blocked_flags);
+bool CM_ClosestStaticPathablePointForRadius(vec2_t const *location, float radius, vec2_t *out);
 bool CM_LineIsWalkable(vec2_t const *a, vec2_t const *b);
 /* Optional byte-mask pathing sample used by generic local presentation.
  * Backends without a compatible cell mask return false and clear flags. */
