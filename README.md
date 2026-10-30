@@ -1,3 +1,18 @@
+> **This is the `survivor` branch of a fork of [OpenRealm](https://github.com/corepunch/open-realm)**,
+> the engine behind **[Warcraft Survivors](https://github.com/Willios/Warcraft-3-Mod-survivor)**, a
+> survivors-style game built from Warcraft III. All the credit for the engine goes to corepunch and
+> the OpenRealm contributors; this branch adds what the game needs on top:
+>
+> - a Lua 5.4 script host that maps Lua calls onto the engine's JASS natives (`games/warcraft-3/game/g_lua.c`)
+> - the Reforged-era natives the game uses: UI frames, keyboard events, unit and effect setters
+>   (`api/api_reforged.h`, `hud/hud_script_frames.c`, `g_oskey.c`)
+> - preload files for saved profiles (`g_preload.c`)
+> - fixes found while building the game (timers, damage events, pathing, sounds, effects...)
+>
+> To build and play the game, follow the
+> [Warcraft Survivors README](https://github.com/Willios/Warcraft-3-Mod-survivor#readme).
+> The original OpenRealm README follows.
+
 <p align="center">
   <img width="480" height="320" src="https://github.com/user-attachments/assets/e4491ef4-fa69-4efd-814f-f7335d4c448a" />
 </p>
