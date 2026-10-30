@@ -8,9 +8,12 @@
 >   (`api/api_reforged.h`, `hud/hud_script_frames.c`, `g_oskey.c`)
 > - preload files for saved profiles (`g_preload.c`)
 > - fixes found while building the game (timers, damage events, pathing, sounds, effects...)
+> - a browser build of the game (`port/web/build-survivor.sh`, `port/web/site/survivor.js`): self-hosted
+>   game data downloaded once into the browser, and archive reads in 256 KB chunks (`common/mpq.c`),
+>   which took map loads in the browser from about a minute to a few seconds
 >
-> To build and play the game, follow the
-> [Warcraft Survivors README](https://github.com/Willios/Warcraft-3-Mod-survivor#readme).
+> **[▶ Play Warcraft Survivors in your browser](https://warcraftsurvivor.para-bellum.eu)**, or build and
+> play it from the [Warcraft Survivors README](https://github.com/Willios/Warcraft-3-Mod-survivor#readme).
 > The original OpenRealm README follows.
 
 <p align="center">
