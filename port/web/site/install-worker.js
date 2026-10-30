@@ -264,8 +264,10 @@ async function collectOldGenerations(dir, current, previous) {
 }
 
 // Game data served by the page's own host (a self-hosted game page), listed
-// in its data manifest: {id, files:[{name, size}]} with names relative to the
-// manifest URL. Archives sit at the top level, maps under Maps/.
+// in its data manifest: {id, files:[{name, size, sha1}]} with names relative to
+// the manifest URL. Archives sit at the top level, maps under Maps/. A file
+// whose name, size and sha1 match the installed generation's is copied from
+// it instead of downloaded again, so an update fetches only what changed.
 const hostedArchive = name => /^[a-z0-9][a-z0-9 _().-]{0,200}\.mpq$/i.test(name);
 const hostedMap = name => {
   const parts = name.split('/');
@@ -284,14 +286,34 @@ function hostedSources(hosted) {
   return hosted.files.map(entry => {
     if (!entry || typeof entry.name !== 'string' ||
         !(hostedArchive(entry.name) || hostedMap(entry.name)) ||
-        !Number.isSafeInteger(entry.size) || entry.size < 32)
+        !Number.isSafeInteger(entry.size) || entry.size < 32 ||
+        (entry.sha1 !== undefined && !/^[0-9a-f]{40}$/.test(entry.sha1)))
       throw new Error('Invalid hosted game data entry');
     const key = entry.name.toLowerCase();
     if (seen.has(key)) throw new Error('Duplicate hosted file: ' + entry.name);
     seen.add(key);
     const url = new URL(entry.name.split('/').map(encodeURIComponent).join('/'), base);
-    return {name:entry.name, size:entry.size, url:url.href, source:'server'};
+    return {name:entry.name, size:entry.size, sha1:entry.sha1, url:url.href, source:'server'};
   });
+}
+
+// The installed copy of a hosted file, when the previous generation holds the
+// same name, size and sha1; null otherwise.
+async function reusableFile(dir, previous, f) {
+  if (!f.sha1 || !previous || !Array.isArray(previous.files) ||
+      typeof previous.generation !== 'string' || !isGeneration(previous.generation)) return null;
+  const old = previous.files.find(e => e && typeof e.name === 'string' &&
+    e.name.toLowerCase() === f.name.toLowerCase());
+  if (!old || old.sha1 !== f.sha1 || old.size !== f.size) return null;
+  try {
+    let parent = await dir.getDirectoryHandle(previous.generation);
+    const parts = old.name.split('/');
+    for (const part of parts.slice(0, -1)) parent = await parent.getDirectoryHandle(part);
+    const file = await (await parent.getFileHandle(parts.at(-1))).getFile();
+    return file.size === f.size ? file : null;
+  } catch (_) {
+    return null; // Gone or unreadable: download it.
+  }
 }
 
 async function install(files, hosted) {
@@ -347,9 +369,11 @@ async function install(files, hosted) {
       for (const part of parts.slice(0, -1))
         parent = await parent.getDirectoryHandle(part, {create:true});
       const dest = await parent.getFileHandle(parts[parts.length - 1], {create:true});
+      // Unchanged since the installed generation: copy it locally, like an import.
+      const blob = hosted ? (await reusableFile(dir, previous, f)) || f.blob : f.blob;
       const writable = await dest.createWritable();
       try {
-        if (f.url) {
+        if (f.url && !blob) {
           const response = await fetch(f.url, {signal:scanController.signal, cache:'no-store'});
           if (!response.ok || !response.body)
             throw new Error('Download failed: ' + f.name + ' (HTTP ' + response.status + ')');
@@ -369,7 +393,7 @@ async function install(files, hosted) {
         }
         else for (let pos = 0; pos < f.size; pos += CHUNK) {
           checkCancelled();
-          const buffer = await f.blob.slice(pos, Math.min(f.size, pos + CHUNK)).arrayBuffer();
+          const buffer = await blob.slice(pos, Math.min(f.size, pos + CHUNK)).arrayBuffer();
           checkCancelled();
           await writable.write(buffer);
           copied += buffer.byteLength;
@@ -390,7 +414,8 @@ async function install(files, hosted) {
       (missing.length ? 'partial-expansion' : 'expansion');
     const manifest = {
       version:3, generation, edition, completeness, missing,
-      files:selected.map(f=>({name:f.name,size:f.size})), bytes:total
+      files:selected.map(f=>f.sha1 ? {name:f.name,size:f.size,sha1:f.sha1} : {name:f.name,size:f.size}),
+      bytes:total
     };
     if (hosted) manifest.hosted = hosted.id;
     // This root manifest is the sole commit point. Do not remove any old

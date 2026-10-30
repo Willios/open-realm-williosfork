@@ -7,8 +7,9 @@ listed in src/engine_boot.lua, SURVIVOR_ENGINE) into <out>/data and writes
 player's first visit. The id changes whenever a file changes, so players
 download again only then.
 
-The archives are trimmed (see trim_archives): files the survivor build never
-reads are dropped, everything else is copied byte for byte with the same
+The archives are trimmed (see trim_archives) to the files the game reads,
+recorded by tools/web_trace.py in the survivor repository (--reads, its
+tools/web_trace_reads.txt). Kept files are copied byte for byte with the same
 hash table, so lookups behave as in the full archives. --full keeps them whole.
 
 This is Blizzard data: never commit it or publish it to GitHub.
@@ -26,23 +27,13 @@ import struct
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ARCHIVES = ("War3.mpq", "War3Local.mpq", "War3x.mpq", "War3xLocal.mpq")  # Lowest priority first.
-LISTFILE = ROOT / "tools" / "WarcraftIIIFileListZezulaLadik.txt"
 
 # --- MPQ v1 trim -------------------------------------------------------------
-# The engine opens a file from the highest archive that has it (FS_OpenFile), so
-# a lower copy of a model, texture or sound is never read. Text data is merged
-# across archives (FS_ReadFileAll), so every copy of it stays. Unnamed files
-# (not in the listfile) always stay.
-MEDIA = (".BLP", ".MDX", ".MDL", ".WAV", ".MP3", ".TGA", ".TTF", ".DDS", ".JPG", ".MPQ")  # Names are upper case.
-DROP_PREFIXES = (
-    "SOUND\\DIALOGUE\\",  # Campaign and cinematic voices (DialogSounds.slk).
-    "MAPS\\CAMPAIGN\\",
-    "MAPS\\FROZENTHRONE\\CAMPAIGN\\",
-)
-KEEP_PREFIXES = ("SOUND\\DIALOGUE\\GENERICWARNINGS\\",)  # UISounds.slk warnings.
-# Low/medium texture quality sets; the engine never mounts them (it does mount
-# the single-letter tileset archives, R_W3OpenTilesetArchive).
-DROP_FILES = {"WAR3_LOW.MPQ", "WAR3_MED.MPQ", "WAR3X_LOW.MPQ", "WAR3X_MED.MPQ"}
+# The reads list names, per archive, every file the engine opened in the traced
+# sessions (the highest archive's copy, and every copy of merged text data);
+# "*" stands for the highest archive that has the file. Everything else is
+# dropped, except the archives' own special files.
+SPECIAL = ("(listfile)", "(attributes)", "(signature)")
 
 M32 = 0xFFFFFFFF
 FILE_EXISTS, FILE_ENCRYPTED, FILE_FIX_KEY = 0x80000000, 0x00010000, 0x00020000
@@ -125,18 +116,31 @@ def read_archive(path):
             "hashes": hashes, "blocks": blocks}
 
 
-def archive_names(archive, keys):
-    """Listfile names found in the archive: {block index: upper-case name}."""
-    by_hash = {(e[0], e[1]): e[3] for e in archive["hashes"] if e[3] < len(archive["blocks"])}
-    return {by_hash[k]: name for k, name in keys.items() if k in by_hash}
+def find_blocks(archive, name):
+    """Block indexes of every locale's copy of name (empty when absent)."""
+    hashes, blocks = archive["hashes"], archive["blocks"]
+    mask = len(hashes) - 1
+    h1, h2 = mpq_hash(name, 1), mpq_hash(name, 2)
+    i, found = mpq_hash(name, 0) & mask, []
+    for _ in range(len(hashes)):
+        a, b, _, block = hashes[i]
+        if block == 0xFFFFFFFF:  # Free entry: the probe chain ends.
+            break
+        if a == h1 and b == h2 and block < len(blocks) and blocks[block][3] & FILE_EXISTS:
+            found.append(block)
+        i = (i + 1) & mask
+    return found
 
 
-def dropped(name, higher):
-    if any(name.startswith(p) for p in KEEP_PREFIXES):
-        return False
-    if name in DROP_FILES or any(name.startswith(p) for p in DROP_PREFIXES):
-        return True
-    return name.endswith(MEDIA) and name in higher
+def read_list(path):
+    """{archive name (lower case) or '*': [file names]} from a reads list."""
+    wanted = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        archive, sep, name = line.partition("\t")
+        if not sep or not name:
+            continue
+        wanted.setdefault(archive.lower(), []).append(name.replace("/", "\\"))
+    return wanted
 
 
 def write_trimmed(archive, names, drop, target):
@@ -189,25 +193,39 @@ def write_trimmed(archive, names, drop, target):
     return total
 
 
-def trim_archives(wc3, data):
+def trim_archives(wc3, data, reads):
     """Write trimmed copies of ARCHIVES into data/. Returns {name: (kept, full) sizes}."""
-    keys = {}
-    for line in LISTFILE.read_text(encoding="latin-1").splitlines():
-        name = line.strip().upper().replace("/", "\\")
-        if name:
-            keys[(mpq_hash(name, 1), mpq_hash(name, 2))] = name
+    wanted = read_list(reads)
+    unknown = set(wanted) - {"*"} - {name.lower() for name in ARCHIVES}
+    if unknown:
+        raise SystemExit("reads list names unknown archives: " + ", ".join(sorted(unknown)))
     archives = [read_archive(wc3 / name) for name in ARCHIVES]
-    names = [archive_names(a, keys) for a in archives]
+    keep = [{} for _ in ARCHIVES]  # Per archive: {block index: name}.
+    for index, name in enumerate(ARCHIVES):
+        for path in wanted.get(name.lower(), []) + list(SPECIAL):
+            found = find_blocks(archives[index], path)
+            if not found and path not in SPECIAL:
+                raise SystemExit("%s has no %s: was the list traced on another install?" % (name, path))
+            keep[index].update((block, path) for block in found)
+    absent = []  # "*" entries come from the listfile too (sound variants): not all exist.
+    for path in wanted.get("*", []):
+        for index in reversed(range(len(ARCHIVES))):
+            found = find_blocks(archives[index], path)
+            if found:
+                keep[index].update((block, path) for block in found)
+                break
+        else:
+            absent.append(path)
+    if absent:
+        print("  %d listed files are in no archive (first: %s)" % (len(absent), absent[0]))
     sizes = {}
     for index, name in enumerate(ARCHIVES):
-        higher = set()
-        for later in names[index + 1:]:
-            higher.update(later.values())
-        drop = {i for i, n in names[index].items() if dropped(n, higher)}
-        sizes[name] = (write_trimmed(archives[index], names[index], drop, data / name),
+        blocks = archives[index]["blocks"]
+        drop = {i for i, b in enumerate(blocks) if b[3] & FILE_EXISTS and i not in keep[index]}
+        sizes[name] = (write_trimmed(archives[index], keep[index], drop, data / name),
                        (wc3 / name).stat().st_size)
-        print("  %-15s %4.0f MB -> %4.0f MB (%d files dropped)" %
-              (name, sizes[name][1] / 1048576, sizes[name][0] / 1048576, len(drop)))
+        print("  %-15s %4.0f MB -> %4.0f MB (%d files kept)" %
+              (name, sizes[name][1] / 1048576, sizes[name][0] / 1048576, len(keep[index])))
     return sizes
 
 
@@ -238,6 +256,8 @@ def main():
     parser.add_argument("wc3", help="Warcraft III 1.29 folder (War3.mpq, Maps/)")
     parser.add_argument("out", help="built survivor page (build/web/survivor)")
     parser.add_argument("--boot", default=str(ROOT.parent / "src" / "engine_boot.lua"))
+    parser.add_argument("--reads", default=str(ROOT.parent / "tools" / "web_trace_reads.txt"),
+                        help="files to keep (tools/web_trace.py reads)")
     parser.add_argument("--full", action="store_true", help="link the archives whole instead of trimming them")
     args = parser.parse_args()
     wc3 = pathlib.Path(args.wc3)
@@ -246,7 +266,7 @@ def main():
     for name in names:
         if not (wc3 / name).is_file():
             raise SystemExit("missing " + str(wc3 / name))
-    trimmed = set() if args.full else set(trim_archives(wc3, data))
+    trimmed = set() if args.full else set(trim_archives(wc3, data, pathlib.Path(args.reads)))
     files = []
     digest = hashlib.sha1()
     for name in names:
@@ -256,12 +276,13 @@ def main():
         else:
             place(source, data / name)
         size = source.stat().st_size
-        files.append({"name": name, "size": size})
+        # Whole-file sha1: the page re-downloads only files whose sha1 changed.
+        sha1 = hashlib.sha1()
         with open(source, "rb") as handle:
-            # Size plus the first and last MiB: cheap, and any patch changes them.
-            digest.update(name.encode() + str(size).encode() + handle.read(1 << 20))
-            handle.seek(max(0, size - (1 << 20)))
-            digest.update(handle.read())
+            for chunk in iter(lambda: handle.read(1 << 22), b""):
+                sha1.update(chunk)
+        files.append({"name": name, "size": size, "sha1": sha1.hexdigest()})
+        digest.update((name + str(size) + sha1.hexdigest()).encode())
     manifest = {"id": digest.hexdigest()[:16], "files": files}
     (data / "files.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     total = sum(f["size"] for f in files)

@@ -3,6 +3,7 @@
  * - the game data is self-hosted beside the page (data/files.json, written by
  *   port/web/make_survivor_data.py): the first visit downloads it into OPFS
  *   with install-worker.js, later visits start at once until its id changes;
+ *   an update then downloads only the files whose sha1 changed;
  *   without data/files.json the page falls back to importing local files;
  * - the engine starts on the survivor menu map like play_survivor.bat. */
 (function () {
@@ -101,7 +102,7 @@
       worker.onmessage = ({data}) => {
         if (data.type === 'progress') {
           bar.value = data.total ? data.copied / data.total : 0;
-          status('Downloading game data (first visit only): ' + mib(data.copied) + ' / ' + mib(data.total) +
+          status('Downloading game data: ' + mib(data.copied) + ' / ' + mib(data.total) +
             ' (' + Math.round(100 * bar.value) + '%)');
         } else if (data.type === 'phase' && data.phase === 'storage') {
           status('Checking browser storage...');
@@ -130,7 +131,7 @@
     if (!hosted) return; // No hosted data: the import panel stays.
     hide($('data-panel'));
     hosted.base = DATA;
-    // About 1.2 GB: ask the browser not to evict it under storage pressure.
+    // About 200 MB: ask the browser not to evict it under storage pressure.
     if (navigator.storage && navigator.storage.persist)
       await navigator.storage.persist().catch(() => false);
     const local = await localManifest();

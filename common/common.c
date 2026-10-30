@@ -994,6 +994,24 @@ static void FS_FindCollectLooseDir(fsFind_t *find, cstring_t root, cstring_t rel
 
 static handle_t FS_OpenNestedLooseFile(cstring_t filename);
 
+/* OPENREALM_FSTRACE=<file>: append "<archive>\t<file>" for every archive read
+ * ("-" when no archive has it): the read set port/web/make_survivor_data.py
+ * keeps for the browser data (tools/web_trace.py in the survivor repository). */
+static void FS_TraceRead(cstring_t archiveName, cstring_t fileName) {
+    static FILE *trace;
+    static bool checked;
+
+    if (!checked) {
+        cstring_t path = getenv("OPENREALM_FSTRACE");
+        checked = true;
+        if (path && *path) trace = fopen(path, "a");
+    }
+    if (trace) {
+        fprintf(trace, "%s\t%s\n", archiveName, fileName);
+        fflush(trace);
+    }
+}
+
 handle_t FS_OpenFile(cstring_t fileName) {
     while (filelock) {
         PF_Sleep(10);
@@ -1016,6 +1034,7 @@ handle_t FS_OpenFile(cstring_t fileName) {
         if (!FS_ArchiveFileVisible(archiveNames[i], fileName))
             continue;
         if (SFileOpenFileEx(archives[i], fileName, SFILE_OPEN_FROM_MPQ, &file)) {
+            FS_TraceRead(archiveNames[i], fileName);
             return file;
         }
     }
@@ -1023,6 +1042,7 @@ handle_t FS_OpenFile(cstring_t fileName) {
     if (looseNestedFile) {
         return looseNestedFile;
     }
+    FS_TraceRead("-", fileName);
     filelock = false;
     return NULL;
 }
@@ -1264,6 +1284,7 @@ void FS_ReadFileAll(cstring_t filename, void (*callback)(handle_t buf, uint32_t 
         if (!archives[i]) continue;
         if (!FS_ArchiveFileVisible(archiveNames[i], filename)) continue;
         if (!SFileOpenFileEx(archives[i], filename, SFILE_OPEN_FROM_MPQ, &file)) continue;
+        FS_TraceRead(archiveNames[i], filename);
         uint32_t sz = SFileGetFileSize(file, NULL);
         string_t buf = MemAlloc(sz + 1);
         SFileReadFile(file, buf, sz, NULL, NULL);
