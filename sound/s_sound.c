@@ -685,9 +685,12 @@ static int S_WebAudioProduce(void *arg) {
             web_audio_samples[dst * 2] = mixed[i * 2];
             web_audio_samples[dst * 2 + 1] = mixed[i * 2 + 1];
         }
+        /* No sleep between chunks: on Windows a 2 ms sleep lasts a whole
+         * 15.6 ms timer tick, so one 11.6 ms chunk per sleep starved the
+         * worklet (a quarter of its blocks played silence: crackling). Fill
+         * to the target, then sleep; the 93 ms queue covers a long tick. */
         atomic_store_explicit(&web_audio_write, write + WEB_AUDIO_CHUNK,
                               memory_order_release);
-        SDL_Delay(2);
     }
     return 0;
 }

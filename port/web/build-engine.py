@@ -141,7 +141,9 @@ def main():
         # own unrelated FDF implementation.
         extra = ["-DSTB_FDF_IMPLEMENTATION", "-DSTB_FDF_GLOBALS"] if name in ("game", "menu", "engine") else []
         if name == "engine":
-            extra.append("-DBZ_CLIENT_WORLD")
+            # BZ_MUSIC_MP3: stream the mp3Music tracks with the vendored
+            # minimp3 (sound/s_mp3.c), as the native build does (game.mk).
+            extra.extend(["-DBZ_CLIENT_WORLD", "-DBZ_MUSIC_MP3"])
         if name in ("game", "menu"):
             # Each native module owns a distinct FDF registry/parser and host
             # callbacks. Preserve that separation in the single WASM link.

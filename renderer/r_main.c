@@ -602,11 +602,22 @@ static bool R_VideoNative(void) {
 /* vid_fullscreen 2: a borderless window covering the desktop. It is a plain
  * window, so Alt+Tab switches away without a mode change or a minimize. */
 static bool R_VideoBorderless(void) {
+#ifdef __EMSCRIPTEN__
+    return false;
+#else
     return atoi(ri.CvarString("vid_fullscreen", "0")) == 2 && !R_VideoHidden();
+#endif
 }
 
+/* In a browser the page's fullscreen button owns fullscreen: an SDL request
+ * (config.cfg ships vid_fullscreen 1) is deferred by Emscripten to the next
+ * click or key, which threw the page into fullscreen on the first click. */
 static bool R_VideoFullscreen(void) {
+#ifdef __EMSCRIPTEN__
+    return false;
+#else
     return R_CvarEnabled("vid_fullscreen", "0") && !R_VideoBorderless() && !R_VideoHidden();
+#endif
 }
 
 static bool R_GetDesktopMode(SDL_DisplayMode *mode) {

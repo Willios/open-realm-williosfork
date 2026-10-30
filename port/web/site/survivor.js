@@ -13,6 +13,7 @@
   window.openrealmExtraArguments = [
     '+set', 'wc3_loading_quiet', '1',
     '+set', 'scr_showfps', '0',
+    '+set', 'survivor_web', '1', // the game menu hides Quit Game (a page cannot close itself)
     '+set', 'wc3_lua_script', 'Scripts/Survivor/ashenvale_survivor.lua,Scripts/Survivor/engine_boot.lua',
     '+map', 'Maps/FrozenThrone/(6)Moonglade.w3x'
   ];
