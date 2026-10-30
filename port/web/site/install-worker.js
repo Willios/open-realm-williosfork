@@ -263,7 +263,38 @@ async function collectOldGenerations(dir, current, previous) {
   }
 }
 
-async function install(files) {
+// Game data served by the page's own host (a self-hosted game page), listed
+// in its data manifest: {id, files:[{name, size}]} with names relative to the
+// manifest URL. Archives sit at the top level, maps under Maps/.
+const hostedArchive = name => /^[a-z0-9][a-z0-9 _().-]{0,200}\.mpq$/i.test(name);
+const hostedMap = name => {
+  const parts = name.split('/');
+  return parts.length >= 2 && parts.length <= 8 && parts[0] === 'Maps' &&
+    parts.slice(1, -1).every(segment => /^[a-z0-9][a-z0-9 _().-]{0,100}$/i.test(segment)) &&
+    /^[a-z0-9(][a-z0-9 _().'-]{0,200}\.w3[mx]$/i.test(parts.at(-1));
+};
+function hostedSources(hosted) {
+  if (!hosted || typeof hosted.id !== 'string' || !/^[a-z0-9._-]{1,64}$/i.test(hosted.id) ||
+      typeof hosted.base !== 'string' || !Array.isArray(hosted.files) ||
+      !hosted.files.length || hosted.files.length > MAX_INPUT_FILES)
+    throw new Error('Invalid hosted game data manifest');
+  const base = new URL(hosted.base, self.location.href);
+  if (base.origin !== self.location.origin) throw new Error('Hosted game data must be same-origin');
+  const seen = new Set();
+  return hosted.files.map(entry => {
+    if (!entry || typeof entry.name !== 'string' ||
+        !(hostedArchive(entry.name) || hostedMap(entry.name)) ||
+        !Number.isSafeInteger(entry.size) || entry.size < 32)
+      throw new Error('Invalid hosted game data entry');
+    const key = entry.name.toLowerCase();
+    if (seen.has(key)) throw new Error('Duplicate hosted file: ' + entry.name);
+    seen.add(key);
+    const url = new URL(entry.name.split('/').map(encodeURIComponent).join('/'), base);
+    return {name:entry.name, size:entry.size, url:url.href, source:'server'};
+  });
+}
+
+async function install(files, hosted) {
   if (active) throw new Error('An installation is already in progress');
   // Own the entire scan, validation and copy lifecycle, not only OPFS writes.
   active = true;
@@ -274,11 +305,14 @@ async function install(files) {
   let committed = false;
   let previous = null;
   try {
-    const {sources:selected, edition} = await selectSources(files);
+    // Downloads are validated by filesystem-bridge.js before the engine starts.
+    const {sources:selected, edition} = hosted
+      ? {sources:hostedSources(hosted), edition:'retail'}
+      : await selectSources(files);
     checkCancelled();
     // Validate before creating any replacement generation. Maps are MPQs too.
     postMessage({type:'phase', phase:'validating'});
-    for (const file of selected) await checkMpqHeader(file);
+    if (!hosted) for (const file of selected) await checkMpqHeader(file);
     checkCancelled();
     const total = selected.reduce((sum, f) => sum + f.size, 0);
     if (!Number.isSafeInteger(total)) throw new Error('Installation size overflow');
@@ -315,7 +349,25 @@ async function install(files) {
       const dest = await parent.getFileHandle(parts[parts.length - 1], {create:true});
       const writable = await dest.createWritable();
       try {
-        for (let pos = 0; pos < f.size; pos += CHUNK) {
+        if (f.url) {
+          const response = await fetch(f.url, {signal:scanController.signal, cache:'no-store'});
+          if (!response.ok || !response.body)
+            throw new Error('Download failed: ' + f.name + ' (HTTP ' + response.status + ')');
+          const reader = response.body.getReader();
+          for (;;) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            checkCancelled();
+            if (fileCopied + value.byteLength > f.size) throw new Error('Download larger than expected: ' + f.name);
+            await writable.write(value);
+            copied += value.byteLength;
+            fileCopied += value.byteLength;
+            postMessage({type:'progress', file:f.name, copied, total,
+              index:index+1, count:selected.length, fileCopied, fileSize:f.size});
+          }
+          if (fileCopied !== f.size) throw new Error('Download incomplete: ' + f.name);
+        }
+        else for (let pos = 0; pos < f.size; pos += CHUNK) {
           checkCancelled();
           const buffer = await f.blob.slice(pos, Math.min(f.size, pos + CHUNK)).arrayBuffer();
           checkCancelled();
@@ -340,6 +392,7 @@ async function install(files) {
       version:3, generation, edition, completeness, missing,
       files:selected.map(f=>({name:f.name,size:f.size})), bytes:total
     };
+    if (hosted) manifest.hosted = hosted.id;
     // This root manifest is the sole commit point. Do not remove any old
     // generation here: the engine may still have archives open from it.
     const handle = await dir.getFileHandle(META,{create:true});
@@ -387,6 +440,7 @@ onmessage = async ({data}) => {
   }
   try {
     if(data.type==='import') await withCommitLock(() => install(data.files));
+    else if(data.type==='download') await withCommitLock(() => install(null, data.hosted));
     else if(data.type==='list') await list();
     else if(data.type==='remove') await withCommitLock(remove);
   } catch(err) {

@@ -1,0 +1,21 @@
+# Warcraft Survivors on Apache shared hosting (OVH): copied as .htaccess.
+
+# The engine uses WebAssembly threads (SharedArrayBuffer), which browsers
+# allow only on a cross-origin isolated page.
+<IfModule mod_headers.c>
+    Header always set Cross-Origin-Opener-Policy "same-origin"
+    Header always set Cross-Origin-Embedder-Policy "require-corp"
+    Header always set Cross-Origin-Resource-Policy "same-origin"
+    # A new data/files.json must reach players at once (it decides re-downloads).
+    <Files "files.json">
+        Header set Cache-Control "no-cache"
+    </Files>
+</IfModule>
+
+AddType application/wasm .wasm
+AddType application/manifest+json .webmanifest
+
+# Isolation (and so the game) needs HTTPS.
+RewriteEngine On
+RewriteCond %{SERVER_PORT} 80
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]

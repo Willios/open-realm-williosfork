@@ -286,7 +286,12 @@ static void Sys_ResolveHomeDirectory(void) {
     return;
 #endif
 #ifdef __EMSCRIPTEN__
+#ifdef BZ_WEB_HOME
+    /* Persistent (OPFS) user directory for builds whose saves must survive a reload. */
+    FS_SetHomeDirectory(BZ_WEB_HOME);
+#else
     FS_SetHomeDirectory("/openrealm/user");
+#endif
     return;
 #endif
     PATHSTR dir;

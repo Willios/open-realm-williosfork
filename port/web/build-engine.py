@@ -45,9 +45,16 @@ def main():
                         help="build an unoptimized, DWARF-symbolized browser engine for runtime failures")
     parser.add_argument("--compat-workarounds", type=int, choices=(0, 1), default=1,
                         help="enable compatibility workarounds (default: 1)")
+    parser.add_argument("--survivor", metavar="SRC",
+                        help="Warcraft Survivors build: embed SRC/*.lua and SRC/art, keep the user "
+                             "directory in OPFS and start the survivor page (survivor.js)")
+    parser.add_argument("--define", action="append", default=[], metavar="NAME[=VALUE]",
+                        help="extra preprocessor define for every module (e.g. DEBUG_MAP_LOAD)")
     args = parser.parse_args()
     if args.debug and args.out == "build/web/engine":
         args.out = "build/web/engine-debug"
+    if args.survivor and args.out == "build/web/engine":
+        args.out = "build/web/survivor"
     out = (ROOT / args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     emcc = shutil.which(args.emcc)
@@ -71,6 +78,17 @@ def main():
     if replacements != 1:
         raise SystemExit("expected exactly one F12 binding in " + str(wc3_share / "config.cfg"))
     config.write_text(config_text, encoding="utf-8")
+    if args.survivor:
+        # The survivor scripts and their art, at the path the native
+        # play_survivor.bat uses (wc3_lua_script "Scripts/Survivor/...").
+        survivor_src = pathlib.Path(args.survivor).resolve()
+        scripts = web_share / "Scripts" / "Survivor"
+        scripts.mkdir(parents=True, exist_ok=True)
+        lua_files = sorted(survivor_src.glob("*.lua"))
+        if not (survivor_src / "ashenvale_survivor.lua").is_file() or not (survivor_src / "engine_boot.lua").is_file():
+            raise SystemExit("missing survivor scripts in " + str(survivor_src))
+        for path in lua_files + sorted((survivor_src / "art").glob("*.tga")):
+            shutil.copy2(path, scripts / path.name)
     module_sources = {
         # shared/test.c defines a function-like TEST macro. In a unity build
         # that leaks into blast.c, where #ifdef TEST enables its standalone
@@ -80,6 +98,9 @@ def main():
         # isolate its TEST macro from vendor unity sources.
         "test_harness": [ROOT / "shared/test.c"],
         "jass": sources(wc3 + "/jass"),
+        # Vendored Lua 5.4 VM for the game's Lua host (g_lua.c); the
+        # interpreter/compiler drivers carry their own main().
+        "lua": sources("vendor/lua/src", exclude=("lua.c", "luac.c")),
         "renderer": sources("renderer", wc3 + "/renderer"),
         "game": sources(wc3 + "/game", exclude=("g_save.c",)) +
                 [ROOT / "port/web/src/web_save_unsupported.c"],
@@ -104,11 +125,11 @@ def main():
     debug_flags = ["-g3", "-fno-omit-frame-pointer"] if args.debug else []
     flags = [optimization, *debug_flags, "-I.", "-Ishared", "-Ishared/types", "-I" + wc3,
              "-I" + wc3 + "/common", "-I" + wc3 + "/game",
-             "-I" + wc3 + "/game/api", "-I" + wc3 + "/game/skills",
+             "-I" + wc3 + "/game/api", "-I" + wc3 + "/game/skills", "-Ivendor/lua/src",
              "-DWC3", "-DUSE_FOGOFWAR", '-DBZ_GAME="warcraft-3"',
              "-DBZ_GL_ES3", "-DBZ_MSAA_SAMPLES=0",
              "-DBZ_COMPAT_WORKAROUNDS=" + str(args.compat_workarounds),
-             "-sUSE_SDL=2", "-sUSE_ZLIB=1", "-pthread"]
+             "-sUSE_SDL=2", "-sUSE_ZLIB=1", "-pthread"] + ["-D" + d for d in args.define]
     objects = []
     for name, files in module_sources.items():
         unit = out / (name + "_unity.c")
@@ -128,6 +149,13 @@ def main():
                           "-DBZ_WEB_FDF_" + name.upper()])
         if name == "renderer":
             extra.extend(["-include", "port/web/src/web_renderer_namespace.h"])
+        if name == "lua":
+            # POSIX without LUA_USE_DLOPEN: no dynamic C modules in WASM.
+            extra.append("-DLUA_USE_POSIX")
+        if name == "engine" and args.survivor:
+            # Saves (Preload profile, config.cfg) must survive a reload: the
+            # default /openrealm/user lives in memory.
+            extra.append('-DBZ_WEB_HOME="/opfs/openrealm/user"')
         if not args.check:
             run([emcc, *flags, *extra, "-c", unit, "-o", obj])
         objects.append(obj)
@@ -145,6 +173,19 @@ def main():
         print("Source validation complete; generated unity files in", out)
         return
     shell = ROOT / "port/web/site/engine-shell.html"
+    if args.survivor:
+        # Same page with the survivor launcher (hosted data download, start
+        # arguments) loaded before installer.js/filesystem-bridge.js.
+        text = shell.read_text(encoding="utf-8")
+        for old, new in (("<title>OpenRealm</title>", "<title>Warcraft Survivors</title>"),
+                         ("<h1>OpenRealm</h1>", "<h1>Warcraft Survivors</h1>"),
+                         ('<script src="installer.js"></script>',
+                          '<script src="survivor.js"></script>\n<script src="installer.js"></script>')):
+            if text.count(old) != 1:
+                raise SystemExit("survivor shell: expected one " + old)
+            text = text.replace(old, new)
+        shell = out / "survivor-shell.html"
+        shell.write_text(text, encoding="utf-8")
     run([emcc, *objects, optimization, *debug_flags, "-sUSE_SDL=2", "-sUSE_ZLIB=1",
          "-sMIN_WEBGL_VERSION=2", "-sMAX_WEBGL_VERSION=2", "-sFULL_ES3=1",
          "-sWASMFS=1", "-pthread", "-sPROXY_TO_PTHREAD=1", "-sPTHREAD_POOL_SIZE=2",
@@ -176,6 +217,9 @@ def main():
     print("Experimental static engine build emitted to", out)
     # Pages loads this only from its game path; other hosting may ignore it.
     shutil.copy2(ROOT / "port/web/site/pages-isolation.js", out / "pages-isolation.js")
+    if args.survivor:
+        shutil.copy2(ROOT / "port/web/site/survivor.js", out / "survivor.js")
+        print("Survivor page: put the game data in", out / "data", "(port/web/make_survivor_data.py)")
     print("OPFS archives mounted through WasmFS; native engine link/runtime remains experimental.")
 
 

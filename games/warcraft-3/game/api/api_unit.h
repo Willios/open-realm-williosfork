@@ -1205,10 +1205,13 @@ uint32_t UnitWakeUp(jass_t *j) {
     G_UnitWakeUp(whichUnit);
     return 0;
 }
+/* Retail shows the given buff on the timed-life bar; only BTLF expiry kills
+ * here (unit_status_timedlife), so every script timed life is a BTLF status. */
 uint32_t UnitApplyTimedLife(jass_t *j) {
-    //edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
-    //int32_t buffId = jass_checkinteger(j, 2);
-    //float duration = jass_checknumber(j, 3);
+    edict_t *whichUnit = jass_checkhandle(j, 1, "unit");
+    float duration = jass_checknumber(j, 3);
+    if (!whichUnit || duration <= 0.0f) return 0;
+    S_SpellApplyTimedLife(whichUnit, 1, duration);
     return 0;
 }
 uint32_t IssueImmediateOrder(jass_t *j) {

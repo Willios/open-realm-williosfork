@@ -326,8 +326,28 @@ typedef struct {
 
 struct mpq_cache_entry;
 
+#ifdef __EMSCRIPTEN__
+/* Browser builds read archives from OPFS through WasmFS, where every read
+ * costs a cross-thread round trip (about 2 ms) whatever its size, and files
+ * are read one 4 KB sector at a time: a map load made ~10,000 reads. Read
+ * archives in 256 KB chunks and serve sector reads from memory instead. */
+#define MPQ_READ_CHUNK (256u * 1024u)
+#define MPQ_READ_SLOTS 64 /* 16 MB per archive */
+typedef struct {
+    uint8_t *data;
+    uint32_t index;
+    uint32_t size;
+    uint32_t used;
+} mpqReadChunk_t;
+#endif
+
 typedef struct {
     FILE *fp;
+#ifdef __EMSCRIPTEN__
+    mpqReadChunk_t *chunks; /* read-only file archives only */
+    uint32_t chunk_clock;
+    uint32_t read_pos;
+#endif
     uint8_t const *memory;
     uint32_t memory_size;
     uint32_t memory_pos;
@@ -1146,8 +1166,75 @@ static bool MpqSeek(mpqArchive_t *mpq, uint32_t offset)
         mpq->memory_pos = pos;
         return true;
     }
+#ifdef __EMSCRIPTEN__
+    if (mpq->chunks) {
+        mpq->read_pos = pos;
+        return true;
+    }
+#endif
     return mpq->fp && fseek(mpq->fp, pos, SEEK_SET) == 0;
 }
+
+#ifdef __EMSCRIPTEN__
+static mpqReadChunk_t *MpqReadChunk(mpqArchive_t *mpq, uint32_t index)
+{
+    mpqReadChunk_t *slot = &mpq->chunks[0];
+    uint32_t i;
+
+    for (i = 0; i < MPQ_READ_SLOTS; i++) {
+        mpqReadChunk_t *chunk = &mpq->chunks[i];
+        if (chunk->data && chunk->size && chunk->index == index) {
+            chunk->used = ++mpq->chunk_clock;
+            return chunk;
+        }
+        if (!chunk->data || chunk->used < slot->used) {
+            slot = chunk;
+        }
+        if (!chunk->data) {
+            break;
+        }
+    }
+    if (!slot->data && !(slot->data = malloc(MPQ_READ_CHUNK))) {
+        return NULL;
+    }
+    slot->size = 0;
+    if (fseek(mpq->fp, (long)index * MPQ_READ_CHUNK, SEEK_SET) != 0) {
+        return NULL;
+    }
+    slot->size = (uint32_t)fread(slot->data, 1, MPQ_READ_CHUNK, mpq->fp);
+    slot->index = index;
+    slot->used = ++mpq->chunk_clock;
+    return slot->size ? slot : NULL;
+}
+
+static size_t MpqCachedRead(mpqArchive_t *mpq, uint8_t *out, size_t size)
+{
+    size_t done = 0;
+
+    if (size >= MPQ_READ_CHUNK) {
+        /* Big files go straight through instead of flushing the cache. */
+        if (fseek(mpq->fp, mpq->read_pos, SEEK_SET) != 0) {
+            return 0;
+        }
+        done = fread(out, 1, size, mpq->fp);
+        mpq->read_pos += (uint32_t)done;
+        return done;
+    }
+    while (done < size) {
+        uint32_t offset = mpq->read_pos % MPQ_READ_CHUNK;
+        mpqReadChunk_t *chunk = MpqReadChunk(mpq, mpq->read_pos / MPQ_READ_CHUNK);
+        size_t count;
+        if (!chunk || offset >= chunk->size) {
+            break;
+        }
+        count = MIN(size - done, chunk->size - offset);
+        memcpy(out + done, chunk->data + offset, count);
+        done += count;
+        mpq->read_pos += (uint32_t)count;
+    }
+    return done;
+}
+#endif
 
 static size_t MpqRead(mpqArchive_t *mpq, void *buffer, size_t size)
 {
@@ -1168,6 +1255,11 @@ static size_t MpqRead(mpqArchive_t *mpq, void *buffer, size_t size)
         mpq->memory_pos += (uint32_t)size;
         return size;
     }
+#ifdef __EMSCRIPTEN__
+    if (mpq->chunks) {
+        return MpqCachedRead(mpq, (uint8_t *)buffer, size);
+    }
+#endif
     return mpq->fp ? fread(buffer, 1, size, mpq->fp) : 0;
 }
 
@@ -1192,6 +1284,15 @@ static void MpqFreeReadArchive(mpqArchive_t *mpq)
     SAFE_DELETE(mpq->hashtable, free);
     SAFE_DELETE(mpq->blocktable, free);
     SAFE_DELETE(mpq->sector_buffer, free);
+#ifdef __EMSCRIPTEN__
+    if (mpq->chunks) {
+        uint32_t i;
+        for (i = 0; i < MPQ_READ_SLOTS; i++) {
+            free(mpq->chunks[i].data);
+        }
+        free(mpq->chunks);
+    }
+#endif
     SAFE_DELETE(mpq->fp, fclose);
     free(mpq);
 }
@@ -1325,6 +1426,10 @@ bool SFileOpenArchive(cstring_t filename, uint32_t priority, uint32_t flags, han
     }
 
     mpq->fp = fp;
+#ifdef __EMSCRIPTEN__
+    /* Without the slot array reads fall back to plain fseek/fread. */
+    mpq->chunks = (mpqReadChunk_t *)calloc(MPQ_READ_SLOTS, sizeof(mpqReadChunk_t));
+#endif
     strncpy(mpq->filename, filename, sizeof(mpq->filename) - 1);
     return SFileOpenArchiveSource(mpq, archive);
 }

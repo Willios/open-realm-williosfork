@@ -59,7 +59,7 @@
         parts.length <= 8 && parts[0] === 'Maps' &&
         parts.slice(1, -1).every(segment => /^[a-z0-9][a-z0-9 _().-]{0,100}$/i.test(segment) &&
           segment !== '.' && segment !== '..') &&
-        /^[a-z0-9(][a-z0-9 _().-]{0,200}\.w3[mx]$/i.test(parts.at(-1));
+        /^[a-z0-9(][a-z0-9 _().'-]{0,200}\.w3[mx]$/i.test(parts.at(-1));
       if (!entry || !(validName(entry.name) || nestedMap) ||
           !Number.isSafeInteger(entry.size) || entry.size < 32)
         throw new Error('Invalid archive manifest entry');
@@ -112,9 +112,11 @@
               status(installation.edition === 'demo'
                 ? 'Warcraft III Demo installation — limited content; starting experimental engine…'
                 : 'Validated browser installation; starting engine…');
+              // A game page (survivor.js) may append its own start arguments.
               const started = await window.openrealmStartEngine([
                 '+openrealm-data=' + installation.path,
-                '+set', 'fs_expansion', mode === 'tft' ? '1' : '0']);
+                '+set', 'fs_expansion', mode === 'tft' ? '1' : '0'
+              ].concat(window.openrealmExtraArguments || []));
               if (!started) {
                 const error = new Error('Browser support or cross-origin isolation is unavailable.');
                 error.code = 'OPENREALM_STARTUP_UNAVAILABLE';
@@ -140,8 +142,10 @@
     location.reload();
   });
   // Installer's removal-only reload must never re-acquire the game-data lease.
+  // openrealmBeforeStart (survivor.js) downloads self-hosted game data first.
   if (sessionStorage.getItem('openrealm-wc3-remove-after-reload') !== '1')
-    begin().catch(error => {
+    Promise.resolve(window.openrealmBeforeStart ? window.openrealmBeforeStart() : null)
+      .then(begin).catch(error => {
     const message = error && error.message || String(error);
     status(error && error.code === 'OPENREALM_STARTUP_UNAVAILABLE'
       ? 'Cannot start OpenRealm: ' + message
