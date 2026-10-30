@@ -10,6 +10,12 @@
     <Files "files.json">
         Header set Cache-Control "no-cache"
     </Files>
+    # The page, its scripts and index.wasm must come from the same upload: a
+    # cached old index.js with a new index.wasm leaves a black screen. They are
+    # revalidated on every load (an unchanged file costs a 304, not a download).
+    <FilesMatch "\.(html|js|wasm|webmanifest)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
 </IfModule>
 
 AddType application/wasm .wasm

@@ -49,6 +49,26 @@
     document.body.classList.toggle('survivor-playing', state === 'playing');
   };
 
+  // The engine (r_main.c, R_WebCheckContextLost) calls this when the browser
+  // drops the WebGL context: the canvas would stay black for good.
+  window.openrealmContextLost = function () {
+    if ($('survivor-context-lost')) return;
+    const box = document.createElement('div');
+    box.id = 'survivor-context-lost';
+    box.style.cssText = 'position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;' +
+      'align-items:center;justify-content:center;gap:16px;background:rgba(0,0,0,.85);color:#fcd312;' +
+      'font:16px sans-serif;text-align:center;padding:24px';
+    const text = document.createElement('p');
+    text.textContent = 'The browser dropped the game\'s graphics (WebGL context lost). ' +
+      'Reload to continue: your profile is saved, the current run is lost.';
+    const button = document.createElement('button');
+    button.textContent = 'Reload';
+    button.style.cssText = 'font:16px sans-serif;padding:8px 24px;cursor:pointer';
+    button.onclick = () => location.reload();
+    box.append(text, button);
+    document.body.appendChild(box);
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     // The edition is fixed (TFT): drop the selector's section.
     const mode = $('mode-heading');

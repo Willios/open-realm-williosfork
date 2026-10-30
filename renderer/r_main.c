@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
+#include <emscripten/em_asm.h>
 #endif
 #include <sys/stat.h>
 #ifdef _WIN32
@@ -1280,9 +1281,32 @@ void R_BeginFrame(void) {
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
+/* The browser may drop the WebGL context (GPU reset, memory pressure, a
+ * backgrounded tab). Every GL object is gone then and nothing recreates
+ * them: the canvas stays black. Check about once a second and tell the page
+ * once (survivor.js shows a reload prompt), so a black screen has a cause. */
+static void R_WebCheckContextLost(void) {
+    static uint32_t frames;
+    static bool reported;
+    if (reported || web_gl_context <= 0 || ++frames < 60) return;
+    frames = 0;
+    if (!emscripten_is_webgl_context_lost(web_gl_context)) return;
+    reported = true;
+    fprintf(stderr, "OpenRealm browser: WebGL context lost\n");
+    MAIN_THREAD_ASYNC_EM_ASM({
+        if (typeof window !== 'undefined' && typeof window.openrealmContextLost === 'function')
+            window.openrealmContextLost();
+    });
+}
+#endif
+
 void R_EndFrame(void) {
 #ifdef SC2
     R_Call(glColorMask, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+#endif
+#ifdef __EMSCRIPTEN__
+    R_WebCheckContextLost();
 #endif
     R_FinishFrameStats();
     R_UpdateSwapInterval();
