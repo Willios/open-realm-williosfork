@@ -1158,6 +1158,7 @@ void R_RenderView(void) {
     R_DrawWorld();
     R_DrawDecals();
     R_DrawSplatRects();
+    R_DrawTelegraphs();
     R_ProfileStage(RP_ENTITIES);
     R_DrawEntities();
     tr.render_phase = RENDER_PHASE_ALPHA;

@@ -61,6 +61,44 @@ void G_StopAllTerrainDeformations(void) {
     gi.multicast(&origin, MULTICAST_ALL);
 }
 
+/* Ground telegraph (boss warning): one temp event; the client animates it from
+ * its arrival, so the server keeps no state beyond the id counter. */
+uint32_t G_SendGroundTelegraph(groundTelegraph_t const *telegraph) {
+    static uint32_t telegraph_next_id;
+    groundTelegraph_t t;
+    vec3_t origin;
+    if (!telegraph || telegraph->shape >= TELEGRAPH_SHAPES) return 0;
+    t = *telegraph;
+    t.id = ++telegraph_next_id;
+    if (!t.id) t.id = ++telegraph_next_id;
+    origin = (vec3_t){ t.origin.x, t.origin.y, 0.0f };
+    gi.Write(PF_BYTE, &(int32_t){ svc_temp_entity });
+    gi.Write(PF_BYTE, &(int32_t){ TE_GROUND_TELEGRAPH });
+    gi.Write(PF_LONG, &(int32_t){ (int32_t)t.id });
+    gi.Write(PF_BYTE, &(int32_t){ (int32_t)t.shape });
+    gi.Write(PF_FLOAT, &t.origin.x);
+    gi.Write(PF_FLOAT, &t.origin.y);
+    gi.Write(PF_FLOAT, &t.angle);
+    gi.Write(PF_FLOAT, &t.radius);
+    gi.Write(PF_FLOAT, &t.inner);
+    gi.Write(PF_LONG, &(int32_t){ (int32_t)t.duration_ms });
+    gi.Write(PF_LONG, &(int32_t){ (int32_t)((uint32_t)t.color.r << 24 | (uint32_t)t.color.g << 16 |
+                                            (uint32_t)t.color.b << 8 | t.color.a) });
+    gi.Write(PF_BYTE, &(int32_t){ (int32_t)t.flags });
+    gi.multicast(&origin, MULTICAST_ALL);
+    return t.id;
+}
+
+void G_StopGroundTelegraph(uint32_t id, uint32_t fade_ms) {
+    vec3_t origin = { 0 };
+    if (!id) return;
+    gi.Write(PF_BYTE, &(int32_t){ svc_temp_entity });
+    gi.Write(PF_BYTE, &(int32_t){ TE_GROUND_TELEGRAPH_STOP });
+    gi.Write(PF_LONG, &(int32_t){ (int32_t)id });
+    gi.Write(PF_LONG, &(int32_t){ (int32_t)fade_ms });
+    gi.multicast(&origin, MULTICAST_ALL);
+}
+
 static cstring_t G_EffectFieldName(wc3EffectType_t type, bool alternate) {
     switch (type) {
         case WC3_EFFECT_EFFECT:      return alternate ? "Effectart"     : "EffectArt";

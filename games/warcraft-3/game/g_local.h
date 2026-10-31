@@ -3579,6 +3579,8 @@ uint32_t G_AbilityEffectCode(uint32_t ability_id, uint32_t level);
 uint32_t G_SendTerrainDeformation(terrainDeform_t const *deformation);
 void G_StopTerrainDeformation(uint32_t id, uint32_t fade_ms);
 void G_StopAllTerrainDeformations(void);
+uint32_t G_SendGroundTelegraph(groundTelegraph_t const *telegraph);
+void G_StopGroundTelegraph(uint32_t id, uint32_t fade_ms);
 edict_t *G_SpawnModelEffect(cstring_t model, vec2_t const *point, edict_t *target, cstring_t attach_point, bool temporary);
 edict_t *G_SpawnAbilityEffectAtPoint(uint32_t ability_id, wc3EffectType_t type, uint32_t index, vec2_t const *point, bool temporary);
 edict_t *G_SpawnAbilityEffectTarget(uint32_t ability_id, wc3EffectType_t type, uint32_t index, edict_t *target, cstring_t attach_point, bool temporary);

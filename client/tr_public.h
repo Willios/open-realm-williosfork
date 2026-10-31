@@ -194,6 +194,19 @@ typedef struct {
     color32_t color;
 } renderSplatRect_t;
 
+/* Ground telegraph as the renderer draws it: the shape (see groundTelegraph_t)
+ * plus this frame's animation state, worked out by the client's timeline. */
+typedef struct {
+    telegraphShape_t shape;
+    vec2_t origin;
+    float angle, radius, inner;
+    color32_t color;
+    float progress; /* 0..1, the cast fill's front, from the origin out */
+    float alpha;    /* 0..1, fade in/out of the whole shape */
+    float flash;    /* 0..1, the impact flash */
+    float time;     /* seconds since it appeared, for the moving pattern */
+} renderTelegraph_t;
+
 typedef struct {
     viewCamera_t camerastate[2];
     vec3_t target; /* Rendered camera focus shared by projection, drag-panning, and shadows. */
@@ -208,6 +221,8 @@ typedef struct {
     renderDecal_t *decals;
     uint32_t num_splat_rects;
     renderSplatRect_t *splat_rects;
+    uint32_t num_telegraphs;
+    renderTelegraph_t const *telegraphs;
     uint32_t num_weather_effects;
     wc3WeatherEffect_t const *weather_effects;
     uint32_t num_lightning_effects;

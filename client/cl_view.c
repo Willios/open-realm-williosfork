@@ -453,6 +453,7 @@ static void V_ClearScene(void) {
     cl.viewDef.num_entities = 0;
     cl.viewDef.num_decals = 0;
     cl.viewDef.num_splat_rects = 0;
+    cl.viewDef.num_telegraphs = 0;
 }
 
 static bool CL_CircleOverlapsSplatRect(entityState_t const *state, renderSplatRect_t const *rect) {

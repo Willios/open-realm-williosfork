@@ -282,6 +282,8 @@ void R_ConformGroundSurfaces(viewDef_t *viewdef) {
     (void)viewdef;
 }
 
+void R_DrawTelegraphs(void) {}
+
 void R_DrawWorld(void) {
     R_SC2DrawWorld();
 }

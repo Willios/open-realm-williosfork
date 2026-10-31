@@ -406,6 +406,70 @@ static int G_LuaEngineUnitScriptOrders(lua_State *L) {
     return 0;
 }
 
+static float G_LuaFieldNumber(lua_State *L, int table, cstring_t key, float fallback) {
+    float value;
+    lua_getfield(L, table, key);
+    value = lua_isnumber(L, -1) ? (float)lua_tonumber(L, -1) : fallback;
+    lua_pop(L, 1);
+    return value;
+}
+
+/* EngineTelegraph{shape=, x=, y=, ...} draws a World of Warcraft style ground
+ * warning and returns its id. shape: 'circle' (radius), 'ring' (radius, inner:
+ * the safe hole), 'cone' (radius, arc in degrees), 'line' (length, width);
+ * angle in degrees faces a cone or line. duration (seconds) is the cast: the
+ * fill reaches the edge when the hit lands, then the shape flashes and fades
+ * (flash = false: it only fades). r, g, b, a (0-255) tint it, red by default.
+ * Engine-only. */
+static int G_LuaEngineTelegraph(lua_State *L) {
+    static cstring_t const shapes[] = { "circle", "ring", "cone", "line", NULL };
+    groundTelegraph_t t = { 0 };
+    float const deg = 3.14159265f / 180.0f;
+    luaL_checktype(L, 1, LUA_TTABLE);
+    lua_getfield(L, 1, "shape");
+    t.shape = (telegraphShape_t)luaL_checkoption(L, -1, "circle", shapes);
+    lua_pop(L, 1);
+    t.origin.x = G_LuaFieldNumber(L, 1, "x", 0.0f);
+    t.origin.y = G_LuaFieldNumber(L, 1, "y", 0.0f);
+    t.angle = G_LuaFieldNumber(L, 1, "angle", 0.0f) * deg;
+    switch (t.shape) {
+        case TELEGRAPH_LINE:
+            t.radius = G_LuaFieldNumber(L, 1, "length", 600.0f);
+            t.inner = G_LuaFieldNumber(L, 1, "width", 150.0f);
+            break;
+        case TELEGRAPH_CONE:
+            t.radius = G_LuaFieldNumber(L, 1, "radius", 500.0f);
+            t.inner = G_LuaFieldNumber(L, 1, "arc", 60.0f) * deg;
+            break;
+        default:
+            t.radius = G_LuaFieldNumber(L, 1, "radius", 250.0f);
+            t.inner = G_LuaFieldNumber(L, 1, "inner", 0.0f);
+            break;
+    }
+    t.duration_ms = (uint32_t)MAX(0.0f, G_LuaFieldNumber(L, 1, "duration", 1.5f) * 1000.0f);
+    t.color = (color32_t){
+        BZ_CLAMP_U8(G_LuaFieldNumber(L, 1, "r", 255.0f)),
+        BZ_CLAMP_U8(G_LuaFieldNumber(L, 1, "g", 48.0f)),
+        BZ_CLAMP_U8(G_LuaFieldNumber(L, 1, "b", 24.0f)),
+        BZ_CLAMP_U8(G_LuaFieldNumber(L, 1, "a", 255.0f)),
+    };
+    lua_getfield(L, 1, "flash");
+    if (lua_isboolean(L, -1) && !lua_toboolean(L, -1)) t.flags |= TELEGRAPH_NO_FLASH;
+    lua_pop(L, 1);
+    if (t.radius <= 0.0f) return lua_pushinteger(L, 0), 1;
+    lua_pushinteger(L, (lua_Integer)G_SendGroundTelegraph(&t));
+    return 1;
+}
+
+/* EngineTelegraphStop(id[, fade]) fades a telegraph out over fade seconds
+ * (default 0.2), without the impact flash: the cast was interrupted. */
+static int G_LuaEngineTelegraphStop(lua_State *L) {
+    lua_Integer id = luaL_checkinteger(L, 1);
+    float fade = (float)luaL_optnumber(L, 2, 0.2);
+    G_StopGroundTelegraph((uint32_t)id, (uint32_t)MAX(0.0f, fade * 1000.0f));
+    return 0;
+}
+
 /* =========================================================================
  * Lifecycle
  * ========================================================================= */
@@ -456,6 +520,10 @@ static void G_LuaOpen(void) {
     lua_setglobal(L, "EngineUnitUpperAnimation");
     lua_pushcfunction(L, G_LuaEngineUnitScriptOrders);
     lua_setglobal(L, "EngineUnitScriptOrders");
+    lua_pushcfunction(L, G_LuaEngineTelegraph);
+    lua_setglobal(L, "EngineTelegraph");
+    lua_pushcfunction(L, G_LuaEngineTelegraphStop);
+    lua_setglobal(L, "EngineTelegraphStop");
     lua_pushglobaltable(L);
     lua_newtable(L);
     lua_pushcfunction(L, G_LuaGlobalIndex);

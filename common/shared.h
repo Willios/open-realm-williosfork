@@ -972,7 +972,35 @@ typedef enum {
      * then visibility mask, position, attached entity, height offset, text, RGBA,
      * font, lifetime/fade ms, UI velocity, and permanent flag. */
     TE_TEXT_TAG,
+    /* Ground telegraph (WoW-style boss warning). Payload: a groundTelegraph_t, see G_SendGroundTelegraph.
+     * The client owns the timeline (fade in, cast fill, impact flash, fade out) from its arrival time. */
+    TE_GROUND_TELEGRAPH,
+    /* Payload: id int32_t, fade int32_t ms. Fades a telegraph out early, without the impact flash. */
+    TE_GROUND_TELEGRAPH_STOP,
 } tempEvent_t;
+
+typedef enum {
+    TELEGRAPH_CIRCLE, /* radius */
+    TELEGRAPH_RING,   /* radius, inner: the safe hole in the middle */
+    TELEGRAPH_CONE,   /* radius, arc (full angle, degrees), from origin toward angle */
+    TELEGRAPH_LINE,   /* length, width (full), from origin toward angle */
+    TELEGRAPH_SHAPES
+} telegraphShape_t;
+
+#define TELEGRAPH_NO_FLASH (1u << 0) // flag; the warning fades out at the end instead of flashing (a lure, a cancel)
+
+/* Transient ground warning, sent in one temp event and drawn by the renderer over the terrain. */
+typedef struct {
+    uint32_t id;
+    telegraphShape_t shape;
+    vec2_t origin;     /* world XY: center (circle, ring) or start point (cone, line) */
+    float angle;       /* radians, facing of a cone or line */
+    float radius;      /* circle/ring/cone radius; line length */
+    float inner;       /* ring hole radius; line width; cone arc in radians */
+    uint32_t duration_ms; /* cast time: the fill reaches the edge when the hit lands */
+    color32_t color;   /* rim colour; alpha scales the whole telegraph */
+    uint32_t flags;    /* TELEGRAPH_* bits; sent as one byte */
+} groundTelegraph_t;
 
 typedef enum {
     TERRAIN_DEFORM_CRATER,

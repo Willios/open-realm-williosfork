@@ -915,8 +915,11 @@ void R_Init(void) {
     MDLX_Init();
 }
 
+void R_ShutdownTelegraphs(void);
+
 void R_Shutdown(void) {
     _W3M_ClearMap();
+    R_ShutdownTelegraphs();
     if (preview.mmp) ri.FS_FreeFile(preview.mmp);
     memset(&preview, 0, sizeof(preview));
     Stb_IniCacheFree(&minimap_theme);

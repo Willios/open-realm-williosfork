@@ -46,6 +46,7 @@ void R_DrawEntityCameraEventSpawns(model_t const *source_model, uintptr_t source
 void R_ReleaseGameEntityCameraEvents(uintptr_t instance_id);
 void R_DrawTerrainShadows(void);
 void R_DrawAlphaSurfaces(void);
+void R_DrawTelegraphs(void); /* ground warnings (viewDef.telegraphs); games without them leave it empty */
 /* Optional, per-view opaque->alpha cull handoff; -1 means no valid result.
  * The Warcraft III renderer owns its lifecycle. */
 void R_SolidVisibilityBegin(void);

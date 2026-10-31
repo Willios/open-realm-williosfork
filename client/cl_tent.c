@@ -10,6 +10,10 @@
 #define ENTITY_INDICATOR_LIFETIME 1000 /* ms — retail AddIndicator flashes twice */
 #define ENTITY_INDICATOR_PERIOD 500    /* ms per flash cycle */
 #define ENTITY_INDICATOR_ON_TIME 250   /* ms visible at the start of each cycle */
+#define MAX_GROUND_TELEGRAPHS 32       /* entries; the oldest is replaced when every slot is busy */
+#define TELEGRAPH_FADE_IN 150          /* ms; the shape grows in from 85% while it fades in */
+#define TELEGRAPH_FLASH 450            /* ms after the hit: the flash fades with the shape */
+#define TELEGRAPH_FADE_OUT 250         /* ms; the end of a warning without a flash */
 
 typedef struct  {
     vec3_t origin;
@@ -49,6 +53,14 @@ typedef struct {
 
 typedef struct {
     bool active;
+    groundTelegraph_t desc;
+    uint32_t starttime;
+    uint32_t stoptime;  /* 0 = runs its whole timeline */
+    uint32_t stopfade;  /* ms */
+} telegraph_t;
+
+typedef struct {
+    bool active;
     vec3_t origin;
     char text[FLOATING_TEXT_CAPACITY];
     color32_t color;
@@ -70,7 +82,10 @@ struct {
     spellImpact_t impacts[MAX_SPELL_IMPACTS];
     entityIndicator_t indicators[MAX_ENTITY_INDICATORS];
     floatingText_t texts[MAX_FLOATING_TEXTS];
+    telegraph_t telegraphs[MAX_GROUND_TELEGRAPHS];
 } tents = { 0 };
+
+static renderTelegraph_t telegraph_view[MAX_GROUND_TELEGRAPHS];
 
 /* The indicator pool is small, but checking every slot for every visible
  * entity is costly. Rebuild a compact index once per client timestamp (or
@@ -328,6 +343,44 @@ void CL_ParseTEnt(sizeBuf_t *msg) {
             break;
         case TE_TERRAIN_DEFORM_STOP_ALL:
             re.StopAllTerrainDeformations();
+            break;
+        case TE_GROUND_TELEGRAPH:
+            {
+                telegraph_t *slot = &tents.telegraphs[0];
+                groundTelegraph_t t = { 0 };
+                uint32_t rgba;
+                t.id = (uint32_t)MSG_ReadLong(msg);
+                t.shape = (telegraphShape_t)MSG_ReadByte(msg);
+                t.origin.x = MSG_ReadFloat(msg);
+                t.origin.y = MSG_ReadFloat(msg);
+                t.angle = MSG_ReadFloat(msg);
+                t.radius = MSG_ReadFloat(msg);
+                t.inner = MSG_ReadFloat(msg);
+                t.duration_ms = (uint32_t)MSG_ReadLong(msg); /* MAX() would read twice */
+                rgba = (uint32_t)MSG_ReadLong(msg);
+                t.color = MAKE(color32_t, rgba >> 24, (rgba >> 16) & 255, (rgba >> 8) & 255, rgba & 255);
+                t.flags = (uint32_t)MSG_ReadByte(msg);
+                if (t.shape >= TELEGRAPH_SHAPES) break;
+                FOR_LOOP(i, MAX_GROUND_TELEGRAPHS) {
+                    telegraph_t *cur = &tents.telegraphs[i];
+                    if (!cur->active) { slot = cur; break; }
+                    if (cur->starttime < slot->starttime) slot = cur;
+                }
+                *slot = (telegraph_t){ .active = true, .desc = t, .starttime = cl.time };
+            }
+            break;
+        case TE_GROUND_TELEGRAPH_STOP:
+            {
+                uint32_t const id = (uint32_t)MSG_ReadLong(msg);
+                int32_t const fade = MSG_ReadLong(msg);
+                uint32_t const fade_ms = (uint32_t)MAX(0, fade);
+                FOR_LOOP(i, MAX_GROUND_TELEGRAPHS) {
+                    telegraph_t *cur = &tents.telegraphs[i];
+                    if (!cur->active || cur->desc.id != id || cur->stoptime) continue;
+                    cur->stoptime = cl.time ? cl.time : 1;
+                    cur->stopfade = MAX(1u, fade_ms);
+                }
+            }
             break;
         default:
             Com_Error(ERR_DROP, "CL_ParseTEnt: bad type %d", evt);
@@ -822,7 +875,56 @@ void CL_ClearTEnts(void) {
     indicator_lookup.valid = false;
 }
 
+static float CL_Smooth01(float x) {
+    x = MAX(0.0f, MIN(1.0f, x));
+    return x * x * (3.0f - 2.0f * x);
+}
+
+/* WoW encounter warning timeline: the shape fades and grows in, a fill sweeps
+ * from the origin to the edge over the cast, and at the hit the whole shape
+ * flashes bright and fades. A stopped one fades from where it was. */
+static void CL_AddTelegraphs(void) {
+    uint32_t count = 0;
+    FOR_LOOP(i, MAX_GROUND_TELEGRAPHS) {
+        telegraph_t *t = &tents.telegraphs[i];
+        renderTelegraph_t *out;
+        uint32_t age, now;
+        float alpha, flash = 0.0f, progress;
+        if (!t->active) continue;
+        now = t->stoptime ? MIN(cl.time, t->stoptime) : cl.time;
+        age = now - t->starttime;
+        progress = t->desc.duration_ms ? (float)age / (float)t->desc.duration_ms : 1.0f;
+        alpha = CL_Smooth01((float)(cl.time - t->starttime) / TELEGRAPH_FADE_IN);
+        if (!t->stoptime && age >= t->desc.duration_ms) {
+            uint32_t const after = age - t->desc.duration_ms;
+            uint32_t const tail = (t->desc.flags & TELEGRAPH_NO_FLASH) ? TELEGRAPH_FADE_OUT : TELEGRAPH_FLASH;
+            if (after >= tail) { t->active = false; continue; }
+            alpha *= 1.0f - CL_Smooth01((float)after / (float)tail);
+            if (!(t->desc.flags & TELEGRAPH_NO_FLASH)) flash = 1.0f - (float)after / (float)tail;
+        }
+        if (t->stoptime) {
+            uint32_t const since = cl.time - t->stoptime;
+            if (since >= t->stopfade) { t->active = false; continue; }
+            alpha *= 1.0f - (float)since / (float)t->stopfade;
+        }
+        out = &telegraph_view[count++];
+        out->shape = t->desc.shape;
+        out->origin = t->desc.origin;
+        out->angle = t->desc.angle;
+        out->radius = t->desc.radius;
+        out->inner = t->desc.inner;
+        out->color = t->desc.color;
+        out->progress = MAX(0.0f, MIN(1.0f, progress));
+        out->alpha = alpha * (t->desc.color.a / 255.0f);
+        out->flash = flash;
+        out->time = (float)(cl.time - t->starttime) / 1000.0f;
+    }
+    cl.viewDef.num_telegraphs = count;
+    cl.viewDef.telegraphs = telegraph_view;
+}
+
 void CL_AddTEnts(void) {
+    CL_AddTelegraphs();
     CL_AddConfirmations();
     CL_AddMissiles();
     CL_AddSpellImpacts();
