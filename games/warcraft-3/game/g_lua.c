@@ -349,6 +349,14 @@ static int G_LuaEngineQuit(lua_State *L) {
     return 0;
 }
 
+/* EngineOpenURL(url) opens an http(s) link outside the game (the system
+ * browser; in the browser build, the page downloads or follows it).
+ * Engine-only, like EngineCvar. */
+static int G_LuaEngineOpenURL(lua_State *L) {
+    if (gi.MenuAction) gi.MenuAction("openurl", luaL_checkstring(L, 1));
+    return 0;
+}
+
 /* EngineUnitModel(unitId) returns the model file of a unit type (UnitUI file),
  * for BlzFrameSetModel. Engine-only, like EngineCvar. */
 static int G_LuaEngineUnitModel(lua_State *L) {
@@ -438,6 +446,8 @@ static void G_LuaOpen(void) {
     lua_setglobal(L, "EngineCvar");
     lua_pushcfunction(L, G_LuaEngineQuit);
     lua_setglobal(L, "EngineQuit");
+    lua_pushcfunction(L, G_LuaEngineOpenURL);
+    lua_setglobal(L, "EngineOpenURL");
     lua_pushcfunction(L, G_LuaEngineUnitModel);
     lua_setglobal(L, "EngineUnitModel");
     lua_pushcfunction(L, G_LuaEngineUnitAnimation);

@@ -6,6 +6,11 @@ its .htaccess (site/survivor.htaccess) and its data/ folder (hard links when
 possible) into one folder whose contents go to the web root as they are.
 
   python port/web/stage_survivor_upload.py build/web/survivor build/web/survivor-upload
+      [--download ../release/WarcraftSurvivors.zip]
+
+--download adds the portable Windows build (tools/release/make_portable.ps1)
+as download/WarcraftSurvivors.zip, the lobby's Download button
+(SURVIVOR_ENGINE.download in src/engine_boot.lua).
 """
 import argparse
 import os
@@ -32,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("build", help="survivor build folder (build/web/survivor)")
     parser.add_argument("out", help="upload folder to create")
+    parser.add_argument("--download", help="portable build zip, served as download/WarcraftSurvivors.zip")
     args = parser.parse_args()
     build, out = pathlib.Path(args.build), pathlib.Path(args.out)
     if not (build / "index.wasm").is_file():
@@ -51,6 +57,8 @@ def main():
     for path in (build / "data").rglob("*"):
         if path.is_file():
             place(path, out / "data" / path.relative_to(build / "data"))
+    if args.download:
+        place(pathlib.Path(args.download), out / "download" / "WarcraftSurvivors.zip")
     shutil.copy2(ROOT / "port/web/site/survivor.htaccess", out / ".htaccess")
     total = sum(p.stat().st_size for p in out.rglob("*") if p.is_file())
     print("%d files, %.0f MB -> %s" % (sum(1 for p in out.rglob("*") if p.is_file()), total / 1048576, out))

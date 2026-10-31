@@ -12,6 +12,14 @@ recorded by tools/web_trace.py in the survivor repository (--reads, its
 tools/web_trace_reads.txt). Kept files are copied byte for byte with the same
 hash table, so lookups behave as in the full archives. --full keeps them whole.
 
+Updates stay small: the four archives are trimmed to the frozen --base list
+(tools/web_base_reads.txt, the list they were first published with), so their
+bytes and sha1 never change, and files the reads list gained since then go
+into War3zUpdate<n>.mpq. A player who installed an earlier generation copies
+the four archives locally and downloads only the update archives. To fold the
+updates back in (one full re-download for everyone), copy the reads list over
+the base list.
+
 This is Blizzard data: never commit it or publish it to GitHub.
 
   python port/web/make_survivor_data.py "C:/Program Files (x86)/Warcraft III (Legacy)" build/web/survivor
@@ -27,6 +35,9 @@ import struct
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ARCHIVES = ("War3.mpq", "War3Local.mpq", "War3x.mpq", "War3xLocal.mpq")  # Lowest priority first.
+# Files added after the base list, one archive per source archive (%d = its
+# index). The engine mounts every .mpq by name, later wins: these sort last.
+UPDATE = "War3zUpdate%d.mpq"
 
 # --- MPQ v1 trim -------------------------------------------------------------
 # The reads list names, per archive, every file the engine opened in the traced
@@ -193,14 +204,13 @@ def write_trimmed(archive, names, drop, target):
     return total
 
 
-def trim_archives(wc3, data, reads):
-    """Write trimmed copies of ARCHIVES into data/. Returns {name: (kept, full) sizes}."""
+def resolve(archives, reads):
+    """Per archive, {block index: name} of every file a reads list keeps."""
     wanted = read_list(reads)
     unknown = set(wanted) - {"*"} - {name.lower() for name in ARCHIVES}
     if unknown:
         raise SystemExit("reads list names unknown archives: " + ", ".join(sorted(unknown)))
-    archives = [read_archive(wc3 / name) for name in ARCHIVES]
-    keep = [{} for _ in ARCHIVES]  # Per archive: {block index: name}.
+    keep = [{} for _ in ARCHIVES]
     for index, name in enumerate(ARCHIVES):
         for path in wanted.get(name.lower(), []) + list(SPECIAL):
             found = find_blocks(archives[index], path)
@@ -218,15 +228,47 @@ def trim_archives(wc3, data, reads):
             absent.append(path)
     if absent:
         print("  %d listed files are in no archive (first: %s)" % (len(absent), absent[0]))
-    sizes = {}
+    return keep
+
+
+def trim_archives(wc3, data, reads, base=None):
+    """Write trimmed copies of ARCHIVES into data/. Returns the archive names written.
+
+    With a base reads list, the four archives keep only the base files, so they
+    stay byte for byte what players already installed, and every file the reads
+    list adds goes into UPDATE archives (one per source archive that gains
+    files), mounted after them: an update downloads only those."""
+    archives = [read_archive(wc3 / name) for name in ARCHIVES]
+    keep = resolve(archives, reads)
+    written = []
+    for name in data.glob(UPDATE.replace("%d", "*")):
+        name.unlink()  # Left by an earlier generation.
+    if base:
+        keep_base = resolve(archives, base)
+        extra = [{b: n for b, n in keep[i].items() if b not in keep_base[i]} for i in range(len(ARCHIVES))]
+        # A name added low but already in a higher base archive would now shadow
+        # that copy: repeat the higher copy in its own (later) update archive.
+        for low in range(len(ARCHIVES)):
+            for name in {n.lower() for n in extra[low].values()}:
+                for high in range(low + 1, len(ARCHIVES)):
+                    extra[high].update((b, n) for b, n in keep[high].items() if n.lower() == name)
+        for index in range(len(ARCHIVES)):
+            if extra[index]:
+                blocks = archives[index]["blocks"]
+                drop = {i for i, b in enumerate(blocks) if b[3] & FILE_EXISTS and i not in extra[index]}
+                target = data / (UPDATE % index)
+                size = write_trimmed(archives[index], extra[index], drop, target)
+                written.append(target.name)
+                print("  %-15s %4.1f MB (%d files added since the base list, from %s)" %
+                      (target.name, size / 1048576, len(extra[index]), ARCHIVES[index]))
+        keep = keep_base
     for index, name in enumerate(ARCHIVES):
         blocks = archives[index]["blocks"]
         drop = {i for i, b in enumerate(blocks) if b[3] & FILE_EXISTS and i not in keep[index]}
-        sizes[name] = (write_trimmed(archives[index], keep[index], drop, data / name),
-                       (wc3 / name).stat().st_size)
+        size = write_trimmed(archives[index], keep[index], drop, data / name)
         print("  %-15s %4.0f MB -> %4.0f MB (%d files kept)" %
-              (name, sizes[name][1] / 1048576, sizes[name][0] / 1048576, len(keep[index])))
-    return sizes
+              (name, (wc3 / name).stat().st_size / 1048576, size / 1048576, len(keep[index])))
+    return list(ARCHIVES) + written
 
 
 def survivor_maps(boot):
@@ -258,6 +300,8 @@ def main():
     parser.add_argument("--boot", default=str(ROOT.parent / "src" / "engine_boot.lua"))
     parser.add_argument("--reads", default=str(ROOT.parent / "tools" / "web_trace_reads.txt"),
                         help="files to keep (tools/web_trace.py reads)")
+    parser.add_argument("--base", default=str(ROOT.parent / "tools" / "web_base_reads.txt"),
+                        help="reads list the four archives were published with (frozen); \"none\" trims them to --reads")
     parser.add_argument("--full", action="store_true", help="link the archives whole instead of trimming them")
     args = parser.parse_args()
     wc3 = pathlib.Path(args.wc3)
@@ -266,7 +310,12 @@ def main():
     for name in names:
         if not (wc3 / name).is_file():
             raise SystemExit("missing " + str(wc3 / name))
-    trimmed = set() if args.full else set(trim_archives(wc3, data, pathlib.Path(args.reads)))
+    base = None if args.base == "none" else pathlib.Path(args.base)
+    if base and not base.is_file():
+        raise SystemExit("missing base reads list %s (--base none to trim without one)" % base)
+    trimmed = set() if args.full else set(trim_archives(wc3, data, pathlib.Path(args.reads), base))
+    updates = sorted(trimmed - set(ARCHIVES))
+    names[len(ARCHIVES):len(ARCHIVES)] = updates
     files = []
     digest = hashlib.sha1()
     for name in names:

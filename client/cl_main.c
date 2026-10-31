@@ -26,6 +26,9 @@
 #include "sound/s_local.h"
 #include "common/server_api.h"
 #include "common/online.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #ifdef BZ_TESTS
 #include "shared/test.h"
 #endif
@@ -686,6 +689,26 @@ static void CL_Quit_f(void) {
  * their simulation/JASS call stack may still be active.  Never tear down or
  * replace the current world inline from that callback.  Copy the request and
  * execute it from the following client frame, after SV_Frame has returned. */
+/* Opens an http(s) link outside the game: the system browser natively; in the
+ * browser build the page follows it with a temporary <a download> link (a
+ * same-origin file downloads, popup blockers do not apply). */
+static void CL_OpenURL(cstring_t url) {
+    if (!url || (strncmp(url, "https://", 8) && strncmp(url, "http://", 7))) return;
+#ifdef __EMSCRIPTEN__
+    MAIN_THREAD_EM_ASM({
+        var link = document.createElement('a');
+        link.href = UTF8ToString($0);
+        link.download = '';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }, url);
+#else
+    if (SDL_OpenURL(url) != 0) fprintf(stderr, "CL_OpenURL: %s\n", SDL_GetError());
+#endif
+}
+
 void MenuAction(cstring_t action, cstring_t arg) {
     clPendingMenuAction_t pending = { 0 };
 
@@ -707,6 +730,9 @@ void MenuAction(cstring_t action, cstring_t arg) {
         strlcpy(pending.arg, arg, sizeof(pending.arg));
     } else if (!strcmp(action, "quit")) {
         pending.type = CL_MENU_ACTION_QUIT;
+    } else if (!strcmp(action, "openurl")) {
+        CL_OpenURL(arg);
+        return;
     } else {
         return;
     }

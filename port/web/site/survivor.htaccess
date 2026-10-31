@@ -21,6 +21,12 @@
 AddType application/wasm .wasm
 AddType application/manifest+json .webmanifest
 
+# index.wasm (engine + scripts, re-downloaded after every update) gzips from
+# 8.5 to 4.8 MB. Not the data archives: their files are compressed already.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/wasm application/javascript text/javascript text/html application/json application/manifest+json
+</IfModule>
+
 # Isolation (and so the game) needs HTTPS.
 RewriteEngine On
 RewriteCond %{SERVER_PORT} 80
