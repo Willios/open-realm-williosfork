@@ -181,6 +181,9 @@ def main():
         text = shell.read_text(encoding="utf-8")
         for old, new in (("<title>OpenRealm</title>", "<title>Warcraft Survivors</title>"),
                          ("<h1>OpenRealm</h1>", "<h1>Warcraft Survivors</h1>"),
+                         # The survivor icon (tools/make_icon.py in the survivor repository).
+                         ('href="icons/openrealm-180.png"', 'href="icons/survivor-180.png"'),
+                         ('href="icons/openrealm-192.png"', 'href="icons/survivor-192.png"'),
                          ('<script src="installer.js"></script>',
                           '<script src="survivor.js"></script>\n<script src="installer.js"></script>')):
             if text.count(old) != 1:
@@ -216,6 +219,10 @@ def main():
     for size in (180, 192, 512):
         name = f"openrealm-{size}.png"
         shutil.copy2(ROOT / "port/web/site/icons" / name, out / "icons" / name)
+    if args.survivor:
+        for size in (180, 192):
+            name = f"survivor-{size}.png"
+            shutil.copy2(ROOT / "port/web/site/icons" / name, out / "icons" / name)
     print("Experimental static engine build emitted to", out)
     # Pages loads this only from its game path; other hosting may ignore it.
     shutil.copy2(ROOT / "port/web/site/pages-isolation.js", out / "pages-isolation.js")

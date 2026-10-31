@@ -201,6 +201,10 @@ static bool attack_mask_has_weapon(edict_t const *ent, uint32_t mask) {
 }
 
 static bool can_attack(edict_t const *ent) {
+    /* A script that removed Attack ('Aatk') owns the unit's combat: no
+     * counterattack either. Retaliating made the survivor hero chase ranged
+     * attackers natively while the script also moved it. */
+    if (G_ActorSkillRemoved(ent, MAKEFOURCC('A', 'a', 't', 'k'))) return false;
     if (unit_hasstatusstate(ent, WC3_STATUS_STATE_ETHEREAL) ||
         S_UnitIsCycloned(ent) || S_UnitIsEntanglingRooted(ent) || G_BuildingIsUnsummoning(ent)) return false;
     if (!S_HumanCanAttack(ent) || !S_CargoAttacksEnabled(ent)) return false;

@@ -1,0 +1,2 @@
+/* The exe icon: Windows shows it for the file, and SDL for the window and taskbar button. */
+1 ICON "openwarcraft3.ico"

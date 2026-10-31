@@ -178,6 +178,12 @@ GAME_LIB     := $(LIB_DIR)/libgame$(LIB_EXT)
 $(GAME_LIB): $(WC3_SC2API_BUILD_CONFIG)
 MENU_LIB       := $(LIB_DIR)/libmenu$(LIB_EXT)
 BINARY       := $(BIN_DIR)/openwarcraft3$(EXE_EXT)
+# Windows: the exe carries an icon (port/windows/openwarcraft3.rc), which SDL also uses for the window.
+ifeq ($(OS),Windows_NT)
+WC3_WIN_RES  := $(BIN_DIR)/openwarcraft3_res.o
+$(WC3_WIN_RES): port/windows/openwarcraft3.rc port/windows/openwarcraft3.ico | $(BIN_DIR)
+	windres $< -O coff -o $@
+endif
 MPQ_TEST     := $(BIN_DIR)/test_mpq_compat$(EXE_EXT)
 
 JASS_BIN := $(BIN_DIR)/jass$(EXE_EXT)
@@ -277,7 +283,7 @@ $(eval $(call unity_lib_schema,$(MENU_LIB),$(UI_BASE_DEPS) $(MENU_HEADERS) commo
 # The remote client loads collision data before any game imports exist; compile its format reader into the engine.
 # BZ_MUSIC_MP3: stream the retail mp3Music tracks with the vendored minimp3 when FFmpeg is off
 # (without a decoder every PlayMusic/SetMapMusic track fails to open and the game is silent).
-$(eval $(call app_schema,$(BINARY),$(SHARED_LIB) $(JASS_LIB) $(SHEET_LIB) $(GAME_LIB) $(RENDERER_LIB) $(MENU_LIB) $(WC3_EOS_RUNTIME) $(EOS_BUILD_CONFIG) $(APP_SRCS) $(WC3_COMMON_SRCS) $(CLIENT_HEADERS) $(COMMON_HEADERS),openwarcraft3,$(WC3_FDF_CFLAGS) $(WC3_EOS_CFLAGS) -DBZ_CLIENT_WORLD -DBZ_MUSIC_MP3,-lsheet -lshared -ljass -lgame -lrenderer -lmenu $(LIBS) $(WC3_FFMPEG_LIBS) $(WC3_EOS_LIBS) -lz,$(WC3_DIR)/common/world_w3.c))
+$(eval $(call app_schema,$(BINARY),$(SHARED_LIB) $(JASS_LIB) $(SHEET_LIB) $(GAME_LIB) $(RENDERER_LIB) $(MENU_LIB) $(WC3_WIN_RES) $(WC3_EOS_RUNTIME) $(EOS_BUILD_CONFIG) $(APP_SRCS) $(WC3_COMMON_SRCS) $(CLIENT_HEADERS) $(COMMON_HEADERS),openwarcraft3,$(WC3_FDF_CFLAGS) $(WC3_EOS_CFLAGS) -DBZ_CLIENT_WORLD -DBZ_MUSIC_MP3,-x none $(WC3_WIN_RES) -lsheet -lshared -ljass -lgame -lrenderer -lmenu $(LIBS) $(WC3_FFMPEG_LIBS) $(WC3_EOS_LIBS) -lz,$(WC3_DIR)/common/world_w3.c))
 
 # ---------------------------------------------------------------------------
 # In-engine tests (see CONTRIBUTING.md)
