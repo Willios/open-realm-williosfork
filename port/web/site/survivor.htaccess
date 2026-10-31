@@ -6,10 +6,11 @@
     Header always set Cross-Origin-Opener-Policy "same-origin"
     Header always set Cross-Origin-Embedder-Policy "require-corp"
     Header always set Cross-Origin-Resource-Policy "same-origin"
-    # A new data/files.json must reach players at once (it decides re-downloads).
-    <Files "files.json">
+    # A new data/files.json must reach players at once (it decides re-downloads),
+    # and so must download/portable/version.json (the Windows build's updates).
+    <FilesMatch "^(files|version)\.json$">
         Header set Cache-Control "no-cache"
-    </Files>
+    </FilesMatch>
     # The page, its scripts and index.wasm must come from the same upload: a
     # cached old index.js with a new index.wasm leaves a black screen. They are
     # revalidated on every load (an unchanged file costs a 304, not a download).
