@@ -397,6 +397,16 @@ static int G_LuaEngineUnitUpperAnimation(lua_State *L) {
     return 1;
 }
 
+/* EngineUnitCollision(unit) returns the unit's collision radius (UnitBalance
+ * collision, as native pathing uses it), 0 for a freed handle. The script's
+ * own movement (SetUnitX/Y) bypasses pathing and uses it to collide.
+ * Engine-only, like BlzGetUnitCollisionSize on Reforged. */
+static int G_LuaEngineUnitCollision(lua_State *L) {
+    edict_t *ent = G_LuaCheckUnit(L, 1);
+    lua_pushnumber(L, ent ? ent->collision : 0);
+    return 1;
+}
+
 /* EngineUnitScriptOrders(unit, on): the script moves this unit itself. Its
  * move, attack and stop orders (right-clicks included) raise their events but
  * start no native behavior, so they never reset its animation. Engine-only. */
@@ -520,6 +530,8 @@ static void G_LuaOpen(void) {
     lua_setglobal(L, "EngineUnitUpperAnimation");
     lua_pushcfunction(L, G_LuaEngineUnitScriptOrders);
     lua_setglobal(L, "EngineUnitScriptOrders");
+    lua_pushcfunction(L, G_LuaEngineUnitCollision);
+    lua_setglobal(L, "EngineUnitCollision");
     lua_pushcfunction(L, G_LuaEngineTelegraph);
     lua_setglobal(L, "EngineTelegraph");
     lua_pushcfunction(L, G_LuaEngineTelegraphStop);

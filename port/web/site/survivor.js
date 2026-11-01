@@ -11,10 +11,16 @@
   const DATA = 'data/';
   // Survivors needs The Frozen Throne archives (filesystem-bridge.js mode).
   sessionStorage.setItem('openrealm-wc3-browser-mode', 'tft');
+  // Phones and tablets: a coarse primary pointer (a finger). The script then
+  // explains touch controls (hold a finger on the ground, the hero follows it;
+  // the engine side is cl_touch_smart, set by the script in every browser).
+  const touchDevice = (navigator.maxTouchPoints || 0) > 0 &&
+    !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   window.openrealmExtraArguments = [
     '+set', 'wc3_loading_quiet', '1',
     '+set', 'scr_showfps', '0',
     '+set', 'survivor_web', '1', // the game menu hides Quit Game (a page cannot close itself)
+    '+set', 'survivor_touch', touchDevice ? '1' : '0',
     '+set', 'wc3_lua_script', 'Scripts/Survivor/ashenvale_survivor.lua,Scripts/Survivor/engine_boot.lua',
     '+map', 'Maps/FrozenThrone/(6)Moonglade.w3x'
   ];

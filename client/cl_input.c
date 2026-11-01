@@ -13,10 +13,16 @@ static struct {
 } camera_drag;
 
 static bool smart_click_active;
+/* cl_smart_hold 1 (set by a map script that moves its unit itself): a held
+ * Smart button keeps sending the ground point under the cursor, so the unit
+ * follows the pointer, as in Diablo-style games. Last send time in ms. */
+static uint32_t smart_hold_sent_ms;
+#define SMART_HOLD_DEFAULT_MS 100 // one point per server frame (10 Hz)
 #define BZ_SELECT_DOUBLE_CLICK_MS 500 // milliseconds; shared opt-in same-entity double-click window
 static bool cam_west, cam_east, cam_north, cam_south;
 
 static void CL_ScrollFrame(void);
+static void CL_SmartHoldFrame(void);
 static bool CL_MouseOverGameplayUIAt(int x, int y);
 
 static struct {
@@ -154,6 +160,7 @@ static void CL_InputFrame(void) {
     if (bits || input.sent) CL_SendInput(&(inputCmd_t){ .action = BZ_INPUT_MOVE, .move = { bits, msec } });
     input.sent = bits;
     CL_ScrollFrame();
+    CL_SmartHoldFrame();
 }
 
 static bool CL_OrderQueueModifierDown(void) {
@@ -287,6 +294,7 @@ static struct {
     float pinch_start_span, pinch_last_span;
     uint32_t count, first_down_ms;
     bool gesture, panning, pinching, tap_candidate, first_moved, pointer_down, pointer_on_ui;
+    uint8_t pointer_button; /* SDL button the first finger presses (right with cl_touch_smart) */
     uint32_t mouse_buttons;
 } touch_pan;
 
@@ -400,9 +408,15 @@ static uint32_t CL_TouchFingerEvent(SDL_TouchFingerEvent const *finger, SDL_Even
             touch_pan.start_pos[touch_pan.count++] = pos;
             if (touch_pan.count == 1 && !touch_pan.mouse_buttons) {
                 touch_pan.pointer_down = true;
+                /* cl_touch_smart 1 (a script that moves its unit with Smart):
+                 * a finger on the world holds the Smart button, so the unit
+                 * follows the finger (with cl_smart_hold). The HUD and menus
+                 * keep their left click. */
+                touch_pan.pointer_button = Cvar_Integer("cl_touch_smart", 0) && CL_GameplayInputReady() &&
+                    !touch_pan.pointer_on_ui ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT;
                 pointer[0] = (SDL_Event){ .button = { .type = SDL_MOUSEBUTTONDOWN,
                     .timestamp = finger->timestamp, .which = SDL_TOUCH_MOUSEID,
-                    .button = SDL_BUTTON_LEFT, .x = (int)pos.x, .y = (int)pos.y } };
+                    .button = touch_pan.pointer_button, .x = (int)pos.x, .y = (int)pos.y } };
                 return 1;
             }
             if (touch_pan.count == 2 && CL_GameplayInputReady() &&
@@ -427,7 +441,7 @@ static uint32_t CL_TouchFingerEvent(SDL_TouchFingerEvent const *finger, SDL_Even
                     touch_pan.pointer_down = false;
                     pointer[0] = (SDL_Event){ .button = { .type = SDL_MOUSEBUTTONUP,
                         .timestamp = finger->timestamp, .which = SDL_TOUCH_MOUSEID,
-                        .button = SDL_BUTTON_LEFT, .x = (int)touch_pan.pos[0].x,
+                        .button = touch_pan.pointer_button, .x = (int)touch_pan.pos[0].x,
                         .y = (int)touch_pan.pos[0].y } };
                     return 1;
                 }
@@ -500,7 +514,7 @@ static uint32_t CL_TouchFingerEvent(SDL_TouchFingerEvent const *finger, SDL_Even
                 touch_pan.pointer_down = false;
                 pointer[0] = (SDL_Event){ .button = { .type = SDL_MOUSEBUTTONUP,
                     .timestamp = finger->timestamp, .which = SDL_TOUCH_MOUSEID,
-                    .button = SDL_BUTTON_LEFT, .x = (int)pos.x, .y = (int)pos.y } };
+                    .button = touch_pan.pointer_button, .x = (int)pos.x, .y = (int)pos.y } };
                 return 1;
             }
             if (right_tap) {
@@ -569,12 +583,31 @@ static void IN_PanUp(void) {
     CL_EndPan();
 }
 
+/* Held Smart (cl_smart_hold): the ground point under the cursor, never a unit
+ * (following the pointer must not turn into an attack order on whatever
+ * passes under it), and nothing over the HUD. */
+static void CL_SendSmartHoldPoint(void) {
+    vec3_t point;
+    if (!CL_GameplayInputReady() || CL_MouseOverGameplayUI()) return;
+    if (!re.TraceLocation(&cl.viewDef, mouse.origin.x, mouse.origin.y, &point)) return;
+    CL_SendSmartPointCommand(point.x, point.y);
+    smart_hold_sent_ms = SDL_GetTicks();
+}
+
+static void CL_SmartHoldFrame(void) {
+    if (!smart_click_active || !Cvar_Integer("cl_smart_hold", 0)) return;
+    uint32_t interval = (uint32_t)MAX(16, Cvar_Integer("cl_smart_hold_ms", SMART_HOLD_DEFAULT_MS));
+    if (SDL_GetTicks() - smart_hold_sent_ms >= interval) CL_SendSmartHoldPoint();
+}
+
 static void IN_SmartDown(void) {
     if (!CL_GameplayInputReady()) {
         smart_click_active = false;
         return;
     }
     smart_click_active = true;
+    /* Holding: the unit sets off at the press, not at the release. */
+    if (Cvar_Integer("cl_smart_hold", 0)) CL_SendSmartHoldPoint();
 }
 
 static void IN_SmartUp(void) {
@@ -618,7 +651,21 @@ static void CL_Camera_f(void) {
     fprintf(stderr, "usage: camera <move <x> <y>|edge <0|1>|selected>\n");
 }
 
+/* `cursor <x> <y>` (window pixels): queues a real mouse motion, so scripted
+ * tests (+exec) can aim held buttons such as +smart at the world through the
+ * ordinary input path. A hidden test window never receives one otherwise. */
+static void CL_Cursor_f(void) {
+    if (Cmd_Argc() != 3) {
+        fprintf(stderr, "usage: cursor <x> <y>\n");
+        return;
+    }
+    SDL_Event event = { .motion = { .type = SDL_MOUSEMOTION, .timestamp = SDL_GetTicks(),
+        .x = atoi(Cmd_Argv(1)), .y = atoi(Cmd_Argv(2)) } };
+    SDL_PushEvent(&event);
+}
+
 static void CL_RegisterCameraControls(void) {
+    Cmd_AddCommand("cursor", CL_Cursor_f);
     Cmd_AddCommand("+pan", IN_PanDown);
     Cmd_AddCommand("-pan", IN_PanUp);
     Cmd_AddCommand("+smart", IN_SmartDown);
@@ -636,6 +683,10 @@ static void CL_RegisterCameraControls(void) {
     Cvar_Get("cl_camera_scroll_speed", "0", CVAR_ARCHIVE);
     Cvar_Get("cl_camera_edge_margin", "6", CVAR_ARCHIVE);
     Cvar_Get("cl_camera_pan_plane", "0", 0);
+    /* Not archived: a map script that wants them sets them on every load. */
+    Cvar_Get("cl_smart_hold", "0", 0);
+    Cvar_Get("cl_smart_hold_ms", "100", 0);
+    Cvar_Get("cl_touch_smart", "0", 0);
 }
 
 static bool CL_CanHoverableEntity(uint32_t entnum) {
@@ -2527,6 +2578,124 @@ TEST(client_input, two_finger_tap_sends_right_click) {
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
     SDL_SetEventFilter(had_event_filter ? old_event_filter : NULL,
                        had_event_filter ? old_event_filter_data : NULL);
+    Key_SetBinding(K_MOUSE1, 0, select_binding);
+    Key_SetBinding(K_MOUSE2, 0, smart_binding);
+    if (add_select_down) Cmd_RemoveCommand("+select");
+    if (add_select_up) Cmd_RemoveCommand("-select");
+    if (add_smart_down) Cmd_RemoveCommand("+smart");
+    if (add_smart_up) Cmd_RemoveCommand("-smart");
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+    input = old_input; touch_pan = old_touch; touch_is_direct = old_direct;
+    mouse = old_mouse; re = old_re; cls = old_cls;
+    cl = *old_cl; MemFree(old_cl);
+    FOR_LOOP(i, MAX_LAYOUT_LAYERS) SCR_SetLayoutLayer(i, cl.layout[i]);
+}
+
+/* cl_touch_smart + cl_smart_hold (a map script that moves its unit itself):
+ * one finger on the world holds Smart instead of Select, the press sends the
+ * ground point at once, the held button keeps sending the point under the
+ * moving finger, and the release ends it with the ordinary Smart click.
+ * Both off (the default), the same finger is a plain Select press. */
+TEST(client_input, held_smart_follows_touch_pointer) {
+    struct client_state *old_cl = MemAlloc(sizeof(cl));
+    struct client_static old_cls = cls;
+    refExport_t old_re = re;
+    __typeof__(input) old_input = input;
+    __typeof__(touch_pan) old_touch = touch_pan;
+    mouseEvent_t old_mouse = mouse;
+    bool (*old_direct)(SDL_TouchID) = touch_is_direct;
+    UINAME select_binding, smart_binding;
+    bool add_select_down = !Cmd_Exists("+select"), add_select_up = !Cmd_Exists("-select");
+    bool add_smart_down = !Cmd_Exists("+smart"), add_smart_up = !Cmd_Exists("-smart");
+    SDL_EventFilter old_event_filter = NULL;
+    void *old_event_filter_data = NULL;
+    bool had_event_filter;
+    float old_hold = Cvar_Value("cl_smart_hold", 0), old_hold_ms = Cvar_Value("cl_smart_hold_ms", 100);
+    float old_touch_smart = Cvar_Value("cl_touch_smart", 0), old_edge = Cvar_Value("cl_camera_edge_scroll", 0);
+    uint8_t data[512];
+    char command[128];
+
+    memcpy(old_cl, &cl, sizeof(cl));
+    strlcpy(select_binding, Key_GetBinding(K_MOUSE1, 0), sizeof(select_binding));
+    strlcpy(smart_binding, Key_GetBinding(K_MOUSE2, 0), sizeof(smart_binding));
+    T_EQ(SDL_InitSubSystem(SDL_INIT_EVENTS), 0);
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    had_event_filter = SDL_GetEventFilter(&old_event_filter, &old_event_filter_data);
+    SDL_SetEventFilter(CL_TestFingerTimestampFilter, NULL);
+    if (add_select_down) Cmd_AddCommand("+select", IN_SelectDown);
+    if (add_select_up) Cmd_AddCommand("-select", IN_SelectUp);
+    if (add_smart_down) Cmd_AddCommand("+smart", IN_SmartDown);
+    if (add_smart_up) Cmd_AddCommand("-smart", IN_SmartUp);
+    Key_SetBinding(K_MOUSE1, 0, "+select"); Key_SetBinding(K_MOUSE2, 0, "+smart");
+    memset(&cl, 0, sizeof(cl));
+    input = (__typeof__(input)){ .focus = true };
+    memset(&touch_pan, 0, sizeof(touch_pan)); touch_is_direct = CL_TestTouchDirect;
+    cls.state = ca_active; cls.key_dest = key_game;
+    cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    re.GetWindowSize = CL_TestWindowSize;
+    re.TraceMinimap = CL_TestNoMinimap;
+    re.TraceEntity = CL_TestSelectEntity;
+    re.TraceLocation = CL_TestScreenGround;
+    FOR_LOOP(i, MAX_LAYOUT_LAYERS) SCR_ClearLayoutLayer(i);
+    Cvar_SetValue("cl_camera_edge_scroll", 0);
+    Cvar_SetValue("cl_smart_hold", 1);
+    Cvar_SetValue("cl_smart_hold_ms", 16);
+    Cvar_SetValue("cl_touch_smart", 1);
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+
+    /* The finger lands: Smart, not Select, and the ground point goes out now. */
+    CL_TestPushFinger(SDL_FINGERDOWN, 1, .25f, .5f, 1000);
+    CL_Input();
+    T_ASSERT(smart_click_active && !input.select);
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smartpoint 256 384");
+    T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
+
+    /* Dragged and held past the interval: the point under the finger, never
+     * the unit traced there (following must not turn into an attack). */
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    CL_TestPushFinger(SDL_FINGERMOTION, 1, .75f, .25f, 1020);
+    SDL_Delay(20);
+    CL_Input();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smartpoint 768 576");
+    T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
+
+    /* The release is the ordinary Smart click; then nothing more is sent. */
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    CL_TestPushFinger(SDL_FINGERUP, 1, .75f, .25f, 1100);
+    CL_Input();
+    T_ASSERT(!smart_click_active && !touch_pan.pointer_down);
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smart 7 768 576");
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    SDL_Delay(20);
+    CL_Input();
+    T_EQ(cls.netchan.message.cursize, 0);
+
+    /* Defaults: the finger is a Select press and holding sends nothing. */
+    Cvar_SetValue("cl_touch_smart", 0);
+    Cvar_SetValue("cl_smart_hold", 0);
+    CL_TestPushFinger(SDL_FINGERDOWN, 2, .25f, .5f, 2000);
+    CL_Input();
+    SDL_Delay(20);
+    CL_Input();
+    T_ASSERT(!smart_click_active);
+    T_EQ(cls.netchan.message.cursize, 0);
+    CL_TestPushFinger(SDL_FINGERUP, 2, .25f, .5f, 2100);
+    CL_Input();
+    T_ASSERT(!smart_click_active && !touch_pan.pointer_down);
+
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    SDL_SetEventFilter(had_event_filter ? old_event_filter : NULL,
+                       had_event_filter ? old_event_filter_data : NULL);
+    Cvar_SetValue("cl_smart_hold", old_hold);
+    Cvar_SetValue("cl_smart_hold_ms", old_hold_ms);
+    Cvar_SetValue("cl_touch_smart", old_touch_smart);
+    Cvar_SetValue("cl_camera_edge_scroll", old_edge);
     Key_SetBinding(K_MOUSE1, 0, select_binding);
     Key_SetBinding(K_MOUSE2, 0, smart_binding);
     if (add_select_down) Cmd_RemoveCommand("+select");
