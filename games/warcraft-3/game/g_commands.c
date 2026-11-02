@@ -1178,6 +1178,23 @@ CLIENTCOMMAND(SmartPoint) {
     }
 }
 
+/* A held Smart button (cl_smart_hold) following the cursor: only units their
+ * script moves (UNIT_FLAG_SCRIPT_ORDERS) hear it, as a smart point order, with
+ * no move marker, waypoint or acknowledgement voice. The press itself is an
+ * ordinary smartpoint; resending that every 100 ms flashed a marker and
+ * replayed the order sound on every tick. */
+CLIENTCOMMAND(SmartHold) {
+    gameClient_t *client = clent->client;
+    vec2_t loc;
+
+    if (argc < 3 || G_TargetModeActive(client)) return;
+    loc = (vec2_t){ atoi(argv[1]), atoi(argv[2]) };
+    FOR_CONTROLLABLE_SELECTED_UNITS(client, ent) {
+        if (G_UnitHasFlag(ent, UNIT_FLAG_SCRIPT_ORDERS))
+            G_PublishIssuedPointOrder(ent, G_OrderId("smart"), &loc, client->ps.number, "smart");
+    }
+}
+
 CLIENTCOMMAND(Button) {
     char ability_name[5] = {0};
     cstring_t classname;
@@ -3153,6 +3170,7 @@ clientCommand_t clientCommands[] = {
     { "orderqueuerelease", CMD_OrderQueueRelease },
     { "smart", CMD_Smart },
     { "smartpoint", CMD_SmartPoint },
+    { "smarthold", CMD_SmartHold },
     { "cancel", CMD_Cancel },
     { "canceltrain", CMD_CancelTrain },
     { "quests", CMD_Quests },

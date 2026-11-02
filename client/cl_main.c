@@ -690,15 +690,16 @@ static void CL_Quit_f(void) {
  * replace the current world inline from that callback.  Copy the request and
  * execute it from the following client frame, after SV_Frame has returned. */
 /* Opens an http(s) link outside the game: the system browser natively; in the
- * browser build the page follows it with a temporary <a download> link (a
- * same-origin file downloads, popup blockers do not apply). */
+ * browser build the page follows it with a temporary link: a same-origin file
+ * downloads (<a download>), any other address opens in a new tab. */
 static void CL_OpenURL(cstring_t url) {
     if (!url || (strncmp(url, "https://", 8) && strncmp(url, "http://", 7))) return;
 #ifdef __EMSCRIPTEN__
     MAIN_THREAD_EM_ASM({
         var link = document.createElement('a');
         link.href = UTF8ToString($0);
-        link.download = '';
+        if (link.origin === location.origin) link.download = '';
+        else link.target = '_blank';
         link.rel = 'noopener';
         document.body.appendChild(link);
         link.click();

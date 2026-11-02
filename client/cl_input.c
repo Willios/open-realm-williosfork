@@ -15,8 +15,12 @@ static struct {
 static bool smart_click_active;
 /* cl_smart_hold 1 (set by a map script that moves its unit itself): a held
  * Smart button keeps sending the ground point under the cursor, so the unit
- * follows the pointer, as in Diablo-style games. Last send time in ms. */
+ * follows the pointer, as in Diablo-style games. The press is an ordinary
+ * smartpoint; the follow points are silent `smarthold` commands (no marker,
+ * no order voice), sent only when the point moved. Last send time in ms. */
 static uint32_t smart_hold_sent_ms;
+static bool smart_hold_followed; /* follow points went out since the press: no click on release */
+static vec2_t smart_hold_last;
 #define SMART_HOLD_DEFAULT_MS 100 // one point per server frame (10 Hz)
 #define BZ_SELECT_DOUBLE_CLICK_MS 500 // milliseconds; shared opt-in same-entity double-click window
 static bool cam_west, cam_east, cam_north, cam_south;
@@ -142,6 +146,7 @@ void CL_ResetInput(void) {
     input.buttons = input.sent = 0;
     cl.camera_prediction.active = cl.camera_prediction.view = false;
     input.select = input.look = camera_drag.active = smart_click_active = false;
+    smart_hold_followed = false;
     input.last_select_entity = input.last_select_ms = 0;
     cam_west = cam_east = cam_north = cam_south = false;
     cl.selection.in_progress = false;
@@ -586,18 +591,28 @@ static void IN_PanUp(void) {
 /* Held Smart (cl_smart_hold): the ground point under the cursor, never a unit
  * (following the pointer must not turn into an attack order on whatever
  * passes under it), and nothing over the HUD. */
-static void CL_SendSmartHoldPoint(void) {
+static void CL_SendSmartHoldPoint(bool follow) {
     vec3_t point;
+    smart_hold_sent_ms = SDL_GetTicks();
     if (!CL_GameplayInputReady() || CL_MouseOverGameplayUI()) return;
     if (!re.TraceLocation(&cl.viewDef, mouse.origin.x, mouse.origin.y, &point)) return;
-    CL_SendSmartPointCommand(point.x, point.y);
-    smart_hold_sent_ms = SDL_GetTicks();
+    if (!follow) {
+        CL_SendSmartPointCommand(point.x, point.y);
+    } else {
+        /* A held, unmoved cursor counts as a hold (no click on release) but
+         * resends nothing: the unit already walks to that point. */
+        smart_hold_followed = true;
+        if (fabsf(point.x - smart_hold_last.x) < 8.0f && fabsf(point.y - smart_hold_last.y) < 8.0f) return;
+        MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+        SZ_Printf(&cls.netchan.message, "smarthold %d %d", (int)point.x, (int)point.y);
+    }
+    smart_hold_last = MAKE(vec2_t, point.x, point.y);
 }
 
 static void CL_SmartHoldFrame(void) {
     if (!smart_click_active || !Cvar_Integer("cl_smart_hold", 0)) return;
     uint32_t interval = (uint32_t)MAX(16, Cvar_Integer("cl_smart_hold_ms", SMART_HOLD_DEFAULT_MS));
-    if (SDL_GetTicks() - smart_hold_sent_ms >= interval) CL_SendSmartHoldPoint();
+    if (SDL_GetTicks() - smart_hold_sent_ms >= interval) CL_SendSmartHoldPoint(true);
 }
 
 static void IN_SmartDown(void) {
@@ -606,8 +621,9 @@ static void IN_SmartDown(void) {
         return;
     }
     smart_click_active = true;
+    smart_hold_followed = false;
     /* Holding: the unit sets off at the press, not at the release. */
-    if (Cvar_Integer("cl_smart_hold", 0)) CL_SendSmartHoldPoint();
+    if (Cvar_Integer("cl_smart_hold", 0)) CL_SendSmartHoldPoint(false);
 }
 
 static void IN_SmartUp(void) {
@@ -619,6 +635,10 @@ static void IN_SmartUp(void) {
         return;
     }
     smart_click_active = false;
+    /* After a hold the unit is already on its way: a release click would
+     * flash one more marker. A quick click still sends its Smart (a unit,
+     * tree or item under the cursor). */
+    if (smart_hold_followed && Cvar_Integer("cl_smart_hold", 0)) return;
     CL_SendSmartCommand(mouse.origin.x, mouse.origin.y);
 }
 
@@ -686,6 +706,7 @@ static void CL_RegisterCameraControls(void) {
     /* Not archived: a map script that wants them sets them on every load. */
     Cvar_Get("cl_smart_hold", "0", 0);
     Cvar_Get("cl_smart_hold_ms", "100", 0);
+    Cvar_Get("cl_smart_left", "0", 0);
     Cvar_Get("cl_touch_smart", "0", 0);
 }
 
@@ -1224,6 +1245,14 @@ static void CL_SendSameTypeSelection(uint32_t anchor) {
 void IN_SelectDown(void) {
     input.select = false;
     input.down = mouse.origin;
+    /* cl_smart_left (a script that moves its unit with Smart): the left button
+     * is the right button, a held or quick Smart order (see IN_SmartDown). The
+     * HUD keeps its clicks, as it does for the right button. */
+    if (Cvar_Integer("cl_smart_left", 0)) {
+        cl.selection.in_progress = false;
+        if (CL_GameplayInputReady() && !CL_MouseOverGameplayUI()) IN_SmartDown();
+        return;
+    }
     if (!CL_GameplayInputReady()) {
         CL_ResetSelectClickChain();
         cl.selection.in_progress = false;
@@ -1257,6 +1286,10 @@ void IN_SelectUp(void) {
     input.select = false;
     /* Release the shared drag before either selection path can return. */
     CL_EndMinimapDrag();
+    if (Cvar_Integer("cl_smart_left", 0)) {
+        IN_SmartUp();
+        return;
+    }
     if (CL_SelectionLimit() == 1) {
         if (!held || !CL_GameplayInputReady() || CL_MouseOverGameplayUI()) return;
         vec2_t delta = { mouse.origin.x - input.down.x, mouse.origin.y - input.down.y };
@@ -2591,6 +2624,54 @@ TEST(client_input, two_finger_tap_sends_right_click) {
     FOR_LOOP(i, MAX_LAYOUT_LAYERS) SCR_SetLayoutLayer(i, cl.layout[i]);
 }
 
+/* cl_smart_left (a map script that moves its unit with Smart): the left button
+ * is the right button. The press sends the ground point at once and starts a
+ * held Smart; Select never starts, so no selection box or unit pick follows. */
+TEST(client_input, smart_left_press_orders_like_right_button) {
+    struct client_state *old_cl = MemAlloc(sizeof(cl));
+    struct client_static old_cls = cls;
+    refExport_t old_re = re;
+    __typeof__(input) old_input = input;
+    __typeof__(touch_pan) old_touch = touch_pan;
+    mouseEvent_t old_mouse = mouse;
+    float old_hold = Cvar_Value("cl_smart_hold", 0), old_left = Cvar_Value("cl_smart_left", 0);
+    uint8_t data[512];
+    char command[128];
+
+    memcpy(old_cl, &cl, sizeof(cl));
+    T_EQ(SDL_InitSubSystem(SDL_INIT_EVENTS), 0);
+    memset(&cl, 0, sizeof(cl));
+    input = (__typeof__(input)){ .focus = true };
+    memset(&touch_pan, 0, sizeof(touch_pan));
+    cls.state = ca_active; cls.key_dest = key_game;
+    cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    re.GetWindowSize = CL_TestWindowSize;
+    re.TraceMinimap = CL_TestNoMinimap;
+    re.TraceEntity = CL_TestSelectEntity;
+    re.TraceLocation = CL_TestScreenGround;
+    FOR_LOOP(i, MAX_LAYOUT_LAYERS) SCR_ClearLayoutLayer(i);
+    Cvar_SetValue("cl_smart_hold", 1);
+    Cvar_SetValue("cl_smart_left", 1);
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    mouse.origin = MAKE(vec2_t, 256, 384);
+
+    IN_SelectDown();
+    T_ASSERT(smart_click_active && !input.select && !cl.selection.in_progress);
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smartpoint 256 384");
+
+    IN_SelectUp();
+    T_ASSERT(!smart_click_active && !input.select);
+
+    Cvar_SetValue("cl_smart_left", old_left);
+    Cvar_SetValue("cl_smart_hold", old_hold);
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+    input = old_input; touch_pan = old_touch; mouse = old_mouse; re = old_re; cls = old_cls;
+    cl = *old_cl; MemFree(old_cl);
+    FOR_LOOP(i, MAX_LAYOUT_LAYERS) SCR_SetLayoutLayer(i, cl.layout[i]);
+}
+
 /* cl_touch_smart + cl_smart_hold (a map script that moves its unit itself):
  * one finger on the world holds Smart instead of Select, the press sends the
  * ground point at once, the held button keeps sending the point under the
@@ -2652,29 +2733,69 @@ TEST(client_input, held_smart_follows_touch_pointer) {
     T_STREQ(command, "smartpoint 256 384");
     T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
 
-    /* Dragged and held past the interval: the point under the finger, never
-     * the unit traced there (following must not turn into an attack). */
+    /* Dragged and held past the interval: a silent follow point under the
+     * finger, never the unit traced there (following must not turn into an
+     * attack), and not a smartpoint (each one flashed a marker and a voice). */
     SZ_Init(&cls.netchan.message, data, sizeof(data));
     CL_TestPushFinger(SDL_FINGERMOTION, 1, .75f, .25f, 1020);
     SDL_Delay(20);
     CL_Input();
     T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
     MSG_ReadString(&cls.netchan.message, command);
-    T_STREQ(command, "smartpoint 768 576");
+    T_STREQ(command, "smarthold 768 576");
     T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
 
-    /* The release is the ordinary Smart click; then nothing more is sent. */
-    SZ_Init(&cls.netchan.message, data, sizeof(data));
-    CL_TestPushFinger(SDL_FINGERUP, 1, .75f, .25f, 1100);
-    CL_Input();
-    T_ASSERT(!smart_click_active && !touch_pan.pointer_down);
-    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
-    MSG_ReadString(&cls.netchan.message, command);
-    T_STREQ(command, "smart 7 768 576");
+    /* Held still: the same point is not sent again. */
     SZ_Init(&cls.netchan.message, data, sizeof(data));
     SDL_Delay(20);
     CL_Input();
     T_EQ(cls.netchan.message.cursize, 0);
+
+    /* After a hold the release sends nothing: the unit is on its way. */
+    CL_TestPushFinger(SDL_FINGERUP, 1, .75f, .25f, 1100);
+    CL_Input();
+    T_ASSERT(!smart_click_active && !touch_pan.pointer_down);
+    T_EQ(cls.netchan.message.cursize, 0);
+    SDL_Delay(20);
+    CL_Input();
+    T_EQ(cls.netchan.message.cursize, 0);
+
+    /* The right mouse button held and dragged: one click at the press, silent
+     * follow points, nothing at the release. */
+    SDL_PushEvent(&(SDL_Event){ .button = { .type = SDL_MOUSEBUTTONDOWN, .button = SDL_BUTTON_RIGHT,
+        .x = 256, .y = 384 } });
+    CL_Input();
+    T_ASSERT(smart_click_active && !input.select);
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smartpoint 256 384");
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    SDL_PushEvent(&(SDL_Event){ .motion = { .type = SDL_MOUSEMOTION, .x = 768, .y = 192 } });
+    SDL_Delay(20);
+    CL_Input();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smarthold 768 576");
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    SDL_PushEvent(&(SDL_Event){ .button = { .type = SDL_MOUSEBUTTONUP, .button = SDL_BUTTON_RIGHT,
+        .x = 768, .y = 192 } });
+    CL_Input();
+    T_ASSERT(!smart_click_active);
+    T_EQ(cls.netchan.message.cursize, 0);
+
+    /* A quick click (released before any follow point) is still the
+     * ordinary Smart click on release, a unit, tree or item included. */
+    SDL_PushEvent(&(SDL_Event){ .button = { .type = SDL_MOUSEBUTTONDOWN, .button = SDL_BUTTON_RIGHT,
+        .x = 256, .y = 384 } });
+    CL_Input();
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    SDL_PushEvent(&(SDL_Event){ .button = { .type = SDL_MOUSEBUTTONUP, .button = SDL_BUTTON_RIGHT,
+        .x = 256, .y = 384 } });
+    CL_Input();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command);
+    T_STREQ(command, "smart 7 256 384");
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
 
     /* Defaults: the finger is a Select press and holding sends nothing. */
     Cvar_SetValue("cl_touch_smart", 0);

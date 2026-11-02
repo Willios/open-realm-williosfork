@@ -524,7 +524,7 @@ void CL_DrawTEnts(void) {
                     SCR_UICanvasWidth(), UI_BASE_HEIGHT);
         re.DrawText(&MAKE(drawText_t,
             .font = cl.fonts[text->font], .text = text->text, .rect = rect,
-            .color = shadow, .textWidth = SCR_UICanvasWidth(),
+            .color = shadow, .textWidth = SCR_UICanvasWidth(), .flags = DRAW_FLAT_COLOR,
             .halign = FONT_JUSTIFYLEFT, .valign = FONT_JUSTIFYTOP));
         rect.x = screen.x;
         rect.y = screen.y;

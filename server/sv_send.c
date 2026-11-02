@@ -116,7 +116,9 @@ void SV_StartSoundPolicy(vec3_t const *origin, edict_t *ent, int channel, int so
     }
     if (ent) {
         ent_num = NUM_FOR_EDICT(ent);
-        if (!(owner_only && !origin)) flags |= SND_ENT;
+        /* Edict 0 is never a valid source on the wire (the client rejects it):
+         * an owner-only sound for the player in slot 0 travels by position only. */
+        if (ent_num > 0 && !(owner_only && !origin)) flags |= SND_ENT;
         ent_origin = ent->s.origin;
         if (!pos) pos = &ent_origin;
     }

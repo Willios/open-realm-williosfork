@@ -1100,6 +1100,9 @@ static void CL_ParseSound(sizeBuf_t *msg) {
         channel |= packed & 7;
         if (entity <= 0 || entity >= MAX_CLIENT_ENTITIES) {
             fprintf(stderr, "CL_ParseSound: bad entity=%d sound=%d\n", entity, sound_index);
+            /* Still consume the position: returning early left its bytes to be
+             * parsed as commands and desynced the whole message. */
+            if (flags & SND_POS) MSG_ReadPos(msg, &origin);
             return;
         }
         origin = cl.ents[entity].current.origin;

@@ -40,6 +40,7 @@ enum {
     DRAW_MIRRORED  = 1 << 3,
     DRAW_EDGE_2X2  = 1 << 4, /* edge texture uses WoW 2×2 quadrant UV layout */
     DRAW_BG_OPAQUE = 1 << 5, /* FDF backdrop without BackdropBlendAll ignores texture alpha */
+    DRAW_FLAT_COLOR = 1 << 6, /* text: skip |c colour codes (drop shadows stay their own colour) */
 };
 
 /* Text drawing parameters */
