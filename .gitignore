@@ -13,6 +13,9 @@ _codeql_detected_source_root
 War3.mpq
 .mcp.json
 .claude/
+# Notes for Claude Code: kept on this machine, not on GitHub.
+CLAUDE.md
+AGENTS.md
 .vscode/
 screenshots/
 /site/
