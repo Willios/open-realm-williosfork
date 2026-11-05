@@ -357,6 +357,35 @@ static int G_LuaEngineOpenURL(lua_State *L) {
     return 0;
 }
 
+/* EngineLoadScript(path) runs one more Lua file from the game data (a language
+ * file of the script's Lang table); false when it is missing or fails.
+ * Engine-only, like EngineCvar. */
+static int G_LuaEngineLoadScript(lua_State *L) {
+    cstring_t path = luaL_checkstring(L, 1);
+    uint32_t size = 0;
+    handle_t data = gi.ReadFile(path, &size);
+    int ok = 0;
+
+    if (data) {
+        ok = luaL_loadbuffer(L, data, size, path) == LUA_OK && lua_pcall(L, 0, 0, 0) == LUA_OK;
+        if (!ok) {
+            fprintf(stderr, "%s: %s\n", path, lua_tostring(L, -1));
+            lua_pop(L, 1);
+        }
+        gi.MemFree(data);
+    }
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
+/* EngineLanguage(code) chooses the language archive (fs_language) and restarts:
+ * the page reloads, natively the game quits for the launcher to start it again.
+ * Engine-only, like EngineCvar. */
+static int G_LuaEngineLanguage(lua_State *L) {
+    if (gi.MenuAction) gi.MenuAction("language", luaL_checkstring(L, 1));
+    return 0;
+}
+
 /* EngineUnitModel(unitId) returns the model file of a unit type (UnitUI file),
  * for BlzFrameSetModel. Engine-only, like EngineCvar. */
 static int G_LuaEngineUnitModel(lua_State *L) {
@@ -522,6 +551,10 @@ static void G_LuaOpen(void) {
     lua_setglobal(L, "EngineQuit");
     lua_pushcfunction(L, G_LuaEngineOpenURL);
     lua_setglobal(L, "EngineOpenURL");
+    lua_pushcfunction(L, G_LuaEngineLanguage);
+    lua_setglobal(L, "EngineLanguage");
+    lua_pushcfunction(L, G_LuaEngineLoadScript);
+    lua_setglobal(L, "EngineLoadScript");
     lua_pushcfunction(L, G_LuaEngineUnitModel);
     lua_setglobal(L, "EngineUnitModel");
     lua_pushcfunction(L, G_LuaEngineUnitAnimation);

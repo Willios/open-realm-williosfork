@@ -303,6 +303,8 @@ def main():
     parser.add_argument("--base", default=str(ROOT.parent / "tools" / "web_base_reads.txt"),
                         help="reads list the four archives were published with (frozen); \"none\" trims them to --reads")
     parser.add_argument("--full", action="store_true", help="link the archives whole instead of trimming them")
+    parser.add_argument("--languages", default=str(ROOT / "build" / "lang"),
+                        help="folder of the language archives (tools/lang/make_language_packs.py)")
     args = parser.parse_args()
     wc3 = pathlib.Path(args.wc3)
     data = pathlib.Path(args.out) / "data"
@@ -333,6 +335,16 @@ def main():
         files.append({"name": name, "size": size, "sha1": sha1.hexdigest()})
         digest.update((name + str(size) + sha1.hexdigest()).encode())
     manifest = {"id": digest.hexdigest()[:16], "files": files}
+    # Language archives (tools/lang/make_language_packs.py): not in "files" or the
+    # id, so a player downloads only the chosen one and French players nothing.
+    languages = {}
+    for source in sorted(pathlib.Path(args.languages).glob("War3zzLang_*.mpq")):
+        place(source, data / source.name)
+        sha1 = hashlib.sha1(source.read_bytes()).hexdigest()
+        languages[source.stem.split("_", 1)[1]] = {"name": source.name, "size": source.stat().st_size, "sha1": sha1}
+    if languages:
+        manifest["languages"] = languages
+        print("%d language archives: %s" % (len(languages), ", ".join(sorted(languages))))
     (data / "files.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     total = sum(f["size"] for f in files)
     print("%d files, %.0f MB, id %s -> %s" % (len(files), total / 1048576, manifest["id"], data))

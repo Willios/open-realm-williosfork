@@ -2563,10 +2563,11 @@ cstring_t G_ObjectName(uint32_t objectId) {
     if (!objectId) return "";
     profile = G_UnitProfile(objectId);
     if (profile && profile->name && *profile->name) return G_LevelString(profile->name);
+    /* Before the item table: ItemStrings.txt is localized, its name column is not. */
+    name = FindConfigValue(GetClassName(objectId), "Name");
+    if (name && *name) return G_LevelString(name);
     item = G_ItemData(objectId);
     if (item && item->id == objectId && item->displayName && *item->displayName)
         return G_LevelString(item->displayName);
-    name = FindConfigValue(GetClassName(objectId), "Name");
-    if (name && *name) return G_LevelString(name);
     return GetClassName(objectId);
 }

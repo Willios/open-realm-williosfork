@@ -734,6 +734,21 @@ void MenuAction(cstring_t action, cstring_t arg) {
     } else if (!strcmp(action, "openurl")) {
         CL_OpenURL(arg);
         return;
+    } else if (!strcmp(action, "language")) {
+        /* The language archive mounts at startup. The page reloads with the new
+         * choice; natively the game quits (cvars are archived on the way out)
+         * and the launcher starts it again. */
+        if (!arg || !*arg) return;
+        Cvar_Set("fs_language", arg);
+#ifdef __EMSCRIPTEN__
+        MAIN_THREAD_EM_ASM({
+            try { localStorage.setItem('survivor-language', UTF8ToString($0)); } catch (error) {}
+            location.reload();
+        }, arg);
+        return;
+#else
+        pending.type = CL_MENU_ACTION_QUIT;
+#endif
     } else {
         return;
     }

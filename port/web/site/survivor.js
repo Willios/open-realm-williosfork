@@ -16,7 +16,23 @@
   // the engine side is cl_touch_smart, set by the script in every browser).
   const touchDevice = (navigator.maxTouchPoints || 0) > 0 &&
     !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  // The player's choice (the lobby's Language button, cl_main.c saves it here
+  // and reloads), else the browser's language, else English. Each language but
+  // French, which the game data holds, is one more archive to download.
+  const LANGUAGES = {fr:'frFR', de:'deDE', es:'esES', it:'itIT', pl:'plPL', ru:'ruRU', en:'enUS'};
+  function chosenLanguage() {
+    let saved = null;
+    try { saved = localStorage.getItem('survivor-language'); } catch (_) {}
+    if (saved && Object.values(LANGUAGES).includes(saved)) return saved;
+    for (const tag of navigator.languages || [navigator.language || 'en']) {
+      const found = LANGUAGES[String(tag).slice(0, 2).toLowerCase()];
+      if (found) return found;
+    }
+    return 'enUS';
+  }
+  const language = chosenLanguage();
   window.openrealmExtraArguments = [
+    '+set', 'fs_language', language,
     '+set', 'wc3_loading_quiet', '1',
     '+set', 'scr_showfps', '0',
     '+set', 'survivor_web', '1', // the game menu hides Quit Game (a page cannot close itself)
@@ -137,6 +153,13 @@
     if (!hosted) return; // No hosted data: the import panel stays.
     hide($('data-panel'));
     hosted.base = DATA;
+    // The chosen language's archive joins the installation; the others stay on
+    // the server. Files already installed are copied locally, not downloaded.
+    const pack = hosted.languages && hosted.languages[language];
+    if (pack) {
+      hosted.files = hosted.files.concat([pack]);
+      hosted.id += '.' + language;
+    }
     // About 200 MB: ask the browser not to evict it under storage pressure.
     if (navigator.storage && navigator.storage.persist)
       await navigator.storage.persist().catch(() => false);

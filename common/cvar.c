@@ -531,6 +531,8 @@ void Cvar_Init(void) {
     Cvar_GetD("data",             "",                  CVAR_ARCHIVE, "override game data directory path");
     Cvar_GetD("fs_expansion",     "0",                 0,            "0=RoC data/skin, 1=TFT data/skin (expose expansion archives)");
     Cvar_GetD("fs_expansion_archive_prefix", "",             0,            "optional archive basename prefix hidden while fs_expansion is 0");
+    Cvar_GetD("fs_language",      "",                  CVAR_ARCHIVE, "language archive to mount (War3zzLang_<value>.mpq), the player's choice");
+    Cvar_GetD("fs_language_default", "enUS",           0,            "language when fs_language is empty (the launcher passes the system's)");
 #ifdef SC2_DEFAULT_MAP
     Cvar_GetD("map",              SC2_DEFAULT_MAP,     0,            "map file to load at startup");
 #else

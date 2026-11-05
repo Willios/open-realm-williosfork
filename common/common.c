@@ -814,6 +814,28 @@ static void FS_AddArchiveScanDirectoryEntry(cstring_t name,
     }
 }
 
+/* War3zzLang_<language>.mpq hold one language's strings, font and voices (the
+ * survivor build's Language button). Only the chosen one mounts; its name sorts
+ * after every other archive, so it overrides the data's own language. An empty
+ * fs_language takes fs_language_default once, and the script reads the result. */
+#define FS_LANGUAGE_PREFIX "War3zzLang_"
+static bool FS_LanguageArchiveWanted(cstring_t path) {
+    size_t const prefix = sizeof(FS_LANGUAGE_PREFIX) - 1;
+    cstring_t base = FS_BaseName(path);
+    cstring_t language;
+
+    if (strncasecmp(base, FS_LANGUAGE_PREFIX, prefix)) {
+        return true;
+    }
+    language = Cvar_String("fs_language", "");
+    if (!language || !*language) {
+        Cvar_Set("fs_language", Cvar_String("fs_language_default", "enUS"));
+        language = Cvar_String("fs_language", "");
+    }
+    return !strncasecmp(base + prefix, language, strlen(language)) &&
+           !strcasecmp(base + prefix + strlen(language), ".mpq");
+}
+
 bool FS_AddDataDirectory(cstring_t dirname) {
     PATHSTR archivePaths[MAX_ARCHIVES];
     fsArchiveScan_t scan = { archivePaths, MAX_ARCHIVES, 0 };
@@ -828,6 +850,9 @@ bool FS_AddDataDirectory(cstring_t dirname) {
 
     qsort(archivePaths, scan.count, sizeof(archivePaths[0]), FS_ComparePaths);
     FOR_LOOP(i, scan.count) {
+        if (!FS_LanguageArchiveWanted(archivePaths[i])) {
+            continue;
+        }
         if (FS_AddArchive(archivePaths[i])) {
             mountedCount++;
         }
