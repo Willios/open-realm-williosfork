@@ -271,6 +271,7 @@ void S_PlaySound(uint32_t kit_id);
 void S_PlaySoundByName(cstring_t name);
 void S_StopAllSounds(void);
 void S_SetUserVolume(float volume);
+void S_SetWorldPaused(bool paused);
 void S_SetGroupVolumes(float spells, float ambience, float units);
 void S_BeginRegistration(void);
 void S_EndRegistration(void);

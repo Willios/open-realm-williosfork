@@ -1621,6 +1621,7 @@ void CL_Frame(uint32_t msec) {
     CL_MusicUpdate();
     S_SetUserVolume(Cvar_Integer("s_sound", 1)
         ? Cvar_Value("s_volume", 1.0f) : 0.0f);
+    S_SetWorldPaused(Cvar_Integer("s_world_paused", 0) != 0);
     S_SetGroupVolumes(Cvar_Value("s_spellvolume", 1.0f), Cvar_Value("s_ambiencevolume", 1.0f),
         Cvar_Value("s_unitvolume", 1.0f));
     {

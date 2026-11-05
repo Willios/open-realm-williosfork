@@ -743,6 +743,8 @@ void CL_MusicInit(void) {
     Cvar_Get("s_spellvolume", "1", CVAR_ARCHIVE | CVAR_UI);
     Cvar_Get("s_ambiencevolume", "1", CVAR_ARCHIVE | CVAR_UI);
     Cvar_Get("s_unitvolume", "1", CVAR_ARCHIVE | CVAR_UI);
+    /* A script's pause: world sounds hold their place (never archived). */
+    Cvar_Get("s_world_paused", "0", 0);
     memset(&cl_music, 0, sizeof(cl_music));
     cl_music.music_volume = 127;
     cl_music.thematic_volume = 127;

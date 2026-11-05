@@ -134,6 +134,7 @@ typedef struct {
     SDL_AudioDeviceID device;
     float             user_volume;
     float             group_cut[S_GROUP_COUNT]; /* 1 - group volume, so zeroed state plays at full volume */
+    bool              world_paused; /* positional and looping channels hold their position (s_world_paused) */
     bool              initialized;
     uint8_t             *dbc_data;
     void         *slk_rows;       /* UISounds.slk rows backing named kits when no SoundEntries.dbc exists */

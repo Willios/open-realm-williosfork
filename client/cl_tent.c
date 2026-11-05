@@ -10,7 +10,7 @@
 #define ENTITY_INDICATOR_LIFETIME 1000 /* ms — retail AddIndicator flashes twice */
 #define ENTITY_INDICATOR_PERIOD 500    /* ms per flash cycle */
 #define ENTITY_INDICATOR_ON_TIME 250   /* ms visible at the start of each cycle */
-#define MAX_GROUND_TELEGRAPHS 32       /* entries; the oldest is replaced when every slot is busy */
+#define MAX_GROUND_TELEGRAPHS 64       /* entries; the oldest is replaced when every slot is busy */
 #define TELEGRAPH_FADE_IN 150          /* ms; the shape grows in from 85% while it fades in */
 #define TELEGRAPH_FLASH 450            /* ms after the hit: the flash fades with the shape */
 #define TELEGRAPH_FADE_OUT 250         /* ms; the end of a warning without a flash */

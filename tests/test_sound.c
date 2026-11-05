@@ -175,6 +175,58 @@ TEST(sound, user_volume_scales_effects_but_not_music_streams) {
     sound_test_reset();
 }
 
+TEST(sound, world_pause_holds_world_sounds_and_keeps_interface_sounds_and_music) {
+    int16_t out[2] = {0}, music[2] = {0};
+    static int16_t music_samples[2] = { 12000, -8000 };
+    vec3_t origin = {0};
+    int active = 0;
+
+    sound_test_reset();
+    S_SetWorldPaused(false);
+    S_SetUserVolume(1.0f);
+    S_PlaySoundPacket("stereo.wav", &origin, true, 0, 1.0f, 0.0f, 0.0f);
+    S_UpdateLoopingSound(7, "stereo.wav", NULL, 1.0f, 0.0f);
+    T_ASSERT(s.channels[0].active && s.channels[0].is_positional);
+    T_ASSERT(s.channels[1].active && s.channels[1].looping);
+
+    /* The world holds: no output, no progress. */
+    S_SetWorldPaused(true);
+    S_TestMix(out, 1);
+    T_EQ(out[0], 0);
+    T_EQ(out[1], 0);
+    T_EQ(s.channels[0].pos, 0);
+    T_EQ(s.channels[1].pos, 0);
+
+    /* What the world starts now is dropped. */
+    S_PlaySoundPacket("stereo.wav", &origin, true, 0, 1.0f, 0.0f, 0.0f);
+    FOR_LOOP(ch, S_MAX_CHANNELS) active += s.channels[ch].active;
+    T_EQ(active, 2);
+
+    /* An interface sound (no position) plays, and so does the music. */
+    S_PlaySoundPacket("stereo.wav", NULL, false, 0, 1.0f, 0.0f, 0.0f);
+    T_ASSERT(s.channels[2].active && !s.channels[2].is_positional);
+    S_TestMix(out, 1);
+    T_ASSERT(out[0] != 0 || out[1] != 0);
+    T_EQ(s.channels[2].pos, 1);
+    T_EQ(s.channels[0].pos, 0);
+    s.streams[S_STREAM_MUSIC] = (sStreamState_t){
+        .data = music_samples, .capacity = 1, .count = 1,
+        .volume = 1.0f, .active = true,
+    };
+    s.channels[2].active = false;
+    S_TestMix(music, 1);
+    T_EQ(music[0], music_samples[0]);
+    T_EQ(music[1], music_samples[1]);
+    s.streams[S_STREAM_MUSIC].data = NULL;
+
+    /* Resuming goes on from where it held. */
+    S_SetWorldPaused(false);
+    S_TestMix(out, 1);
+    T_EQ(s.channels[0].pos, 1);
+    T_EQ(s.channels[1].pos, 1);
+    sound_test_reset();
+}
+
 TEST(sound, important_sound_displaces_combat_when_channels_full) {
     sound_test_reset();
     for (int i = 0; i < S_MAX_CHANNELS; i++)

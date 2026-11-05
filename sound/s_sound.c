@@ -626,6 +626,8 @@ static void SDLCALL S_MixAudio(void *userdata, Uint8 *stream, int len) {
 
     for (int ch = 0; ch < S_MAX_CHANNELS; ch++) {
         if (!s.channels[ch].active || !s.channels[ch].sc) continue;
+        /* A paused world holds its sounds where they are; interface sounds go on. */
+        if (s.world_paused && (s.channels[ch].is_positional || s.channels[ch].looping)) continue;
         S_SpatializeChannel(ch);
         sfxcache_t *sc   = s.channels[ch].sc;
         float       lvol = s.channels[ch].leftvol * s.user_volume;
@@ -844,6 +846,8 @@ static bool S_StartSound(sfxcache_t *sc, float volume, vec2_t const *origin, boo
     int selected = -1;
     unsigned priority = policy ? policy->priority : SOUND_PRIORITY(channel);
     if (!sc) return false;
+    /* What the world starts during a pause is dropped: held, it would all burst out on resume. */
+    if (s.world_paused && is_positional) return false;
     S_Lock();
     if (policy && policy->cooldown_ms && s.user_cooldown[policy->user].active &&
         (int32_t)(s.user_cooldown[policy->user].end - SDL_GetTicks()) > 0) {
@@ -1167,6 +1171,13 @@ void S_SetUserVolume(float volume) {
 #endif
     S_Lock();
     s.user_volume = volume;
+    S_Unlock();
+}
+
+void S_SetWorldPaused(bool paused) {
+    if (!s.initialized || s.world_paused == paused) return;
+    S_Lock();
+    s.world_paused = paused;
     S_Unlock();
 }
 
